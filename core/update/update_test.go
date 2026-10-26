@@ -367,7 +367,7 @@ func TestHandlerRoutesRangeAndSafety(t *testing.T) {
 	for _, p := range []string{
 		"/v1/ios/latest", "/v1/windows/latest", "/v1/android/files/nope.apk",
 		"/v1/android/files/..%2Flatest.json", "/v1/android/files/%2e%2e", "/v1/android/files/.hidden",
-		"/v1/android/files/a%2Fb", "/etc/passwd", "/",
+		"/v1/android/files/a%2Fb", "/etc/passwd", "/v1/", "/v1/android/",
 	} {
 		if resp, _ := get(p, nil); resp.StatusCode != 404 && resp.StatusCode != 400 && resp.StatusCode != 301 {
 			t.Errorf("GET %s = %d, want a refusal", p, resp.StatusCode)
@@ -973,5 +973,78 @@ func TestManagerSetClientResets(t *testing.T) {
 func TestCompiledInTrustedKeysAreValid(t *testing.T) {
 	if len(trustedKeysB64) == 0 || len(TrustedKeys()) != len(trustedKeysB64) {
 		t.Fatalf("trusted keys: %d configured, %d parse", len(trustedKeysB64), len(TrustedKeys()))
+	}
+}
+
+func TestHandlerStableDownloadAndIndex(t *testing.T) {
+	r := newRelease(t)
+	body := payloadBytes(3_000_000, 11)
+	m := r.publish(t, PlatformAndroid, 7, "0.1.7", body, false)
+	base := serve(t, NewHandler(r.dir, "/clipbridge"))
+
+	resp, err := http.Get(base + "/clipbridge/v1/android/download")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != 200 || !bytes.Equal(got, body) {
+		t.Fatalf("download = %d, %d bytes", resp.StatusCode, len(got))
+	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="`+m.File+`"` {
+		t.Fatalf("Content-Disposition = %q", cd)
+	}
+	if resp.Header.Get("X-Content-SHA256") != m.SHA256 {
+		t.Fatal("download lacks X-Content-SHA256")
+	}
+
+	req, _ := http.NewRequest("GET", base+"/clipbridge/v1/android/download", nil)
+	req.Header.Set("Range", "bytes=2999000-")
+	part, err := http.DefaultClient.Do(req)
+	if err != nil || part.StatusCode != 206 {
+		t.Fatalf("range on download = %v / %v", part, err)
+	}
+	part.Body.Close()
+
+	// Unpublished platform and unknown platform: 404, never a directory listing.
+	for _, p := range []string{"/clipbridge/v1/windows/download", "/clipbridge/v1/ios/download"} {
+		if resp, err := http.Get(base + p); err != nil || resp.StatusCode != 404 {
+			t.Errorf("GET %s = %v / %v, want 404", p, resp, err)
+		}
+	}
+
+	resp, err = http.Get(base + "/clipbridge/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	html := string(page)
+	for _, want := range []string{m.File, m.SHA256, `href="v1/android/download"`, "Not published yet", "2.9 MiB"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("index page lacks %q:\n%s", want, html)
+		}
+	}
+	if strings.Contains(html, "<script") {
+		t.Error("index page must not contain scripts")
+	}
+}
+
+func TestIndexEscapesNotes(t *testing.T) {
+	r := newRelease(t)
+	src := filepath.Join(t.TempDir(), "p.apk")
+	_ = os.WriteFile(src, payloadBytes(10, 1), 0o644)
+	if _, err := Publish(PublishOptions{Dir: r.dir, Platform: PlatformAndroid, Source: src, VersionCode: 1,
+		VersionName: "0.1.1", Notes: `<script>alert(1)</script>`, Key: r.priv}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.Get(serve(t, NewHandler(r.dir, "")) + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if strings.Contains(string(page), "<script>alert") {
+		t.Fatalf("release notes were not escaped:\n%s", page)
 	}
 }
