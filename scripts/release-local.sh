@@ -28,6 +28,7 @@ while [ $# -gt 0 ]; do
 done
 case "$platform" in android|windows|all) ;; *) echo "--platform must be android, windows or all" >&2; exit 2 ;; esac
 
+ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 releases="${CLIPBRIDGE_RELEASES:-$HOME/.local/share/clipbridge/releases}"
 key="${CLIPBRIDGE_RELEASE_KEY:-$HOME/.config/clipbridge/release-ed25519.key}"
 [ -f "$key" ] || { echo "release signing key not found: $key (cbdist keygen -key ...)" >&2; exit 1; }
