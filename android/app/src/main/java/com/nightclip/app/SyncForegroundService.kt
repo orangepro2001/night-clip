@@ -12,6 +12,7 @@ import com.nightclip.app.core.CoreApi
 import com.nightclip.app.core.CoreEvent
 import com.nightclip.app.core.CoreHost
 import com.nightclip.app.platform.Actions
+import com.nightclip.app.platform.BackgroundReadController
 import com.nightclip.app.platform.Notifications
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,7 @@ class SyncForegroundService : Service() {
         if (intent?.action == Actions.ACTION_STOP_REALTIME) {
             // "Disconnect": the choice is persisted, so the boot receiver will not bring it back.
             app.prefs.setRealtime(false)
+            BackgroundReadController.onServiceStopped()
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -54,6 +56,8 @@ class SyncForegroundService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        // The opt-in background read lives in this process; the service is its lifetime.
+        BackgroundReadController.onServiceStarted(this)
         if (!watching) {
             watching = true
             scope.launch { watchConnections() }
@@ -80,6 +84,7 @@ class SyncForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        BackgroundReadController.onServiceStopped()
         scope.cancel()
         super.onDestroy()
     }

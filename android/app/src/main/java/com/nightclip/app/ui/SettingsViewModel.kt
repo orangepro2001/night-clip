@@ -3,6 +3,7 @@ package com.nightclip.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nightclip.app.R
 import com.nightclip.app.UpdateState
 import com.nightclip.app.core.ApiResult
 import com.nightclip.app.core.CoreApi
@@ -10,6 +11,9 @@ import com.nightclip.app.core.CoreEvent
 import com.nightclip.app.core.CoreHost
 import com.nightclip.app.core.CoreSettings
 import com.nightclip.app.core.CoreState
+import com.nightclip.app.platform.BackgroundReadController
+import com.nightclip.app.platform.BackgroundReadRuntime
+import com.nightclip.app.platform.OverlayReadResult
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -36,6 +40,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val messages: SharedFlow<String> = _messages.asSharedFlow()
 
+    /** Runtime status/counters for the opt-in background read, shared with the settings card. */
+    val backgroundRead: StateFlow<BackgroundReadRuntime> = BackgroundReadController.state
+
     init {
         viewModelScope.launch {
             CoreHost.state.first { it is CoreState.Ready }
@@ -59,6 +66,34 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             (CoreApi.identity() as? ApiResult.Ok)?.let { _identity.value = it.value }
         }
         refreshUpdate()
+        refreshBackgroundRead()
+    }
+
+    fun setBackgroundRead(on: Boolean) {
+        BackgroundReadController.setEnabled(getApplication<Application>(), on)
+        BackgroundReadController.refresh(getApplication<Application>())
+    }
+
+    fun refreshBackgroundRead() {
+        BackgroundReadController.refresh(getApplication<Application>())
+    }
+
+    /** One-shot overlay read for the settings card; never sends and never changes the baseline. */
+    fun testBackgroundRead() {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val text = when (val r = BackgroundReadController.testRead(app)) {
+                is OverlayReadResult.Ok -> app.getString(R.string.background_test_ok)
+                is OverlayReadResult.NoPermission -> app.getString(R.string.background_test_no_permission)
+                is OverlayReadResult.Locked -> app.getString(R.string.background_test_locked)
+                is OverlayReadResult.NoFocus -> app.getString(R.string.background_test_no_focus)
+                is OverlayReadResult.Empty -> app.getString(R.string.background_test_empty)
+                is OverlayReadResult.Denied -> app.getString(R.string.background_test_denied)
+                is OverlayReadResult.Busy -> app.getString(R.string.background_test_busy)
+                is OverlayReadResult.Failed -> app.getString(R.string.background_test_failed, r.code)
+            }
+            _messages.tryEmit(text)
+        }
     }
 
     fun refreshUpdate() {

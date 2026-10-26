@@ -14,7 +14,7 @@
 | 剪贴板同步 | 可行 | Windows 自动捕获；Android 用户触发（平台限制不变） |
 | 文件直传 | 可行 | HTTP Range + SHA-256；无存储配额；DERP 下较慢 |
 | P2P | **可行，且比 v2 判断更容易** | tailnet 已解决穿透，不需要 WebRTC/libp2p |
-| 全自动后台剪贴板 | 不可承诺 | Android 限制不变 |
+| 全自动后台剪贴板 | 默认不承诺；可选进阶 | Android 限制不变；`READ_LOGS` + 悬浮窗取焦是可行的显式授权方案，默认关闭（[ADR-006](adr/006-android-background-read.md)） |
 
 ## 2. 开源调研结论
 
@@ -97,7 +97,7 @@
 - [ ] P-B：C# P/Invoke 长时间稳定。
 - [ ] 指纹不符与非 tailnet 来源被拒绝。
 - [ ] 断线重连补发、重复去重、缺口 `skip` 行为正确。
-- [ ] 产品文案明确：需要 Tailscale；Android 后台不读剪贴板；电脑离线不可同步。
+- [ ] 产品文案明确：需要 Tailscale；Android 默认不后台读剪贴板（可选进阶需一次性 ADB 授权）；电脑离线不可同步。
 
 若 P-A 失败：评估 Android 端改用 libtailscale 或回退到可选中继方案；若 P-B 失败：Windows 改用 Go 子进程 + stdio/命名管道，C# 只做 UI。
 

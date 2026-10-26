@@ -1,6 +1,6 @@
 # 计划：复制即自动广播 + Syncthing 评估
 
-> 状态：**默认层已实施**（2026-10-26）：核心（阶段 1）、Windows 壳（阶段 2）、Android 第 1 层（阶段 3）；见 §11。真机验证 PoC（§5）和 Android 后台层（第 2/3 层）未做。  
+> 状态：**默认层已实施**（2026-10-26）：核心（阶段 1）、Windows 壳（阶段 2）、Android 第 1 层（阶段 3）；见 §11。Android 后台层（第 2/3 层）也已实现，见 §12，但**真机 PoC（§5）尚未完成**，不能当成已可用。
 > 范围：评估并规划"检测到复制 → 自动向所有已配对设备推送"，以及评估 Syncthing 是否值得用于本应用。  
 > 前提不变：所有设备都在同一个 tailnet，服务仅在 tailnet 内可达（见 [ADR-005](adr/005-go-core-and-tailnet-p2p.md)）。评价标准：**易用性第一**，安全只在不明显损害易用性的前提下加码。  
 > 标注约定：**[已查证]** = 读了本仓库代码或官方页面；**[待验证]** = 凭记忆或推断，必须在真机 PoC 里确认，不能当事实。
@@ -77,14 +77,16 @@ Android 不能用一种办法解决，按"用户配置成本"分三层，**默�
 | 层 | 机制 | 配置成本 | 覆盖 | 状态 |
 | --- | --- | --- | --- | --- |
 | 1（默认） | 应用到前台 / 窗口获得焦点时读一次剪贴板，与上次已处理哈希比较，变了就广播；通知栏动作、磁贴、分享菜单保留 | 无 | 用户切到本应用时才发 | 立即可做 |
-| 2（进阶，PoC 决定） | 前台服务内监听剪贴板变化 + 悬浮窗（`SYSTEM_ALERT_WINDOW`）短暂获取焦点后读取 | 一次性授权"显示在其它应用上层" | 后台，若监听能触发 | **[待验证]** 见 PoC-F2/F3 |
-| 3（进阶，PoC 决定） | 一次性 ADB 授权 `READ_LOGS`，通过日志检测"被拒绝的剪贴板访问"，再用悬浮窗取焦读取（开源项目 [ClipCascade](https://github.com/Sathvik-Rao/ClipCascade) 的做法） | 电脑上执行 2 条 adb 命令，重装后需重做 | 后台 | **[待验证]**；脆弱，依赖系统日志格式，不同厂商表现不一 |
+| 2（进阶） | 前台服务内监听剪贴板变化 + 悬浮窗（`SYSTEM_ALERT_WINDOW`）短暂获取焦点后读取 | 一次性授权"显示在其它应用上层" | 后台，若监听能触发 | **单独不可行**（已查 AOSP：Android 10+ 后台监听器不派发；见 §12） |
+| 3（进阶，已实现） | 一次性 ADB 授权 `READ_LOGS`，通过日志检测"被拒绝的剪贴板访问"，再用悬浮窗取焦读取（开源项目 [ClipCascade](https://github.com/Sathvik-Rao/ClipCascade) 的做法） | 电脑上执行 2 条 adb 命令，重装后需重做 | 后台 | **已实现（2026-10-26，待真机）**；依赖系统日志格式，厂商差异待验证 |
 
 不采用：
 
 - **无障碍服务**：需要用户到系统设置里手动开启，旁载应用在 Android 13+ 还要先解除"受限设置"；权限过大，且与现有隐私叙事冲突。[待验证] 更新的 Android 版本可能进一步收紧。若 PoC 证明第 2/3 层都不可行，再单独写 ADR 重新评估，不在本计划范围内。
 - **自带输入法**：默认输入法可读剪贴板，但要求用户换键盘，易用性反而最差。
 - **root / Shizuku 授予 `READ_CLIPBOARD_IN_BACKGROUND`**：AOSP 的 CTS 说明该权限只给特权系统应用 [已查证：[CTS 测试](https://android.googlesource.com/platform/cts/+/680b05b92af%5E%21/)]，普通应用拿不到，不作为方案。
+
+**第 2/3 层的实现说明（2026-10-26）：** 第 2 层单独不可行——AOSP 10–15 的 `ClipboardService.sendClipChangedBroadcast` 在分发前检查焦点，后台应用根本收不到回调；但系统会为该监听器写一条 `ClipboardService` 拒绝日志。因此最终实现是"注册空监听器产生日志 + `READ_LOGS` 读日志 + 悬浮窗取焦读取"，代码与验证见 [plan-android-background-read.md](plan-android-background-read.md) 与 [ADR-006](adr/006-android-background-read.md)。
 
 Android 12+ 每次读取其它应用写入的剪贴板都会显示"已粘贴"提示 [已查证：[Secure Clipboard Handling](https://developer.android.com/privacy-and-security/risks/secure-clipboard-handling)]。这是系统行为，无法关闭；第 1 层每次焦点切换最多读一次（哈希未变不重复读），把提示频率压到最低。
 
@@ -111,7 +113,7 @@ PoC 不需要写产品代码：F1–F4 用一个独立的最小 APK 即可；F5�
 | 1 | 核心：`capture`/`default_apply_mode` 默认值、`live` 字段与降级、回声哈希表、`paused_until`、`send_enabled`（schema v4）。核心测试用 `internal/testnet` 夹具：三设备全互联的 A1–A4、A7；schema 迁移测试；Wine 下重跑 | 核心测试全绿 | 3–4 天 |
 | 2 | Windows 壳：去掉首次阻塞弹窗改为气泡、托盘"暂停同步"、撤销、设备页每设备"发送/接收"开关与升级一次性提示；对应 xUnit | 壳测试全绿 | 2–3 天 |
 | 3 | Android 壳：第 1 层（焦点自动读取 + 哈希去重 + 通知合并）、设备页开关与暂停、按 F1 结果放开后台自动写入；对应 JUnit | 前台全自动 | 3–4 天 |
-| 4 | 按 F2/F3/F4 结果做第 2/3 层（设置页"后台自动发送（进阶）"，带向导和失败回退） | 可选 | 3–6 天，可能不做 |
+| 4 | 第 2/3 层（设置页"后台自动发送（进阶）"，带向导和失败回退） | **已实现（2026-10-26）**；真机验证待做 | 3–6 天，实际已完成 |
 | 5 | 文档（`user-guide.md` §5 重写、`api-spec.md` 新字段与设置项、`HANDOFF.md`）、`make check`、真机验证 A1–A9、`scripts/release-local.sh` 发布 | 发布 | 1–2 天 |
 
 合计约 2–3 周（含真机），第 4 阶段另计。这是估计，不是承诺。
@@ -200,7 +202,15 @@ PoC 不需要写产品代码：F1–F4 用一个独立的最小 APK 即可；F5�
 
 **未做 / 与计划的差异（如实）：**
 
-- 真机 PoC F1–F6（§5）没有做：Android 后台写剪贴板、后台监听、悬浮窗取焦、`READ_LOGS` 都**未验证**，所以 Android 后台自动写入仍沿用“前台才写、否则通知”，第 2/3 层未实现。
+- 真机 PoC F1–F6（§5）没有做：Android 后台写剪贴板、后台监听、悬浮窗取焦、`READ_LOGS` 都**未验证**；Android 后台自动写入仍沿用“前台才写、否则通知”。第 2/3 层（后台读取/发送）已实现，但只能算“待真机验证”，见 §12。
 - Android 的“撤销”未做（后台读不到写入前内容，计划里本来就只在前台提供）；通知合并（5 秒内同一来源）未做。
+- 后台自动发送（第 2/3 层）已实现：见 §12；真机 PoC F2–F4 仍未跑，不能当成已可用。
 - Windows/Android 的界面只编译、未在真机上运行（与整个项目现状一致）。
 - 疑似命令行/多行文本降级为通知（§8）未做。
+
+## 12. 后台读取（2026-10-26，已实现，待真机）
+
+- 实现：`LogcatClipboardWatcher`（注册空 `OnPrimaryClipChangedListener` + `logcat -T 1 ClipboardService:E *:S`）+ `ClipboardOverlayReader`（1×1 `TYPE_APPLICATION_OVERLAY` 取焦读取）+ `BackgroundReadController` + `AutoSend`。
+- 授权：`SYSTEM_ALERT_WINDOW`（设置里开）+ `adb shell pm grant com.nightclip.app android.permission.READ_LOGS`（电脑一次）。默认关闭；没有权限时回退第 1 层。
+- 已验证：Android JVM 单测与 debug APK 构建；AOSP 源码核对（监听器不派发、拒绝日志、`READ_LOGS` 是 development 权限）。
+- **未验证**：真机后台触发、悬浮窗取焦、键盘影响、各 OEM。详见 [plan-android-background-read.md](plan-android-background-read.md) §5。

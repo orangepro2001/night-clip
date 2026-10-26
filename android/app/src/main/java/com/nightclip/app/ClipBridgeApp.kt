@@ -3,6 +3,7 @@ package com.nightclip.app
 import android.app.Application
 import android.content.Context
 import com.nightclip.app.core.CoreHost
+import com.nightclip.app.platform.BackgroundReadController
 import com.nightclip.app.platform.ForegroundTracker
 import com.nightclip.app.platform.Notifications
 import com.nightclip.app.platform.ShellPrefs
@@ -28,6 +29,7 @@ class ClipBridgeApp : Application() {
         registerActivityLifecycleCallbacks(ForegroundTracker)
         CoreHost.start(this)
         EventRouter(this).start()
+        BackgroundReadController.init(this)
     }
 }
 

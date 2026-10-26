@@ -10,6 +10,7 @@ import android.os.PersistableBundle
 /**
  * Clipboard reads/writes. Call only from the main thread while one of our windows has focus:
  * Android 10+ ignores or blocks clipboard access for apps that are not in the foreground.
+ * [ClipboardOverlayReader] creates such a window for background reads; writes do not need focus.
  */
 object ClipboardAccess {
     fun readText(context: Context): String? = readClip(context)?.text
@@ -36,6 +37,9 @@ object ClipboardAccess {
         }
         return try {
             cm.setPrimaryClip(clip)
+            // Our own write must not come back as a "user copied" trigger (and must not overwrite
+            // the baseline the focus path uses for the same text).
+            ClipWriteGuard.noteWrite(context, text)
             true
         } catch (e: SecurityException) {
             false

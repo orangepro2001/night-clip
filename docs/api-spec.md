@@ -471,6 +471,7 @@ cbridge [--json] <command>
 - Intent（供其它 App / Tasker）：`com.clipbridge.action.SEND_TEXT`（extra `text`、可选 `peer`），需要用户在设置中开启"允许外部 Intent"。
 - 快捷设置磁贴：启动一个透明 Activity，获得焦点后读取剪贴板并发送。
 - 通知动作：复制 / 打开 / 忽略。
+- 可选后台自动发送：Android 壳本地使用 `READ_LOGS` + 悬浮窗读取，读取后仍调用 `clip.local_changed`；协议/事件/数据库 schema 不变（见 [adr/006-android-background-read.md](adr/006-android-background-read.md)）。
 
 ## 11. 版本与兼容
 

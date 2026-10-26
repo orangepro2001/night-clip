@@ -104,6 +104,7 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 | 更新链路（真实密钥、实时通知、tailnet https） | ✅ | 0.1.16 实测 |
 | **WPF 界面、托盘、剪贴板监听、DPAPI 真调用** | ❌ 未运行 | 需要真 Windows |
 | **Android 界面、通知、扫码、前台服务、Keystore、MediaStore、fd 交接** | ❌ 未运行 | 需要真机 |
+| **Android 后台自动发送（悬浮窗 + `READ_LOGS`）** | ⚠️ 部分 | JVM 单测与构建通过；Android 15 模拟器观察到 watcher 的 `logcat` 子进程启动；该模拟器 Go 核心 SIGSYS、系统 UI ANR，端到端未验证；真机待做 |
 | Tailscale 真网络下的拨号/重绑（P-A、P-E） | ❌ | 需要真设备 |
 | Android 前台服务在 OEM 上存活（P-C）、100 MiB 吞吐（P-D） | ❌ | 需要真机 |
 
@@ -112,7 +113,7 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 1. **事件队列**：门面事件队列 1024 条，满则丢弃并计数（`events_dropped`）。壳在启动时重新读取状态以自愈。
 2. **回执可能丢**：`applied` ack 只在线时发送，不持久化；发送方的发件箱可能一直停在 `sent`。不影响内容送达。
 3. **同一 data_dir 只能一个核心**：没有跨进程锁。
-4. **Android 不能在后台读剪贴板**：由用户触发（按钮/分享/通知动作/磁贴）。
+4. **Android 后台读取是可选进阶，默认关闭**：默认由用户触发（按钮/分享/通知动作/磁贴）。设置里可开启“后台自动发送”：`SYSTEM_ALERT_WINDOW` + 一次 `adb shell pm grant … READ_LOGS`，用 `ClipboardService` 拒绝日志触发 1×1 悬浮窗取焦读取（未真机验证；见 [ADR-006](docs/adr/006-android-background-read.md)、[plan-android-background-read.md](docs/plan-android-background-read.md)）。没有权限时回退前台方案。
 5. **fd 来源无法跨重启续传**（`SOURCE_LOST`）；不可 seek 的 fd 会先落盘一份。
 6. **Android 6 位 SAS** 对抗能在配对窗口内预计算 10⁶ 证书的攻击者强度有限（QR 路径有指纹固定，不受影响）；手动输入路径靠 psk 的 proof 绑定保护。
 7. **Windows DPAPI 的应用熵是固定字符串**，不能防同用户进程解密（只防误用）。
@@ -127,6 +128,7 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 
 - **Windows**：首次运行询问同步；托盘菜单与气泡；复制一次只发一次；密码管理器复制被忽略；DPAPI 迁移（旧 `devkey.b64` 被删）；防火墙弹窗；开机自启 `--minimized`；休眠唤醒/`tailscale down/up` 后自动恢复（P-E）；更新后重启。
 - **Android**：扫码配对（含无相机权限时退回）；通知“复制/忽略”；分享与磁贴；实时模式锁屏 30 分钟后仍连接或打开 App 后补齐（P-C）；接收文件保存到“下载”；Android 15 开机恢复前台服务。
+- **Android 后台自动发送（可选，需先授权）**：设置向导、悬浮窗权限、`READ_LOGS` 授权后重启、在别的应用复制后对端是否 ≤2 秒收到且不重复、键盘是否被短暂打断、关闭开关后 `logcat` 进程是否消失、撤销权限/重启/开机后的状态。详见 [plan-android-background-read.md](docs/plan-android-background-read.md) §5。
 - **两端**：配对→双向同步→断网恢复→大文件（含 DERP 路径吞吐 P-D）→撤销。
 - 发现的问题请带上 `diagnostics.get` 输出（不含密钥）。
 
@@ -150,6 +152,7 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 - .NET 8 将在 2026-11 结束支持（凭记忆）；Android 15 对 `dataSync` 前台服务有每日时长限制（凭记忆）。
 - `FILE_FLAG_FIRST_PIPE_INSTANCE` 在真 Windows 上拒绝第二个实例的行为：依据微软文档，**未在真机验证**（Wine 不实现）。
 - 各厂商系统对后台服务、剪贴板访问、通知的具体限制。
+- Android 真机上：后台复制时 `ClipboardService` 是否确实写拒绝日志、`READ_LOGS` 是否能被 `pm grant`、1×1 悬浮窗能否取得焦点、键盘是否被影响——**全部未真机验证**。
 - `development-plan.md` 里的周期估算。
 
 ## 10. 目录

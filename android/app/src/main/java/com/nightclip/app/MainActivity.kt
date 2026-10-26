@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.nightclip.app.platform.Actions
+import com.nightclip.app.platform.BackgroundReadController
 import com.nightclip.app.platform.FocusAutoSend
 import com.nightclip.app.platform.RealtimeMode
 import com.nightclip.app.ui.AppRoot
@@ -30,6 +31,12 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent { ClipBridgeTheme { AppRoot(requests) } }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Permissions can be granted/revoked while we are away (overlay settings, adb).
+        BackgroundReadController.refresh(this)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

@@ -54,7 +54,7 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 
 - iOS、macOS、Linux 客户端。
 - Bark、APNs、Gateway（MVP）、croc store（MVP）、WebRTC、libp2p、tsnet、局域网发现。
-- Android 后台读取剪贴板、AccessibilityService、FCM。
+- Android 后台读取剪贴板（**默认**；可选的显式授权进阶方案见 [ADR-006](adr/006-android-background-read.md)）、AccessibilityService、FCM。
 - 无 Tailscale 环境下的使用。
 - 多租户、公网 SaaS、团队权限。
 - 电脑关机/休眠时的离线投递（需要后续的中继方案，见 ADR-005）。
@@ -63,7 +63,7 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 
 | 能力 | Windows | Android | 结论 |
 | --- | --- | --- | --- |
-| 读取剪贴板 | `WM_CLIPBOARDUPDATE` 监听 | 仅前台/默认输入法等受限场景 | Windows 自动；Android 用户触发 |
+| 读取剪贴板 | `WM_CLIPBOARDUPDATE` 监听 | 默认仅前台/默认输入法；可选 `READ_LOGS` + 悬浮窗进阶 | Windows 自动；Android 默认用户触发 |
 | 写入剪贴板 | 托盘应用可写 | 前台或用户动作下可靠 | 默认通知 + 手动应用 |
 | 后台连接 | 托盘应用 | 前台服务（可选实时模式） | 用户显式开启 |
 | 离线补齐 | 发件箱 + 游标 | 同左 | 受 TTL 限制 |
@@ -95,8 +95,10 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | [vault-v0-poc-report.md](vault-v0-poc-report.md) | 密码库 V0 验证：gokeepasslib（KDBX 4）实测结果、缺陷与补丁清单 |
 | [plan-vault.md](plan-vault.md) | **计划**：集成密码/凭证管理（KDBX 4、备份/恢复、多设备同步、自动填充）可行性评估与分阶段方案 |
 | [plan-auto-broadcast.md](plan-auto-broadcast.md) | **计划**：复制即自动广播到所有已配对设备（可行性、Android 限制、分阶段方案）与 Syncthing 评估 |
+| [plan-android-background-read.md](plan-android-background-read.md) | **计划与实施记录**：Android 后台读取剪贴板（悬浮窗取焦 + `READ_LOGS`，ClipCascade 做法） |
 | [schemas/event.schema.json](schemas/event.schema.json) | 事件信封 JSON Schema |
 | [adr/005-go-core-and-tailnet-p2p.md](adr/005-go-core-and-tailnet-p2p.md) | **当前核心决策** |
+| [adr/006-android-background-read.md](adr/006-android-background-read.md) | **可选进阶**：Android 后台读取剪贴板的 `READ_LOGS` + 悬浮窗方案；默认关闭 |
 | [adr/003-windows-android-scope.md](adr/003-windows-android-scope.md) | 客户端范围收敛为 Windows + Android |
 | [adr/004-gateway-long-connection.md](adr/004-gateway-long-connection.md) | 已被 ADR-005 取代 |
 | [adr/001-control-plane-and-data-plane.md](adr/001-control-plane-and-data-plane.md) | 旧方案，仅保留历史 |
@@ -128,11 +130,12 @@ Windows 选择文件 → 核心计算 SHA-256 → file offer(pull)
 
 - Windows 10/11 x64（MVP 以 Windows 11 为主）；Android 10–15。
 - 所有设备在同一 tailnet 且 Tailscale 在线。
+- Android 后台自动发送是**可选进阶**：默认关闭，需要一次 ADB 授权 `READ_LOGS` + 悬浮窗；见 [ADR-006](adr/006-android-background-read.md)。
 
 ### 不支持
 
 - iOS、macOS、Linux 客户端；任何服务端组件。
-- Android 后台自动读剪贴板。
+- **默认**不做 Android 后台读剪贴板；可选的显式授权后台读取见 [ADR-006](adr/006-android-background-read.md)。不做轮询、无障碍、输入法或 root 方案。
 - 无 Tailscale、或 Android 被其它 VPN 占用的场景。
 
 ## 11. 下一步

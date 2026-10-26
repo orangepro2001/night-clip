@@ -96,9 +96,9 @@
 2. **数据库密钥用 Android Keystore**：在 Keystore 生成不可导出的 AES-GCM 密钥，包裹随机 32 字节数据库密钥，包裹结果存在 `filesDir/clipbridge/devkey.wrapped`。首次发现旧明文 `devkey.b64`：读出 → 包裹写入 → 校验可解回同一密钥 → 删除明文（失败则保留旧文件继续用）。包裹文件损坏**不得**自动重建。
 3. **首次引导**：说明需要 Tailscale 并已连接；请求通知权限（Android 13+）；提示电池优化（`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` 说明页，不强制）。
 4. **配对**：扫码（`zxing-android-embedded` 的 `ScanContract`，需要相机权限，拒绝时退回手动输入）、粘贴 link、手动输入 host/port/密钥/指纹。等待期间显示大号 SAS（见 §1）。可见 Tailscale 状态提示（`ConnectivityManager` 的 VPN 传输是否存在，仅作提示）。
-5. **发送入口**：(a) 主界面“发送剪贴板”按钮（前台读取剪贴板）；(b) 分享目标：`ACTION_SEND text/plain` → `clip.send`；(c) 常驻通知上的“发送剪贴板”动作与快捷设置磁贴（`TileService` → 透明 Activity 获得焦点后读取剪贴板，读完立即 `finish`）；(d) 手动输入框发送。读取剪贴板只发生在用户可见的前台时刻（Android 10+ 限制）。
+5. **发送入口**：(a) 主界面“发送剪贴板”按钮（前台读取剪贴板）；(b) 分享目标：`ACTION_SEND text/plain` → `clip.send`；(c) 常驻通知上的“发送剪贴板”动作与快捷设置磁贴（`TileService` → 透明 Activity 获得焦点后读取剪贴板，读完立即 `finish`）；(d) 手动输入框发送。默认读取只发生在用户可见的前台时刻（Android 10+ 限制）。(e) **可选进阶**：设置里开启“后台自动发送”后，`LogcatClipboardWatcher`（`READ_LOGS` + `ClipboardService:E` 拒绝日志）触发 `ClipboardOverlayReader`（1×1 `TYPE_APPLICATION_OVERLAY` 取焦）读取，再走与 (a) 相同的 `AutoSend`。默认关闭；没有两个权限时回退前台方案。见 `docs/adr/006-android-background-read.md`。
 6. **接收**：通知渠道“收到的剪贴板”；通知正文预览（敏感则“敏感内容”）；动作“复制”（经一个透明 Activity 在前台写剪贴板，写完 `clip.mark_applied` 并 `finish`）和“忽略”（`clip.dismiss`）。`decision == auto`：App 在前台时直接写入并 `mark_applied`；在后台时降级为通知。
-7. **实时模式**：设置里的开关，**持久化**；开启时启动前台服务（`specialUse`，常驻通知“已连接 N 台设备”，带“断开”动作）。开机自启：`RECEIVE_BOOT_COMPLETED` 接收器，仅当实时模式开着时启动服务（Android 15 对从 BOOT 启动的前台服务类型有限制，`specialUse` 允许；如遇限制则退化为通知提示用户打开 App）。服务只负责保活，**不再自己消费事件**。
+7. **实时模式**：设置里的开关，**持久化**；开启时启动前台服务（`specialUse`，常驻通知“已连接 N 台设备”，带“断开”动作）。开机自启：`RECEIVE_BOOT_COMPLETED` 接收器，仅当实时模式开着时启动服务（Android 15 对从 BOOT 启动的前台服务类型有限制，`specialUse` 允许；如遇限制则退化为通知提示用户打开 App）。服务负责保活，**不再自己消费事件**；后台自动发送开启时，服务同时驱动 `BackgroundReadController`（启动/停止 `/system/bin/logcat` 与监听器）。
 8. **设备页 / 收件箱页 / 设置页**：对应 Windows 的同名页面（底部导航：设备、收件箱、设置）。设置含：实时模式、默认策略、有效期、历史条数、更新、关于（版本、设备 ID、指纹前 8 位）、诊断（`diagnostics.get` 可复制）。
 9. **文件**：发送——分享目标 `ACTION_SEND` / `ACTION_SEND_MULTIPLE` 的 `*/*`：对每个 `Uri` 用 `ContentResolver.openFileDescriptor(uri,"r")` → `detachFd()` → `file.offer {to, fd, name, size}`（名字与大小用 `OpenableColumns` 查询）；让用户选择目标设备（只有一台时直接发）。接收——offer 通知带“接收 / 拒绝”；进度通知（可取消）；完成后用 `MediaStore.Downloads`（API 29+；API 26–28 用 `getExternalStoragePublicDirectory`）保存，重名自动加 `(1)`，成功后 `file.release`。
 10. 保留并接上现有更新逻辑（`UpdateState`、`ApkInstaller`）；更新通知保持。
@@ -108,6 +108,6 @@
 
 ## 5. 验收
 
-- `make check` 通过（含新增的 C# / Kotlin 单元测试）。
+- `make check` 通过（含新增的 C# / Kotlin 单元测试）；后台读取的纯逻辑（日志匹配、去抖、状态机、claim、退避）必须有 JVM 单测。
 - 报告里单独列出：**无法在这台机器上验证的行为**（真实剪贴板、托盘、通知、相机、MediaStore、前台服务）和你对其正确性的依据（文档/API 的哪一条）。
 - 不要宣称“已验证”未被测试或编译覆盖的东西。

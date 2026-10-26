@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     >
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -19,6 +20,15 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+    <!-- Opt-in "background auto send" (docs/adr/006-android-background-read.md). READ_LOGS is a
+         development permission: it can only be granted once from a computer with
+         `adb shell pm grant com.nightclip.app android.permission.READ_LOGS`. It is used to watch
+         ClipboardService denial lines, never to collect logs. Not allowed on Google Play. -->
+    <uses-permission
+        android:name="android.permission.READ_LOGS"
+        tools:ignore="ProtectedPermissions" />
+    <!-- Opt-in background read briefly takes window focus through a 1x1 overlay. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />

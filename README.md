@@ -48,6 +48,7 @@ tracked as Phase 0 PoC items in `docs/development-plan.md` §3.3:
 
 - WPF window actually rendering, tray, `WM_CLIPBOARDUPDATE`, DPAPI, firewall rule, Tailscale interface appearing late.
 - The core running inside an Android process under a real Tailscale VPN (P-A), foreground-service survival on OEM builds (P-C), Doze.
+- Android background auto send: whether `ClipboardService` logs the denial line, whether `adb shell pm grant … READ_LOGS` works on the phone, whether a 1×1 overlay gets focus, and how much it disturbs the keyboard. See [docs/plan-android-background-read.md](docs/plan-android-background-read.md).
 - Anything involving two machines; the in-process two-instance integration tests will cover protocol logic on Linux once `peer`/`store` exist.
 
 ## Build

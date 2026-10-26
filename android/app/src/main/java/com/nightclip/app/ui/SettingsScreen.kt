@@ -1,5 +1,9 @@
 package com.nightclip.app.ui
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,10 +41,13 @@ import com.nightclip.app.BuildConfig
 import com.nightclip.app.R
 import com.nightclip.app.UpdateState
 import com.nightclip.app.app
+import com.nightclip.app.logic.BackgroundReadSetup
+import com.nightclip.app.logic.BackgroundReadStatus
 import com.nightclip.app.logic.Formatters
 import com.nightclip.app.logic.PeerTexts
 import com.nightclip.app.logic.UpdatePresenter
 import com.nightclip.app.platform.BatteryOptimization
+import com.nightclip.app.platform.BackgroundReadRuntime
 import com.nightclip.app.platform.ClipboardAccess
 import com.nightclip.app.platform.RealtimeMode
 
@@ -55,6 +62,9 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
     val identity by vm.identity.collectAsStateWithLifecycle()
     val diagnostics by vm.diagnostics.collectAsStateWithLifecycle()
     val realtime by context.app.prefs.realtime.collectAsStateWithLifecycle()
+    val background by vm.backgroundRead.collectAsStateWithLifecycle()
+    var showBackgroundSetup by remember { mutableStateOf(false) }
+    var confirmEnableBackground by remember { mutableStateOf(false) }
 
     LifecycleRefresh { vm.refresh() }
     CollectWhileStarted(vm.messages) { onMessage(it) }
@@ -66,6 +76,117 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
             SwitchRow(stringResource(R.string.settings_realtime_switch), realtime) { RealtimeMode.set(context, it) }
             Text(stringResource(R.string.settings_realtime_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = { BatteryOptimization.open(context) }) { Text(stringResource(R.string.settings_battery)) }
+        }
+
+        SectionCard(stringResource(R.string.settings_background_read)) {
+            SwitchRow(
+                stringResource(R.string.settings_background_switch),
+                background.enabled,
+                enabled = background.supported,
+            ) { on ->
+                if (!on) {
+                    showBackgroundSetup = false
+                    vm.setBackgroundRead(false)
+                } else if (!realtime) {
+                    confirmEnableBackground = true
+                } else {
+                    vm.setBackgroundRead(true)
+                    if (!background.overlayGranted || !background.logsGranted) showBackgroundSetup = true
+                }
+            }
+            if (!background.supported) {
+                Text(
+                    stringResource(R.string.settings_background_status_unsupported),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Text(
+                stringResource(R.string.settings_background_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (background.enabled) {
+                StatusRow(
+                    stringResource(R.string.settings_background_overlay),
+                    if (background.overlayGranted) stringResource(R.string.settings_background_granted) else stringResource(R.string.settings_background_denied),
+                    action = {
+                        if (!background.overlayGranted) {
+                            OutlinedButton(onClick = { openOverlaySettings(context) }) {
+                                Text(stringResource(R.string.settings_background_open_overlay))
+                            }
+                        }
+                    },
+                )
+                StatusRow(
+                    stringResource(R.string.settings_background_logs),
+                    if (background.logsGranted) stringResource(R.string.settings_background_granted) else stringResource(R.string.settings_background_denied),
+                    action = {
+                        if (!background.logsGranted) {
+                            OutlinedButton(onClick = { showBackgroundSetup = true }) {
+                                Text(stringResource(R.string.settings_background_show_setup))
+                            }
+                        }
+                    },
+                )
+                StatusRow(
+                    stringResource(R.string.settings_background_status),
+                    backgroundStatusText(context, background),
+                    action = {
+                        when (BackgroundReadSetup.status(background.facts())) {
+                            BackgroundReadStatus.REALTIME_OFF -> OutlinedButton(onClick = {
+                                RealtimeMode.set(context, true)
+                                vm.refreshBackgroundRead()
+                            }) { Text(stringResource(R.string.settings_background_enable_realtime)) }
+                            BackgroundReadStatus.WAITING_SERVICE -> OutlinedButton(onClick = {
+                                try {
+                                    RealtimeMode.start(context)
+                                } catch (_: Exception) {
+                                    // foreground service may be disallowed right now; status stays visible
+                                }
+                                vm.refreshBackgroundRead()
+                            }) { Text(stringResource(R.string.settings_background_start_service)) }
+                            BackgroundReadStatus.ERROR -> OutlinedButton(onClick = { vm.refreshBackgroundRead() }) {
+                                Text(stringResource(R.string.settings_background_retry))
+                            }
+                            else -> Unit
+                        }
+                    },
+                )
+                Text(
+                    stringResource(
+                        R.string.settings_background_counts,
+                        background.triggers,
+                        background.readsOk,
+                        background.readsFailed,
+                        background.sends,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { vm.refreshBackgroundRead() }) {
+                        Text(stringResource(R.string.settings_background_retry))
+                    }
+                    OutlinedButton(onClick = { vm.testBackgroundRead() }) {
+                        Text(stringResource(R.string.settings_background_test))
+                    }
+                }
+                background.lastError?.let {
+                    Text(
+                        backgroundErrorText(context, it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                if (!realtime) {
+                    Text(
+                        stringResource(R.string.settings_background_status_realtime_off),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
 
         SectionCard(stringResource(R.string.settings_sync)) {
@@ -112,6 +233,78 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
         }
     }
 
+    if (confirmEnableBackground) {
+        AlertDialog(
+            onDismissRequest = { confirmEnableBackground = false },
+            title = { Text(stringResource(R.string.settings_background_enable_title)) },
+            text = { Text(stringResource(R.string.settings_background_realtime_needed)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmEnableBackground = false
+                    RealtimeMode.set(context, true)
+                    vm.setBackgroundRead(true)
+                    if (!background.overlayGranted || !background.logsGranted) showBackgroundSetup = true
+                }) { Text(stringResource(R.string.settings_background_enable_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmEnableBackground = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
+    if (showBackgroundSetup) {
+        AlertDialog(
+            onDismissRequest = { showBackgroundSetup = false },
+            title = { Text(stringResource(R.string.settings_background_setup_title)) },
+            text = {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(stringResource(R.string.settings_background_setup_intro), style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.settings_background_step_overlay), style = MaterialTheme.typography.bodySmall)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            if (background.overlayGranted) stringResource(R.string.settings_background_granted) else stringResource(R.string.settings_background_denied),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        OutlinedButton(onClick = { openOverlaySettings(context) }) {
+                            Text(stringResource(R.string.settings_background_open_overlay))
+                        }
+                    }
+                    Text(stringResource(R.string.settings_background_step_logs), style = MaterialTheme.typography.bodySmall)
+                    if (background.logsGranted) {
+                        Text(stringResource(R.string.settings_background_logs_granted), style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Text(
+                            BackgroundReadSetup.adbCommands(context.packageName),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                        )
+                        OutlinedButton(onClick = { copyBackgroundCommands(context, onMessage) }) {
+                            Text(stringResource(R.string.settings_background_copy_command))
+                        }
+                    }
+                    Text(stringResource(R.string.settings_background_reopen), style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        stringResource(R.string.settings_background_cost),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.refreshBackgroundRead()
+                    showBackgroundSetup = false
+                }) { Text(stringResource(R.string.done)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBackgroundSetup = false }) { Text(stringResource(R.string.close)) }
+            },
+        )
+    }
+
     diagnostics?.let { text ->
         val copied = stringResource(R.string.diagnostics_copied)
         AlertDialog(
@@ -130,6 +323,70 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
             dismissButton = { TextButton(onClick = { vm.closeDiagnostics() }) { Text(stringResource(R.string.close)) } },
         )
     }
+}
+
+@Composable
+private fun StatusRow(label: String, value: String, action: (@Composable () -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(value, style = MaterialTheme.typography.bodySmall)
+            action?.invoke()
+        }
+    }
+}
+
+private fun backgroundStatusText(context: Context, r: BackgroundReadRuntime): String =
+    context.getString(
+        when (BackgroundReadSetup.status(r.facts())) {
+            BackgroundReadStatus.OFF -> R.string.settings_background_status_off
+            BackgroundReadStatus.UNSUPPORTED -> R.string.settings_background_status_unsupported
+            BackgroundReadStatus.REALTIME_OFF -> R.string.settings_background_status_realtime_off
+            BackgroundReadStatus.NEEDS_OVERLAY -> R.string.settings_background_status_needs_overlay
+            BackgroundReadStatus.NEEDS_LOGS -> R.string.settings_background_status_needs_logs
+            BackgroundReadStatus.WAITING_SERVICE -> R.string.settings_background_status_waiting
+            BackgroundReadStatus.STARTING -> R.string.settings_background_status_starting
+            BackgroundReadStatus.RUNNING -> R.string.settings_background_status_running
+            BackgroundReadStatus.ERROR -> R.string.settings_background_status_error
+        },
+    )
+
+private fun backgroundErrorText(context: Context, code: String): String = when (code) {
+    "OVERLAY_DENIED" -> context.getString(R.string.background_error_overlay_denied)
+    "READ_LOGS_DENIED" -> context.getString(R.string.background_error_logs_denied)
+    "LOGCAT_START_FAILED", "LOGCAT_STOPPED", "WATCHER_START_FAILED" -> context.getString(R.string.background_error_logcat)
+    "NO_FOCUS" -> context.getString(R.string.background_error_no_focus)
+    "READ_DENIED" -> context.getString(R.string.background_error_read_denied)
+    "EMPTY" -> context.getString(R.string.background_error_empty)
+    "LOCKED" -> context.getString(R.string.background_error_locked)
+    else -> context.getString(R.string.background_error_unknown, code)
+}
+
+private fun openOverlaySettings(context: Context) {
+    val packageUri = Uri.parse("package:${context.packageName}")
+    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, packageUri)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(intent)
+    } catch (_: Exception) {
+        try {
+            context.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageUri)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (_: Exception) {
+            // No settings screen to open; the ADB alternative is in the setup text.
+        }
+    }
+}
+
+private fun copyBackgroundCommands(context: Context, onMessage: (String) -> Unit) {
+    val copied = ClipboardAccess.writeText(context, BackgroundReadSetup.adbCommands(context.packageName))
+    onMessage(
+        context.getString(
+            if (copied) R.string.background_setup_copy_done else R.string.toast_copy_failed,
+        ),
+    )
 }
 
 @Composable
@@ -170,10 +427,10 @@ private fun SectionCard(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
     }
 }
 

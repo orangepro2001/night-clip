@@ -124,10 +124,10 @@ void  cb_free(char* p);
 - `minSdk 26`，`targetSdk` 取当前要求值；Android 10–15 为测试基线。
 - 依赖 `clipbridge-core.aar`，通过 `Core.call(method, json)` / `Core.nextEvent(timeoutMs)` 使用。
 - `SyncForegroundService`（类型用 `specialUse`，因为 Android 15 限制 `dataSync` 前台服务的每日时长）：用户开启"实时模式"后持有核心的运行状态和出站连接；常驻通知显示连接状态，提供断开按钮。
-- 剪贴板读取只有四个入口：App 内按钮、分享面板、通知动作打开 Activity 后读取、快捷设置磁贴启动短暂 Activity 后读取。
+- 剪贴板读取默认只有四个入口：App 内按钮、分享面板、通知动作打开 Activity 后读取、快捷设置磁贴启动短暂 Activity 后读取。另有**可选进阶**：设置里开启“后台自动发送”后，`LogcatClipboardWatcher`（`READ_LOGS`）发现复制，`ClipboardOverlayReader` 用 1×1 `TYPE_APPLICATION_OVERLAY` 取焦读取；默认关闭，见 [ADR-006](adr/006-android-background-read.md)。
 - 文件：接收时核心写入应用私有目录，完成后 Kotlin 通过 MediaStore 保存到 Downloads；发送时 Kotlin 用 `ContentResolver` 打开 `ParcelFileDescriptor`，`detachFd()` 后把 fd 交给核心（`file.offer {fd}`），避免复制一份到缓存。
 - Android Keystore 保护"核心数据库主密钥"。
-- **不做**：后台剪贴板轮询、AccessibilityService、FCM、监听端口、枚举网卡。
+- **不做**：后台剪贴板轮询、AccessibilityService、FCM、监听端口、枚举网卡。可选的 `READ_LOGS` + 悬浮窗后台读取不是轮询，见 [ADR-006](adr/006-android-background-read.md)。
 
 ### 2.4 本项目不再包含的组件
 
@@ -272,6 +272,7 @@ revoked_fps(cert_fp, revoked_at)
 - 收到事件只发通知，用户点击"复制"才写入。
 - 实时模式由用户显式开启，常驻通知。
 - 发送入口见 §2.3；系统可能弹出剪贴板访问提示，需要在文案中说明。
+- 后台自动发送（可选）同样只走 `clip.local_changed`，核心的 capture/暂停/回声/去重/大小/敏感规则不变；后台读取失败时回退到“打开应用时检查一次”。
 - 敏感事件通知不显示正文预览。
 
 ### 6.3 策略表
@@ -332,6 +333,7 @@ revoked_fps(cert_fp, revoked_at)
 ## 11. 明确放弃 / 暂缓
 
 - 放弃：Gateway（MVP）、croc store（MVP）、WebRTC、libp2p、tsnet、局域网发现、FCM/WNS、iOS/macOS/Linux 客户端、AccessibilityService。
+- 可选（默认关闭，需一次性 ADB 授权）：`READ_LOGS` + 悬浮窗后台读取；见 [ADR-006](adr/006-android-background-read.md)。
 - 暂缓：离线中继 peer（需 ADR，必须端到端加密）、多文件打包、HTML/图片剪贴板、Ed25519 签名事件（mTLS 已覆盖链路认证，仅在引入中继时再需要）。
 
 ## 12. 参考源码
