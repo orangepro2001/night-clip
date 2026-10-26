@@ -63,8 +63,10 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
     val diagnostics by vm.diagnostics.collectAsStateWithLifecycle()
     val realtime by context.app.prefs.realtime.collectAsStateWithLifecycle()
     val background by vm.backgroundRead.collectAsStateWithLifecycle()
+    val vaultPreventCapture by context.app.prefs.vaultPreventCapture.collectAsStateWithLifecycle()
     var showBackgroundSetup by remember { mutableStateOf(false) }
     var confirmEnableBackground by remember { mutableStateOf(false) }
+    var confirmDisableVaultCapture by remember { mutableStateOf(false) }
 
     LifecycleRefresh { vm.refresh() }
     CollectWhileStarted(vm.messages) { onMessage(it) }
@@ -189,6 +191,17 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
             }
         }
 
+        SectionCard(stringResource(R.string.settings_vault)) {
+            SwitchRow(stringResource(R.string.settings_vault_capture), vaultPreventCapture) { on ->
+                if (on) vm.setVaultPreventCapture(true) else confirmDisableVaultCapture = true
+            }
+            Text(
+                stringResource(R.string.settings_vault_capture_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         SectionCard(stringResource(R.string.settings_sync)) {
             SwitchRow(stringResource(R.string.settings_capture), settings.capture) { vm.set("capture", if (it) "on" else "off") }
             Text(stringResource(R.string.settings_capture_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -231,6 +244,23 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
             Text(stringResource(R.string.settings_diagnostics_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = { vm.loadDiagnostics() }) { Text(stringResource(R.string.settings_diagnostics_show)) }
         }
+    }
+
+    if (confirmDisableVaultCapture) {
+        AlertDialog(
+            onDismissRequest = { confirmDisableVaultCapture = false },
+            title = { Text(stringResource(R.string.settings_vault_capture_off_title)) },
+            text = { Text(stringResource(R.string.settings_vault_capture_off_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDisableVaultCapture = false
+                    vm.setVaultPreventCapture(false)
+                }) { Text(stringResource(R.string.settings_vault_capture_off_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDisableVaultCapture = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
     }
 
     if (confirmEnableBackground) {

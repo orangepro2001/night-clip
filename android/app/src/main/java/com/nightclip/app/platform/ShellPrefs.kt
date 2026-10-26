@@ -21,6 +21,10 @@ class ShellPrefs(context: Context) {
     private val _backgroundRead = MutableStateFlow(prefs.getBoolean(KEY_BACKGROUND_READ, false))
     val backgroundRead: StateFlow<Boolean> = _backgroundRead.asStateFlow()
 
+    /** Vault/autofill windows are excluded from screenshots by default; developers can turn it off. */
+    private val _vaultPreventCapture = MutableStateFlow(prefs.getBoolean(KEY_VAULT_PREVENT_CAPTURE, true))
+    val vaultPreventCapture: StateFlow<Boolean> = _vaultPreventCapture.asStateFlow()
+
     /** Persisted "real-time mode" choice; the service and boot receiver follow this value. */
     fun setRealtime(on: Boolean) {
         prefs.edit().putBoolean(KEY_REALTIME, on).apply()
@@ -35,6 +39,11 @@ class ShellPrefs(context: Context) {
     fun setBackgroundRead(on: Boolean) {
         prefs.edit().putBoolean(KEY_BACKGROUND_READ, on).apply()
         _backgroundRead.value = on
+    }
+
+    fun setVaultPreventCapture(on: Boolean) {
+        prefs.edit().putBoolean(KEY_VAULT_PREVENT_CAPTURE, on).apply()
+        _vaultPreventCapture.value = on
     }
 
     /** Transfers already copied into Downloads, so a crash before `file.release` never saves twice. */
@@ -88,12 +97,14 @@ class ShellPrefs(context: Context) {
     }
 
     val realtimeNow: Boolean get() = _realtime.value
+    val vaultPreventCaptureNow: Boolean get() = _vaultPreventCapture.value
 
     private companion object {
         const val KEY_REALTIME = "realtime_mode"
         const val KEY_SAVED = "saved_transfers"
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_BACKGROUND_READ = "background_read_enabled"
+        const val KEY_VAULT_PREVENT_CAPTURE = "vault_prevent_capture"
         const val KEY_LAST_CLIP = "last_clip_hash"
     }
 }

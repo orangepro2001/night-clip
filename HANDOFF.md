@@ -1,7 +1,7 @@
 # night-clip 交接文档
 
-> 更新于 2026-10-27（密码库 V1–V3 合并、0.1.59 发布、待真机验证阶段）。读完这一份就能接着干活。
-> **最新一轮的交接快照：[HANDOFF-20261027-0018.md](HANDOFF-20261027-0018.md)**（密码库合并、后台自动发送、0.1.59 发布与未验证清单）。
+> 更新于 2026-10-27（密码库 V1–V3 合并、防截屏改为可选、0.1.60 发布、待真机验证阶段）。读完这一份就能接着干活。
+> **最新一轮的交接快照：[HANDOFF-20261027-0037.md](HANDOFF-20261027-0037.md)**（防截屏可选、0.1.60 发布与未验证清单）。
 > 用户文档：[docs/user-guide.md](docs/user-guide.md)。设计：[docs/README.md](docs/README.md) → `architecture.md` → `api-spec.md`。更新/发布：[docs/update.md](docs/update.md)。壳层开发指南：[docs/shell-guide.md](docs/shell-guide.md)。
 
 ## 0. 一页摘要
@@ -10,7 +10,7 @@
 - **架构**：一个 Go 核心承载全部业务；Windows 用 C# WPF 壳 + Go 编译的 DLL；Android 用 Kotlin Compose 壳 + gomobile AAR。壳只通过 `Call(method, json)` / `NextEvent(timeoutMs)` 访问核心。
 - **现状：功能完整但未真机验收**。已按 [docs/plan-auto-broadcast.md](docs/plan-auto-broadcast.md) 把“复制即自动广播”做成默认；密码库 V1–V3（KDBX 4、备份/恢复、Android 设备同步、Android 自动填充）已合并，实验性；Android 后台自动发送（悬浮窗 + `READ_LOGS`）默认关闭。配对、文本同步、文件传输、离线补发、撤销、命名管道与命令行、自动更新与本机分发、两端界面都已实现，核心有测试。**两端壳的系统相关行为（托盘、剪贴板、通知、相机、前台服务、MediaStore、密码库、自动填充…）只编译、没在真机上跑过**——这是现在最大的未知，见 §6。
 - **验证**：`make check` 全绿（核心 `-race`、KeePassXC 互操作、541 个 C# 测试、443 个 Android JVM 测试、Wine 下 DLL）；GitHub CI（linux / windows / android）此前全绿。
-- **本机分发**：`clipbridge-dist` 用户服务（`127.0.0.1:18780`，`Linger=yes`）经 `tailscale serve --set-path /clipbridge` 暴露；下载页 `https://tony-ai-pc-1.tail9f7f1f.ts.net/clipbridge/`。**0.1.59 已发布**（Android + Windows，minVersionCode=0），远端下载哈希已复核；详见新快照。
+- **本机分发**：`clipbridge-dist` 用户服务（`127.0.0.1:18780`，`Linger=yes`）经 `tailscale serve --set-path /clipbridge` 暴露；下载页 `https://tony-ai-pc-1.tail9f7f1f.ts.net/clipbridge/`。**0.1.60 已发布**（Android + Windows，minVersionCode=0），远端下载哈希已复核；详见新快照。
 - **下一步**：真机验证清单（§6）→ 修问题 → 全部满意后配置 GitHub `nightly` 滚动发布（§7）。
 
 ## 1. 接手：5 分钟上手
@@ -139,7 +139,7 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 - **Android**：扫码配对（含无相机权限时退回）；通知“复制/忽略”；分享与磁贴；实时模式锁屏 30 分钟后仍连接或打开 App 后补齐（P-C）；接收文件保存到“下载”；Android 15 开机恢复前台服务。
 - **Android 后台自动发送（可选，需先授权）**：设置向导、悬浮窗权限、`READ_LOGS` 授权后重启、在别的应用复制后对端是否 ≤2 秒收到且不重复、键盘是否被短暂打断、关闭开关后 `logcat` 进程是否消失、撤销权限/重启/开机后的状态。详见 [plan-android-background-read.md](docs/plan-android-background-read.md) §5。
 - **两端**：配对→双向同步→断网恢复→大文件（含 DERP 路径吞吐 P-D）→撤销。
-- **密码库**：创建→解锁→锁定；快速解锁/生物识别；剪贴板 20 秒清除且不进历史；防截屏；备份→恢复；导出 KDBX 用 KeePassXC 打开；Android 自动填充在 Chrome 和常用应用；两台 Android 设备的同步（含批准/对方主密码）；Windows 密码库页面与 `SystemEvents` 锁屏锁定。**在没有真机结果前，密码库只能按实验性发布。**
+- **密码库**：创建→解锁→锁定；快速解锁/生物识别；剪贴板 20 秒清除且不进历史；防截屏**开关**（默认开；主设置页关闭后能截图，自动填充界面同样受控）；备份→恢复；导出 KDBX 用 KeePassXC 打开；Android 自动填充在 Chrome 和常用应用；两台 Android 设备的同步（含批准/对方主密码）；Windows 密码库页面与 `SystemEvents` 锁屏锁定。**在没有真机结果前，密码库只能按实验性发布。**
 - 发现的问题请带上 `diagnostics.get` 输出（不含密钥）。
 
 ## 7. 下一步

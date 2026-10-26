@@ -3,6 +3,7 @@ package com.nightclip.app.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.nightclip.app.ClipBridgeApp
 import com.nightclip.app.R
 import com.nightclip.app.UpdateState
 import com.nightclip.app.core.ApiResult
@@ -76,6 +77,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun refreshBackgroundRead() {
         BackgroundReadController.refresh(getApplication<Application>())
+    }
+
+    /** Vault/autofill windows are excluded from screenshots by default; developers can turn it off temporarily. */
+    fun setVaultPreventCapture(on: Boolean) {
+        getApplication<ClipBridgeApp>().prefs.setVaultPreventCapture(on)
     }
 
     /** One-shot overlay read for the settings card; never sends and never changes the baseline. */

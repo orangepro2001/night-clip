@@ -155,7 +155,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
    - Android 13+：`ClipDescription.EXTRA_IS_SENSITIVE = true`（`ClipboardAccess.writeText(..., sensitive = true)` 已支持）；
    - 在 `clear_after_s` 秒后清除，**仅当剪贴板内容仍是刚才写入的那份**（Windows 用 `GetClipboardSequenceNumber` 比对；Android 比对内容或描述）；
    - 不要把这段文本写进日志、通知、收件箱、最近使用列表。
-2. **屏幕：** 库的界面不能被截屏/录屏/出现在最近任务缩略图里：Android 用 `FLAG_SECURE`（至少在库页面可见期间）；Windows 用 `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`（可在设置里关掉，默认开）。
+2. **屏幕：** 库的界面默认不能被截屏/录屏/出现在最近任务缩略图里：Android 用 `FLAG_SECURE`（库页面与自动填充解锁/保存界面；默认开，可在主设置页关闭），Windows 用 `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)`（密码库设置里可关掉，默认开）。关闭只用于开发排查，界面必须明确警告。
 3. **显示：** 机密默认遮盖，点“显示”才展开，展开后在若干秒（建议 15 秒）或离开页面时自动再遮盖；`vault.reveal` 的结果用完立即丢弃引用。
 4. **锁定：** 系统锁屏/睡眠/切换用户、应用进入后台超过设定秒数 → `vault.lock`。锁定后清空列表、详情、搜索框、剪贴板中仍是我们写入的那份。
 5. **危险操作再确认：** 导出（KDBX/CSV）、改主密码、清空回收站、永久删除、整库恢复，都要先弹确认；导出还要重新输入主密码（核心也会校验）。

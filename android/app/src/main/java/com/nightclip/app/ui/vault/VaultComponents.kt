@@ -48,7 +48,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nightclip.app.R
+import com.nightclip.app.app
 import com.nightclip.app.logic.MasterPasswordRules
 import com.nightclip.app.logic.PasswordStrengthUi
 import com.nightclip.app.logic.VaultTexts
@@ -70,12 +72,21 @@ fun Context.findActivity(): Activity? {
  * Keeps FLAG_SECURE on the window for as long as this is in the composition (docs/vault-api.md §4 rule 2): no screenshots,
  * no screen recording, a blank thumbnail in the recent-apps list. Every activity instance sets and clears its own window,
  * so a rotation (new activity) is covered by the new composition.
+ *
+ * Security default is on. The main app Settings page can turn it off so developers/testers can capture screenshots while
+ * describing a problem; the preference is observed live and applies to the vault and autofill screens.
  */
 @Composable
 fun SecureWindowEffect() {
-    val activity = LocalContext.current.findActivity()
-    DisposableEffect(activity) {
-        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    val context = LocalContext.current
+    val prevent by context.app.prefs.vaultPreventCapture.collectAsStateWithLifecycle()
+    val activity = context.findActivity()
+    DisposableEffect(activity, prevent) {
+        if (prevent) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
         onDispose { activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
     }
 }

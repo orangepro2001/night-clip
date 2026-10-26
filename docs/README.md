@@ -86,8 +86,9 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | --- | --- |
 | [user-guide.md](user-guide.md) | **使用说明书**：现在能做什么、安装、界面、更新、排错、计划中的用法 |
 | [update.md](update.md) | 自动更新与本机分发：信任模型、发布流程 |
-| [../HANDOFF-20261027-0018.md](../HANDOFF-20261027-0018.md) | **最新交接快照**：密码库 V1–V3 合并、后台自动发送、0.1.59 发布、未验证清单 |
-| [../HANDOFF-20261026-220002.md](../HANDOFF-20261026-220002.md) | 上一轮快照：自动广播默认层、密码库 V0 结论、0.1.30 发布 |
+| [../HANDOFF-20261027-0037.md](../HANDOFF-20261027-0037.md) | **最新交接快照**：密码库防截屏改为可选、0.1.60 发布、未验证清单 |
+| [../HANDOFF-20261027-0018.md](../HANDOFF-20261027-0018.md) | 上一轮快照：密码库 V1–V3 合并、后台自动发送、0.1.59 发布 |
+| [../HANDOFF-20261026-220002.md](../HANDOFF-20261026-220002.md) | 更早快照：自动广播默认层、密码库 V0 结论、0.1.30 发布 |
 | [../HANDOFF.md](../HANDOFF.md) | **交接文档**：当前实现状态、验证矩阵、决策记录、详细下一步 |
 | [feasibility-analysis.md](feasibility-analysis.md) | v3 可行性、开源调研结论、PoC 与风险 |
 | [architecture.md](architecture.md) | 组件、DLL/AAR 边界、配对与信任、事件与序号、文件传输、故障降级 |

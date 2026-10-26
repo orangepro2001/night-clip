@@ -168,6 +168,13 @@
     <string name="background_test_busy">正在读取，请稍后再试</string>
     <string name="background_test_failed">读取失败（%1$s）</string>
     <string name="background_setup_copy_done">命令已复制，请到电脑上执行</string>
+    <string name="settings_vault">密码库</string>
+    <string name="settings_vault_capture">密码库页面防止截屏和录屏</string>
+    <string name="settings_vault_capture_hint">默认开启：密码库、自动填充的解锁/保存界面不能被截屏或录屏，也不会出现在最近任务缩略图里。开发排查问题时可临时关闭；关闭后这些界面中的密码和笔记可能被截屏、录屏或云备份获取。</string>
+    <string name="settings_vault_capture_off_title">关闭防截屏？</string>
+    <string name="settings_vault_capture_off_text">关闭后，密码库和自动填充界面可以被截屏、录屏，也可能出现在最近任务缩略图里。只在开发排查时临时关闭，完成后请重新打开。</string>
+    <string name="settings_vault_capture_off_confirm">仍然关闭</string>
+
     <string name="settings_sync">同步</string>
     <string name="settings_capture">自动发送我复制的内容</string>
     <string name="settings_capture_hint">默认会在你打开 ClipBridge 时检查一次剪贴板：刚复制的新内容会自动发到所有已配对的设备。开启下面的“后台自动发送（进阶）”并完成一次授权后，也可以在后台自动发送。也可以随时用通知、磁贴或分享菜单手动发送。</string>

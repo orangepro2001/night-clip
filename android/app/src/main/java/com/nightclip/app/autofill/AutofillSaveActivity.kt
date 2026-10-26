@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.nightclip.app.MainActivity
 import com.nightclip.app.R
+import com.nightclip.app.app
 import com.nightclip.app.core.ApiResult
 import com.nightclip.app.logic.autofill.EntryJson
 import com.nightclip.app.logic.autofill.MatchedEntry
@@ -65,7 +66,7 @@ class AutofillSaveActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+        if (app.prefs.vaultPreventCaptureNow) window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         window.decorView.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
         window.decorView.filterTouchesWhenObscured = true
         if (savedInstanceState == null) vm.start(intent.getStringExtra(ResponseFactory.EXTRA_SAVE_TOKEN))
