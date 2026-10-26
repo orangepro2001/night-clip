@@ -3,6 +3,7 @@ package com.nightclip.app.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -45,11 +46,15 @@ import com.nightclip.app.logic.BackgroundReadSetup
 import com.nightclip.app.logic.BackgroundReadStatus
 import com.nightclip.app.logic.Formatters
 import com.nightclip.app.logic.PeerTexts
+import com.nightclip.app.logic.ShizukuFacts
+import com.nightclip.app.logic.ShizukuSetup
+import com.nightclip.app.logic.ShizukuStatus
 import com.nightclip.app.logic.UpdatePresenter
 import com.nightclip.app.platform.BatteryOptimization
 import com.nightclip.app.platform.BackgroundReadRuntime
 import com.nightclip.app.platform.ClipboardAccess
 import com.nightclip.app.platform.RealtimeMode
+import com.nightclip.app.platform.ShizukuRuntime
 
 private val TTL_OPTIONS = listOf(60, 300, 900, 3600, 86400)
 private val HISTORY_OPTIONS = listOf(50, 200, 1000, 5000)
@@ -80,7 +85,11 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
             OutlinedButton(onClick = { BatteryOptimization.open(context) }) { Text(stringResource(R.string.settings_battery)) }
         }
 
-        SectionCard(stringResource(R.string.settings_background_read)) {
+        ShizukuBackgroundCard(vm, realtime)
+
+        // The READ_LOGS + overlay variant is only dependable below Android 13: from 13 on the system asks the user
+        // to confirm every logcat connection and silently refuses it when the app is in the background.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) SectionCard(stringResource(R.string.settings_background_read)) {
             SwitchRow(
                 stringResource(R.string.settings_background_switch),
                 background.enabled,
@@ -488,5 +497,121 @@ private fun ChoiceRow(label: String, current: String, options: List<Pair<String,
                 }
             }
         }
+    }
+}
+
+
+/** Silent background clipboard read through the helper that Shizuku runs as the shell user. */
+@Composable
+private fun ShizukuBackgroundCard(vm: SettingsViewModel, realtime: Boolean) {
+    val context = LocalContext.current
+    val background by vm.backgroundRead.collectAsStateWithLifecycle()
+    val shizuku by vm.shizuku.collectAsStateWithLifecycle()
+    val status = ShizukuSetup.status(shizuku.facts(background))
+
+    LifecycleRefresh { vm.refreshShizuku() }
+
+    SectionCard(stringResource(R.string.settings_shizuku_title)) {
+        SwitchRow(stringResource(R.string.settings_shizuku_switch), background.enabled) { on ->
+            if (on && !realtime) RealtimeMode.set(context, true) // the connection lives in the real-time service
+            vm.setBackgroundRead(on)
+            vm.refreshShizuku()
+        }
+        Text(
+            stringResource(R.string.settings_shizuku_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (background.enabled) {
+            StatusRow(
+                stringResource(R.string.settings_background_status),
+                stringResource(shizukuStatusText(status)),
+                action = {
+                    when (status) {
+                        ShizukuStatus.NOT_INSTALLED -> OutlinedButton(onClick = { openUrl(context, "https://shizuku.rikka.app/download/") }) {
+                            Text(stringResource(R.string.settings_shizuku_get))
+                        }
+                        ShizukuStatus.NOT_RUNNING -> OutlinedButton(onClick = { openShizuku(context) }) {
+                            Text(stringResource(R.string.settings_shizuku_open))
+                        }
+                        ShizukuStatus.NEEDS_PERMISSION -> Button(onClick = { vm.requestShizukuPermission() }) {
+                            Text(stringResource(R.string.settings_shizuku_allow))
+                        }
+                        ShizukuStatus.WAITING_SERVICE -> OutlinedButton(onClick = {
+                            try {
+                                RealtimeMode.start(context)
+                            } catch (_: Exception) {
+                                // foreground service may be disallowed right now; the status stays visible
+                            }
+                            vm.refreshShizuku()
+                        }) { Text(stringResource(R.string.settings_background_start_service)) }
+                        ShizukuStatus.ERROR, ShizukuStatus.CONNECTING -> OutlinedButton(onClick = { vm.refreshShizuku() }) {
+                            Text(stringResource(R.string.settings_background_retry))
+                        }
+                        else -> Unit
+                    }
+                },
+            )
+            Text(
+                stringResource(R.string.settings_shizuku_counts, shizuku.received, background.sends),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (status == ShizukuStatus.NOT_INSTALLED || status == ShizukuStatus.NOT_RUNNING) {
+                Text(
+                    stringResource(R.string.settings_shizuku_steps),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            shizuku.error?.let {
+                Text(
+                    stringResource(R.string.settings_shizuku_error, it),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+private fun ShizukuRuntime.facts(background: BackgroundReadRuntime) = ShizukuFacts(
+    enabled = background.enabled,
+    realtime = background.realtime,
+    installed = installed,
+    shizukuRunning = shizukuRunning,
+    permitted = permitted,
+    serviceRunning = background.serviceRunning,
+    connected = connected,
+    hasError = error != null,
+)
+
+private fun shizukuStatusText(s: ShizukuStatus): Int = when (s) {
+    ShizukuStatus.OFF -> R.string.settings_background_status_off
+    ShizukuStatus.REALTIME_OFF -> R.string.settings_background_status_realtime_off
+    ShizukuStatus.NOT_INSTALLED -> R.string.settings_shizuku_status_not_installed
+    ShizukuStatus.NOT_RUNNING -> R.string.settings_shizuku_status_not_running
+    ShizukuStatus.NEEDS_PERMISSION -> R.string.settings_shizuku_status_needs_permission
+    ShizukuStatus.WAITING_SERVICE -> R.string.settings_background_status_waiting
+    ShizukuStatus.CONNECTING -> R.string.settings_background_status_starting
+    ShizukuStatus.RUNNING -> R.string.settings_background_status_running
+    ShizukuStatus.ERROR -> R.string.settings_background_status_error
+}
+
+private fun openShizuku(context: Context) {
+    val launch = context.packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
+    try {
+        if (launch != null) context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        else openUrl(context, "https://shizuku.rikka.app/download/")
+    } catch (_: Exception) {
+        // nothing sensible to do; the status row stays as it is
+    }
+}
+
+private fun openUrl(context: Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: Exception) {
+        // no browser installed
     }
 }

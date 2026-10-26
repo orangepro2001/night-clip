@@ -117,6 +117,11 @@ object BackgroundReadController {
         val logsGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_LOGS) ==
             PackageManager.PERMISSION_GRANTED
         val supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        // The Shizuku-hosted helper does not depend on the overlay/READ_LOGS permissions below.
+        ShizukuBridge.sync(
+            context,
+            run = app.prefs.backgroundRead.value && app.prefs.realtimeNow && serviceRunning,
+        ) { text, copiedAt -> onBridgeText(text, copiedAt) }
         _state.update {
             it.copy(
                 enabled = app.prefs.backgroundRead.value,
@@ -154,6 +159,7 @@ object BackgroundReadController {
     fun onServiceStopped() {
         serviceRunning = false
         stopWatcher()
+        app?.let { a -> ShizukuBridge.sync(a, run = false) { _, _ -> } }
         // A stopped service means "paused", not "broken"; a fresh start will try again.
         _state.update { it.copy(serviceRunning = false, watcherRunning = false, fatalError = false, lastError = null) }
     }
@@ -210,6 +216,30 @@ object BackgroundReadController {
             } finally {
                 reading.set(false)
             }
+        }
+    }
+
+    /**
+     * A clipboard text reported by the Shizuku helper. It goes through the same gates as the focus-based
+     * read (own writes, capture, pause, at least one peer) and then the shared AutoSend.
+     */
+    private fun onBridgeText(text: String, copiedAtMs: Long) {
+        scope.launch {
+            val app = app ?: return@launch
+            _state.update { it.copy(triggers = it.triggers + 1) }
+            val now = System.currentTimeMillis()
+            if (!app.prefs.backgroundRead.value || !serviceRunning) return@launch skip("bridge-disabled")
+            if (ClipWriteGuard.isRecent(now)) return@launch skip("own-write")
+            val settings = (CoreApi.settings() as? ApiResult.Ok)?.value ?: return@launch skip("settings-unavailable")
+            if (!settings.capture || settings.isPaused(now / 1000)) return@launch skip("capture-off-or-paused")
+            val peers = (CoreApi.peers() as? ApiResult.Ok)?.value ?: return@launch skip("peers-unavailable")
+            if (peers.none { it.canSend && it.sendEnabled }) return@launch skip("no-send-peer")
+            if (!serviceRunning || !app.prefs.backgroundRead.value) return@launch
+            if (ClipWriteGuard.isRecent()) return@launch skip("own-write")
+            _state.update { it.copy(readsOk = it.readsOk + 1, lastError = null) }
+            val started = AutoSend.handle(app, text, copiedAtMs, notify = ForegroundTracker.isForeground)
+            Log.i(TAG, "bg-read: bridge text, send started=$started")
+            if (started) _state.update { it.copy(sends = it.sends + 1) }
         }
     }
 

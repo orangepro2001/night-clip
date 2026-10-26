@@ -67,6 +67,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        aidl = true // the clipboard host that Shizuku runs as the shell user talks to the app over AIDL
     }
 }
 
@@ -89,6 +90,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0") // QR scanning (pairing)
+    // Silent background clipboard read: Shizuku starts a small helper as the shell user, which may read
+    // the clipboard without focus (docs/plan-android-background-read.md section 7). Apache-2.0.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     testImplementation("junit:junit:4.13.2")

@@ -118,6 +118,18 @@
     <string name="settings_battery">电池优化设置</string>
 
     <!-- Background auto send (opt-in; overlay + READ_LOGS) -->
+    <string name="settings_shizuku_title">后台自动发送</string>
+    <string name="settings_shizuku_switch">在后台发现你复制的内容并自动发送</string>
+    <string name="settings_shizuku_hint">Android 不允许后台应用读剪贴板。借助 Shizuku（一个常驻的授权助手），ClipBridge 可以在后台读取你在任何应用里复制的文字并自动发到已配对的设备，不需要电脑、不弹窗、不抢焦点。必须同时开启实时模式。</string>
+    <string name="settings_shizuku_status_not_installed">未安装 Shizuku</string>
+    <string name="settings_shizuku_status_not_running">Shizuku 未运行</string>
+    <string name="settings_shizuku_status_needs_permission">需要授权</string>
+    <string name="settings_shizuku_get">获取 Shizuku</string>
+    <string name="settings_shizuku_open">打开 Shizuku</string>
+    <string name="settings_shizuku_allow">授权</string>
+    <string name="settings_shizuku_steps">一次性准备：安装 Shizuku → 在手机“开发者选项”里打开“无线调试” → 在 Shizuku 里选“通过无线调试启动”并配对 → 回到这里点“授权”。手机重启后需要在 Shizuku 里再启动一次。</string>
+    <string name="settings_shizuku_counts">已收到 %1$d 次剪贴板变化，发出 %2$d 次</string>
+    <string name="settings_shizuku_error">出错：%1$s</string>
     <string name="settings_background_read">后台自动发送（进阶）</string>
     <string name="settings_background_switch">在后台读取剪贴板并自动发送</string>
     <string name="settings_background_hint">Android 只允许前台应用读取剪贴板。开启后，经一次 ADB 授权，ClipBridge 可以在后台发现你复制的内容并自动发送；必须同时开启实时模式，并需要 Android 10 及以上。</string>
