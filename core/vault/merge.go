@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	g "github.com/tobischo/gokeepasslib/v3"
 	w "github.com/tobischo/gokeepasslib/v3/wrappers"
@@ -39,16 +40,23 @@ func (s MergeStats) Changed() bool { return s != MergeStats{} }
 // into dst, so it should be discarded afterwards.
 func mergeInto(dst, src *g.Database, only map[string]bool) MergeStats {
 	var st MergeStats
-	m := &merger{dst: dst, src: src, only: only, st: &st, binMap: map[int]int{}}
+	m := &merger{dst: dst, src: src, only: only, st: &st, binMap: map[int]int{}, maxTime: time.Now().Unix() + clockSkewSlack}
 	m.run()
 	return st
 }
 
+// clockSkewSlack: a time stamp further in the future than this (a peer with a wrong or hostile clock)
+// counts as "now plus this" when two versions are compared, so nobody can win every conflict forever.
+const clockSkewSlack = 10 * 60
+
 type merger struct {
-	dst, src *g.Database
-	only     map[string]bool // restrict to these entry ids (selective restore); nil = everything
-	st       *MergeStats
-	binMap   map[int]int
+	maxTime      int64
+	present      map[g.UUID]bool // entries in dst (kept without pointers: they go stale when a slice grows)
+	entriesDirty bool            // entry pointers in dstEntry may be stale: call ensure before using one
+	dst, src     *g.Database
+	only         map[string]bool // restrict to these entry ids (selective restore); nil = everything
+	st           *MergeStats
+	binMap       map[int]int
 
 	groupMap  map[g.UUID]g.UUID // src group -> dst group (the roots and the recycle bins are paired)
 	dstGroups map[g.UUID]*g.Group
@@ -86,7 +94,35 @@ func (m *merger) run() {
 	}
 }
 
+// c reads a time stamp for a comparison (clamped, see clockSkewSlack).
+func (m *merger) c(t *w.TimeWrapper) int64 {
+	v := unix(t)
+	if v > m.maxTime {
+		return m.maxTime
+	}
+	return v
+}
+
+// touchedT is the latest time anything happened to an object, clamped.
+func (m *merger) touchedT(t *g.TimeData) int64 {
+	a, b := m.c(t.LastModificationTime), m.c(t.LocationChanged)
+	if b > a {
+		return b
+	}
+	return a
+}
+
+// ensure rebuilds the index when entry pointers may be stale.
+func (m *merger) ensure() {
+	if m.entriesDirty {
+		m.index()
+	}
+}
+
 func (m *merger) noteDeleted(u g.UUID, t int64) {
+	if t > m.maxTime {
+		t = m.maxTime
+	}
 	if t >= m.deletedAt[u] {
 		m.deletedAt[u] = t
 	}
@@ -96,11 +132,14 @@ func (m *merger) index() {
 	m.dstGroups = map[g.UUID]*g.Group{}
 	m.dstEntry = map[g.UUID]*g.Entry{}
 	m.dstParent = map[g.UUID]g.UUID{}
+	m.present = map[g.UUID]bool{}
+	m.entriesDirty = false
 	var rec func(gr *g.Group, parent g.UUID)
 	rec = func(gr *g.Group, parent g.UUID) {
 		m.dstGroups[gr.UUID] = gr
 		m.dstParent[gr.UUID] = parent
 		for i := range gr.Entries {
+			m.present[gr.Entries[i].UUID] = true
 			m.dstEntry[gr.Entries[i].UUID] = &gr.Entries[i]
 			m.dstParent[gr.Entries[i].UUID] = gr.UUID
 		}
@@ -144,16 +183,16 @@ func (m *merger) mergeGroups(sg *g.Group, dstParent g.UUID) {
 		}
 		if existing, ok := m.dstGroups[child.UUID]; ok {
 			m.groupMap[child.UUID] = existing.UUID
-			if unix(child.Times.LastModificationTime) > unix(existing.Times.LastModificationTime) {
+			if m.c(child.Times.LastModificationTime) > m.c(existing.Times.LastModificationTime) {
 				existing.Name, existing.Notes = child.Name, child.Notes
 				existing.Times.LastModificationTime = child.Times.LastModificationTime
 			}
 			if m.locationWins(child.Times.LocationChanged, existing.Times.LocationChanged, dstParent, m.dstParent[existing.UUID]) && !m.isAncestor(existing.UUID, dstParent) {
 				m.moveGroup(existing.UUID, dstParent, child.Times.LocationChanged)
-			} else if dstParent == m.dstParent[existing.UUID] && unix(child.Times.LocationChanged) > unix(existing.Times.LocationChanged) {
+			} else if dstParent == m.dstParent[existing.UUID] && m.c(child.Times.LocationChanged) > m.c(existing.Times.LocationChanged) {
 				existing.Times.LocationChanged = child.Times.LocationChanged
 			}
-		} else if t, gone := m.deletedAt[child.UUID]; gone && t >= touched(&child.Times) {
+		} else if t, gone := m.deletedAt[child.UUID]; gone && t >= m.touchedT(&child.Times) {
 			continue
 		} else {
 			ng := g.NewGroup()
@@ -186,7 +225,7 @@ func (m *merger) locationWins(theirs, ours *w.TimeWrapper, theirGroup, ourGroup 
 	if theirGroup == ourGroup {
 		return false
 	}
-	t, o := unix(theirs), unix(ours)
+	t, o := m.c(theirs), m.c(ours)
 	return t > o || t == o && uuidHex(theirGroup) < uuidHex(ourGroup)
 }
 
@@ -201,7 +240,8 @@ func (m *merger) isAncestor(anc, of g.UUID) bool {
 
 func (m *merger) moveGroup(id, newParent g.UUID, at *w.TimeWrapper) {
 	gr := m.dstGroups[id]
-	old := m.dstGroups[m.dstParent[id]]
+	oldID := m.dstParent[id]
+	old := m.dstGroups[oldID]
 	if gr == nil || old == nil || m.dstGroups[newParent] == nil {
 		return
 	}
@@ -213,7 +253,13 @@ func (m *merger) moveGroup(id, newParent g.UUID, at *w.TimeWrapper) {
 			break
 		}
 	}
+	// Removing shifted the siblings: every pointer into old.Groups is stale now, and the new parent
+	// may be one of them (a move into a later sibling). Look it up again.
+	m.index()
 	np := m.dstGroups[newParent]
+	if np == nil { // the new parent lived inside the moved group: put it back where it was
+		np = m.dstGroups[oldID]
+	}
 	np.Groups = append(np.Groups, moved)
 	m.index()
 }
@@ -236,19 +282,23 @@ func (m *merger) mergeEntries(srcRoot *g.Group) {
 		if !ok {
 			target = m.dst.Content.Root.Groups[0].UUID
 		}
-		de, exists := m.dstEntry[se.UUID]
-		if !exists {
-			if t, gone := m.deletedAt[se.UUID]; gone && t >= touched(&se.Times) && m.only == nil {
+		if !m.present[se.UUID] {
+			if t, gone := m.deletedAt[se.UUID]; gone && t >= m.touchedT(&se.Times) && m.only == nil {
 				return // deleted on our side after this version was written
 			}
 			m.addEntry(se, target)
+			return
+		}
+		m.ensure()
+		de := m.dstEntry[se.UUID]
+		if de == nil {
 			return
 		}
 		m.mergeEntry(de, se)
 		if m.only == nil {
 			if m.locationWins(se.Times.LocationChanged, de.Times.LocationChanged, target, m.dstParent[de.UUID]) {
 				m.moveEntry(de.UUID, target, se.Times.LocationChanged)
-			} else if target == m.dstParent[de.UUID] && unix(se.Times.LocationChanged) > unix(de.Times.LocationChanged) {
+			} else if target == m.dstParent[de.UUID] && m.c(se.Times.LocationChanged) > m.c(de.Times.LocationChanged) {
 				// the same place, decided by a later move: remember when, or an older move elsewhere
 				// would look newer than it is when it arrives later
 				de.Times.LocationChanged = se.Times.LocationChanged
@@ -257,6 +307,9 @@ func (m *merger) mergeEntries(srcRoot *g.Group) {
 	})
 }
 
+// addEntry appends a copy of se to the target group. It does not rebuild the index (that made big
+// merges quadratic): group pointers stay valid when an entries slice grows, entry pointers do not,
+// so only the "entries may be stale" flag is raised.
 func (m *merger) addEntry(se *g.Entry, target g.UUID) {
 	ne := se.Clone()
 	ne.UUID = se.UUID
@@ -266,11 +319,14 @@ func (m *merger) addEntry(se *g.Entry, target g.UUID) {
 		par = &m.dst.Content.Root.Groups[0]
 	}
 	par.Entries = append(par.Entries, ne)
+	m.present[ne.UUID] = true
+	m.dstParent[ne.UUID] = par.UUID
+	m.entriesDirty = true
 	m.st.EntriesAdded++
-	m.index()
 }
 
 func (m *merger) moveEntry(id, target g.UUID, at *w.TimeWrapper) {
+	m.ensure()
 	e := m.dstEntry[id]
 	from := m.dstGroups[m.dstParent[id]]
 	to := m.dstGroups[target]
@@ -287,7 +343,8 @@ func (m *merger) moveEntry(id, target g.UUID, at *w.TimeWrapper) {
 	}
 	to.Entries = append(to.Entries, moved)
 	m.st.EntriesMoved++
-	m.index()
+	m.dstParent[id] = to.UUID
+	m.entriesDirty = true
 }
 
 // remapBinaries copies the attachments an entry (and its history) references from src into dst.
@@ -358,7 +415,7 @@ func contentHash(db *g.Database, e *g.Entry) string {
 
 // mergeEntry reconciles two versions of the same entry.
 func (m *merger) mergeEntry(de, se *g.Entry) {
-	dt, st := unix(de.Times.LastModificationTime), unix(se.Times.LastModificationTime)
+	dt, st := m.c(de.Times.LastModificationTime), m.c(se.Times.LastModificationTime)
 	dh, sh := contentHash(m.dst, de), contentHash(m.src, se)
 	changed := false
 
@@ -453,30 +510,49 @@ func (m *merger) addHistory(e *g.Entry, s g.Entry, force bool) bool {
 
 // applyDeletions removes what the other side deleted, unless we changed it afterwards.
 func (m *merger) applyDeletions() {
+	m.ensure()
+	gone := map[g.UUID]bool{}
 	for _, d := range m.src.Content.Root.DeletedObjects {
 		t := unix(d.DeletionTime)
-		if e, ok := m.dstEntry[d.UUID]; ok && touched(&e.Times) <= t {
-			if gr := m.dstGroups[m.dstParent[d.UUID]]; gr != nil {
-				for i := range gr.Entries {
-					if gr.Entries[i].UUID == d.UUID {
-						gr.Entries = append(gr.Entries[:i], gr.Entries[i+1:]...)
-						m.st.EntriesRemoved++
-						break
-					}
-				}
-				m.index()
-			}
+		if t > m.maxTime {
+			t = m.maxTime
+		}
+		if e, ok := m.dstEntry[d.UUID]; ok && m.touchedT(&e.Times) <= t {
+			gone[d.UUID] = true
 		}
 	}
+	if len(gone) > 0 { // one pass over the tree, not one rebuild per entry
+		var rec func(gr *g.Group)
+		rec = func(gr *g.Group) {
+			out := gr.Entries[:0]
+			for _, e := range gr.Entries {
+				if gone[e.UUID] {
+					m.st.EntriesRemoved++
+					continue
+				}
+				out = append(out, e)
+			}
+			gr.Entries = out
+			for i := range gr.Groups {
+				rec(&gr.Groups[i])
+			}
+		}
+		rec(&m.dst.Content.Root.Groups[0])
+		m.index()
+	}
 	// empty groups the other side deleted (deepest first, so nested ones go together)
-	for pass := 0; pass < 8; pass++ {
+	for pass := 0; pass < maxGroupDepth+1; pass++ {
 		removed := false
 		for _, d := range m.src.Content.Root.DeletedObjects {
 			gr, ok := m.dstGroups[d.UUID]
 			if !ok || len(gr.Entries) > 0 || len(gr.Groups) > 0 || d.UUID == m.dst.Content.Root.Groups[0].UUID || d.UUID == m.dst.Content.Meta.RecycleBinUUID {
 				continue
 			}
-			if touched(&gr.Times) > unix(d.DeletionTime) {
+			dt := unix(d.DeletionTime)
+			if dt > m.maxTime {
+				dt = m.maxTime
+			}
+			if m.touchedT(&gr.Times) > dt {
 				continue
 			}
 			if par := m.dstGroups[m.dstParent[d.UUID]]; par != nil {
@@ -499,9 +575,10 @@ func (m *merger) applyDeletions() {
 
 // unionDeleted rewrites dst's DeletedObjects as the union of both sides, minus anything that exists again.
 func (m *merger) unionDeleted() {
+	m.ensure()
 	out := make([]g.DeletedObjectData, 0, len(m.deletedAt))
 	for u, t := range m.deletedAt {
-		if e, ok := m.dstEntry[u]; ok && touched(&e.Times) > t {
+		if e, ok := m.dstEntry[u]; ok && m.touchedT(&e.Times) > t {
 			continue
 		}
 		if _, ok := m.dstGroups[u]; ok {

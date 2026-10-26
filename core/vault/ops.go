@@ -125,9 +125,8 @@ func (v *Vault) trashGroup(create bool) *g.Group {
 	if !create {
 		return nil
 	}
-	bin := g.NewGroup()
+	bin := v.newGroupNamed("Recycle Bin")
 	bin.UUID = binUUIDFor(v.root().UUID)
-	bin.Name = "Recycle Bin"
 	bin.IconID = 43
 	bin.EnableSearching = w.NewNullableBoolWrapper(false)
 	root := v.root()
@@ -622,8 +621,13 @@ func (v *Vault) AddGroup(parentID, name string) (string, error) {
 			return "", ErrNotFound
 		}
 	}
-	ng := g.NewGroup()
-	ng.Name = name
+	if v.groupDepth(uuidHex(par.UUID)) >= maxGroupDepth {
+		return "", invalid("groups can be nested at most %d deep", maxGroupDepth)
+	}
+	if v.countGroups() >= maxGroups {
+		return "", ErrTooLarge
+	}
+	ng := v.newGroupNamed(name)
 	par.Groups = append(par.Groups, ng)
 	return uuidHex(ng.UUID), v.commit("save")
 }
@@ -665,7 +669,7 @@ func (v *Vault) DeleteGroup(id string) error {
 		return invalid("the top group cannot be deleted")
 	}
 	if len(gr.Entries) > 0 || len(gr.Groups) > 0 {
-		return invalid("the group is not empty")
+		return ErrNotEmpty
 	}
 	for i := range par.Groups {
 		if par.Groups[i].UUID == gr.UUID {
@@ -779,10 +783,45 @@ func (v *Vault) RemoveAttachment(id, name string) error {
 	return v.commit("save")
 }
 
-func newGroup(name string) g.Group {
+// newGroupNamed makes a group whose time stamps come from the vault's clock (the library would use the
+// real one, which makes "which move is later" depend on two different clocks).
+func (v *Vault) newGroupNamed(name string) g.Group {
 	ng := g.NewGroup()
 	ng.Name = name
+	now := v.nowWrap()
+	t := now
+	u := now
+	l := now
+	ng.Times.CreationTime, ng.Times.LastModificationTime, ng.Times.LastAccessTime, ng.Times.LocationChanged = &t, &u, &now, &l
 	return ng
 }
 
 func newEntry() g.Entry { return g.NewEntry() }
+
+// groupDepth is the depth of a group (the top group is 1).
+func (v *Vault) groupDepth(id string) int {
+	depth, found := 0, false
+	var rec func(gr *g.Group, d int)
+	rec = func(gr *g.Group, d int) {
+		if found {
+			return
+		}
+		if uuidHex(gr.UUID) == id {
+			depth, found = d, true
+			return
+		}
+		for i := range gr.Groups {
+			rec(&gr.Groups[i], d+1)
+		}
+	}
+	for i := range v.db.Content.Root.Groups {
+		rec(&v.db.Content.Root.Groups[i], 1)
+	}
+	return depth
+}
+
+func (v *Vault) countGroups() int {
+	n := 0
+	walk(v.db, nil, func(*libGroup, string, bool) { n++ })
+	return n
+}

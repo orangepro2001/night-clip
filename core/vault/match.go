@@ -20,22 +20,66 @@ type Match struct {
 	Score int `json:"score"` // 3 same host, 2 same registrable domain, 4 Android package
 }
 
-// matchHost turns "https://User@Login.Example.com:8443/path" or "login.example.com" into a lower-case
-// host without port or userinfo; "" when there is none.
-func matchHost(s string) string {
+// target is where a page or a stored URL points: scheme, host and effective port.
+type target struct {
+	scheme, host string
+	port         string
+}
+
+// parseTarget reads "https://User@Login.Example.com:8443/path" or "login.example.com". A value without a
+// scheme counts as https. ok is false for anything that is not a plain http(s) address.
+func parseTarget(s string) (t target, ok bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return ""
+		return t, false
 	}
 	if !strings.Contains(s, "://") {
 		s = "https://" + s
 	}
 	u, err := url.Parse(s)
 	if err != nil {
-		return ""
+		return t, false
 	}
-	h := strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
-	return h
+	t.scheme = strings.ToLower(u.Scheme)
+	if t.scheme != "http" && t.scheme != "https" {
+		return t, false
+	}
+	t.host = strings.ToLower(strings.TrimSuffix(u.Hostname(), "."))
+	if t.host == "" {
+		return t, false
+	}
+	// the port only when it is not the default of its scheme: a stored http://site and the page
+	// https://site are the same place, :8443 is not
+	t.port = u.Port()
+	if t.port == map[string]string{"http": "80", "https": "443"}[t.scheme] {
+		t.port = ""
+	}
+	return t, true
+}
+
+// matchHost is the host part only (used by tests and callers that only care about the name).
+func matchHost(s string) string {
+	t, _ := parseTarget(s)
+	return t.host
+}
+
+// isLocalHost: names and addresses where plain http is not an exposure to the network.
+func isLocalHost(h string) bool {
+	if h == "localhost" || strings.HasSuffix(h, ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
+}
+
+// schemeAllows says whether credentials stored for an entry URL may be offered on a page. An https page
+// may use an entry saved with http or https (nothing is exposed); an http page only gets entries saved
+// for http, or anything when the host is on the local machine or network.
+func schemeAllows(page, entry target) bool {
+	if page.scheme == "https" {
+		return true
+	}
+	return entry.scheme == "http" || isLocalHost(page.host)
 }
 
 // registrable returns the eTLD+1 of host, or host itself for IP addresses, single labels and names
@@ -58,7 +102,11 @@ func (v *Vault) FindMatches(pageURL, androidPackage string) ([]Match, error) {
 	if err := v.usable(); err != nil {
 		return nil, err
 	}
-	host := matchHost(pageURL)
+	page, pageOK := parseTarget(pageURL)
+	host := ""
+	if pageOK {
+		host = page.host
+	}
 	reg := registrable(host)
 	pkg := strings.TrimSpace(androidPackage)
 	if host == "" && pkg == "" {
@@ -95,12 +143,14 @@ func (v *Vault) FindMatches(pageURL, androidPackage string) ([]Match, error) {
 				if strings.HasPrefix(u, "androidapp://") {
 					continue
 				}
-				h := matchHost(u)
+				et, ok := parseTarget(u)
+				if !ok || et.port != page.port || !schemeAllows(page, et) {
+					continue
+				}
 				switch {
-				case h == "":
-				case h == host && best < 3:
+				case et.host == host && best < 3:
 					best = 3
-				case registrable(h) == reg && best < 2:
+				case registrable(et.host) == reg && best < 2:
 					best = 2
 				}
 			}

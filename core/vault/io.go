@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"fmt"
 	"os"
 	"sort"
 
@@ -11,63 +12,110 @@ import (
 // backup) into this vault. c are the credentials of that file; a KDBX 3.x file is converted in memory.
 // The current file is snapshotted first (by the save), so the merge can be undone from the backups.
 func (v *Vault) MergeBytes(data []byte, c Creds, reason string) (MergeStats, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if err := v.usable(); err != nil {
-		return MergeStats{}, err
-	}
-	src, err := decode(data, c)
-	if err != nil {
-		return MergeStats{}, err
-	}
-	st := mergeInto(v.db, src, nil)
-	if !st.Changed() {
-		return st, nil
-	}
-	if v.countEntries() > MaxEntries {
-		return st, ErrTooLarge
-	}
-	return st, v.commit(reason)
+	return v.MergeGuarded(data, c, reason, MergeOptions{})
 }
 
 // MergeOptions guard a merge that was not asked for by the user in person (device sync).
 type MergeOptions struct {
+	// PeerFile: the file comes from another device, so its key derivation cost is bounded before it runs.
+	PeerFile bool
 	// RequireSameVault refuses a file whose top group is not this vault's: two unrelated vaults are
 	// merged only when the user says so.
 	RequireSameVault bool
-	// MaxRemoved refuses a merge that would delete more than this many entries (0 = no limit).
-	MaxRemoved int
+	// LimitRemoved / MaxRemoved: refuse a merge that would delete more than MaxRemoved entries
+	// (MaxRemoved 0 with LimitRemoved set means "no deletions at all").
+	LimitRemoved bool
+	MaxRemoved   int
+	// LimitUpdated / MaxUpdated: the same for entries that would be overwritten by the other side's version.
+	LimitUpdated bool
+	MaxUpdated   int
 }
 
 // MergeGuarded is MergeBytes with safety checks. c may be empty: the vault's own credentials are used.
 // The returned error is ErrDifferentVault or ErrReview when a guard stopped the merge (nothing changed).
+//
+// The slow part, decoding (the file's own key derivation), runs without the vault lock held, so a
+// large or expensive file cannot freeze the vault; the lock is taken only to merge and save.
 func (v *Vault) MergeGuarded(data []byte, c Creds, reason string, o MergeOptions) (MergeStats, error) {
+	v.mu.Lock()
+	if err := v.usable(); err != nil {
+		v.mu.Unlock()
+		return MergeStats{}, err
+	}
+	use := c.clone()
+	if len(use.Password) == 0 {
+		use = v.creds.clone()
+	}
+	v.mu.Unlock()
+	defer use.wipe()
+
+	if o.PeerFile {
+		if err := CheckPeerKDF(data); err != nil {
+			return MergeStats{}, err
+		}
+	}
+	src, err := decode(data, use)
+	if err != nil {
+		return MergeStats{}, err
+	}
+
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if err := v.usable(); err != nil {
-		return MergeStats{}, err
-	}
-	if len(c.Password) == 0 {
-		c = v.creds
-	}
-	src, err := decode(data, c)
-	if err != nil {
 		return MergeStats{}, err
 	}
 	if o.RequireSameVault && src.Content.Root.Groups[0].UUID != v.root().UUID {
 		return MergeStats{}, ErrDifferentVault
 	}
-	if o.MaxRemoved > 0 && wouldRemove(v.db, src) > o.MaxRemoved {
+	if n := countNew(v.db, src); v.countEntries()+n > MaxEntries {
+		return MergeStats{}, ErrTooLarge // refused before anything is touched
+	}
+	if o.LimitRemoved && wouldRemove(v.db, src) > o.MaxRemoved {
+		return MergeStats{}, ErrReview
+	}
+	if o.LimitUpdated && wouldUpdate(v.db, src) > o.MaxUpdated {
 		return MergeStats{}, ErrReview
 	}
 	st := mergeInto(v.db, src, nil)
 	if !st.Changed() {
 		return st, nil
 	}
-	if v.countEntries() > MaxEntries {
-		return st, ErrTooLarge
-	}
 	return st, v.commit(reason)
+}
+
+// countNew counts the entries of src that dst does not have.
+func countNew(dst, src *g.Database) int {
+	mine := map[g.UUID]bool{}
+	walk(dst, func(le *libEntry, _ string, _ bool) { mine[le.UUID] = true }, nil)
+	n := 0
+	walk(src, func(le *libEntry, _ string, _ bool) {
+		if !mine[le.UUID] {
+			n++
+		}
+	}, nil)
+	return n
+}
+
+// wouldUpdate counts the entries that exist on both sides where the other side's version would replace
+// ours (newer, different content).
+func wouldUpdate(dst, src *g.Database) int {
+	type rec struct {
+		t int64
+		h string
+	}
+	mine := map[g.UUID]rec{}
+	walk(dst, func(le *libEntry, _ string, _ bool) {
+		mine[le.UUID] = rec{unix(le.Times.LastModificationTime), contentHash(dst, le)}
+	}, nil)
+	n := 0
+	walk(src, func(le *libEntry, _ string, _ bool) {
+		if m, ok := mine[le.UUID]; ok {
+			if t := unix(le.Times.LastModificationTime); t >= m.t && contentHash(src, le) != m.h {
+				n++
+			}
+		}
+	}, nil)
+	return n
 }
 
 // wouldRemove counts the entries the other side's deletions would take out of dst (same rule as the merge).
@@ -121,16 +169,31 @@ func (v *Vault) ExportKDBX(c Creds, kdf KDF) ([]byte, error) {
 	return encode(nd)
 }
 
-// ExportFile writes ExportKDBX to path (mode 0600, refuses to overwrite).
+// ExportFile writes ExportKDBX to path (mode 0600). It never overwrites and never follows a link that
+// happens to be at that path: the file is created exclusively.
 func (v *Vault) ExportFile(path string, c Creds, kdf KDF) error {
 	out, err := v.ExportKDBX(c, kdf)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(path); err == nil {
-		return ErrExists
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			return ErrExists
+		}
+		return fmt.Errorf("vault: create export file: %w", err)
 	}
-	return writeFileSync(path, out)
+	if _, err := f.Write(out); err != nil {
+		f.Close()
+		_ = os.Remove(path)
+		return fmt.Errorf("vault: write export file: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		_ = os.Remove(path)
+		return err
+	}
+	return f.Close()
 }
 
 // ---- restoring from backups ---------------------------------------------------------------------------
@@ -274,6 +337,16 @@ func (v *Vault) Restore(name string, c Creds, mode RestoreMode, ids []string) (M
 	return st, v.commit("restore")
 }
 
+func (v *Vault) dropTombstone(u g.UUID) {
+	out := v.db.Content.Root.DeletedObjects[:0]
+	for _, d := range v.db.Content.Root.DeletedObjects {
+		if d.UUID != u {
+			out = append(out, d)
+		}
+	}
+	v.db.Content.Root.DeletedObjects = out
+}
+
 // restoreEntries forces the backup's version of the given entries to become current.
 func (v *Vault) restoreEntries(b *g.Database, only map[string]bool) MergeStats {
 	var st MergeStats
@@ -287,6 +360,7 @@ func (v *Vault) restoreEntries(b *g.Database, only map[string]bool) MergeStats {
 		ne := se.Clone()
 		ne.UUID = se.UUID
 		m.remapBinaries(&ne)
+		v.dropTombstone(se.UUID) // it exists again: a later merge must not delete it by an old record
 		if de, ok := m.dstEntry[se.UUID]; ok {
 			v.pushHistory(de)
 			ne.Histories = de.Histories
