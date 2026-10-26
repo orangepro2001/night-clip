@@ -158,9 +158,9 @@ object VaultApi {
     suspend fun syncNow() = run("vault.sync_now") { }
 
     /** needs_password: pass [creds] (the OTHER device's current master password). review: pass [approve] = true. */
-    suspend fun syncResolve(deviceId: String, approve: Boolean, creds: VaultCreds?): ApiResult<Unit> {
+    suspend fun syncResolve(deviceId: String, approve: Boolean, creds: VaultCreds?, sha256: String = ""): ApiResult<Unit> {
         val p = JSONObject().put("device_id", deviceId)
-        if (approve) p.put("approve", true)
+        if (approve) p.put("approve", true).put("sha256", sha256) // the exact file the user reviewed
         if (creds != null) putCreds(p, creds)
         return run("vault.sync_resolve", p) { }
     }

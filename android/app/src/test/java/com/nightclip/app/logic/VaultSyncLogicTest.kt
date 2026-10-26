@@ -27,7 +27,7 @@ class SyncParsersTest {
         val s = VaultParsers.syncStatus(
             JSONObject(
                 """{"vault_exists":true,"peers":[
-                {"device_id":"a","name":"PC","enabled":true,"connected":true,"state":"review","detail":"the other device has a different vault: approve","last_ok_at":1700,"pending_incoming":true},
+                {"device_id":"a","name":"PC","enabled":true,"connected":true,"state":"review","detail":"the other device has a different vault: approve","last_ok_at":1700,"pending_incoming":true,"incoming_sha256":"abc123"},
                 {"device_id":"b","name":"Pad","enabled":false,"connected":false,"state":"idle","detail":"","last_ok_at":0,"pending_incoming":false}]}""",
             ),
         )
@@ -35,6 +35,7 @@ class SyncParsersTest {
         assertEquals(2, s.peers.size)
         assertEquals("review", s.peers[0].state)
         assertTrue(s.peers[0].pendingIncoming)
+        assertEquals("abc123", s.peers[0].incomingSha256)
         assertEquals(1700L, s.peers[0].lastOkAt)
         assertFalse(s.peers[1].enabled)
     }

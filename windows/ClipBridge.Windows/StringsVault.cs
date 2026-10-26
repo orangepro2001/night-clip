@@ -217,6 +217,8 @@ public static partial class Strings
     public const string ErrVaultNotFound = "找不到对应的条目、分组或备份。";
     public const string ErrVaultExists = "密码库或目标文件已经存在（为了安全不会覆盖，请换一个文件名）。";
     public const string ErrVaultUnsupported = "这个库的加密参数不受支持或不安全。";
+    public const string ErrVaultNotEmpty = "这个分组里还有条目或子分组，请先删除或移走它们。";
+    public const string ErrVaultReview = "需要重新确认对方的文件，请刷新后再批准。";
     public const string ErrVaultBroken = "密码库状态异常。请先锁定，再重新解锁。";
     public static string ErrVaultRateLimited(int seconds) => $"错误次数过多，请 {seconds} 秒后再试。";
     public const string ErrVaultTooLarge = "内容太大，超过了允许的上限。";

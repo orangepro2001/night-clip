@@ -172,7 +172,7 @@ private fun SyncReviewDialog(peer: SyncPeer, sync: VaultSyncViewModel) {
         onDismissRequest = { sync.closeDialog() },
         title = { Text(stringResource(R.string.vault_sync_review_title, peer.name.ifBlank { stringResource(R.string.vault_sync_unknown_device) })) },
         text = { Text(VaultSyncLogic.reviewText(VaultSyncLogic.reviewKind(peer.detail))) },
-        confirmButton = { TextButton(enabled = !busy, onClick = { sync.approve(peer.deviceId) }) { Text(stringResource(R.string.vault_sync_approve)) } },
+        confirmButton = { TextButton(enabled = !busy, onClick = { sync.approve(peer.deviceId, peer.incomingSha256) }) { Text(stringResource(R.string.vault_sync_approve)) } },
         dismissButton = { TextButton(onClick = { sync.closeDialog() }) { Text(stringResource(R.string.vault_sync_ignore)) } },
     )
 }

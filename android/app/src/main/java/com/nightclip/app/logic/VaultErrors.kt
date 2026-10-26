@@ -20,6 +20,11 @@ object VaultErrors {
             else -> "密码库已存在"
         }
         "VAULT_UNSUPPORTED" -> "这个库的加密参数不受支持或不安全。"
+        "VAULT_NOT_EMPTY" -> "这个分组里还有条目或子分组，请先删除或移走它们"
+        "VAULT_REVIEW" -> when (context) {
+            Context.SYNC -> "对方的文件和你刚才看到的不一样，或需要重新确认。已刷新，请重新查看后再批准。"
+            else -> "需要重新确认，请刷新后再试。"
+        }
         "VAULT_BROKEN" -> "密码库状态不一致，请先锁定再重新解锁。"
         "RATE_LIMITED" -> if (retryAfterS > 0) "尝试次数过多，请 ${RateLimitCountdown.label(retryAfterS)}后再试" else "尝试次数过多，请稍后再试"
         "TOO_LARGE" -> "内容或文件太大"

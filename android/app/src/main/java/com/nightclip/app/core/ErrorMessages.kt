@@ -35,6 +35,8 @@ object ErrorMessages {
         "VAULT_NOT_FOUND" to "找不到该条目、分组或备份",
         "VAULT_EXISTS" to "密码库或目标文件已存在",
         "VAULT_UNSUPPORTED" to "这个库的加密参数不受支持或不安全。",
+        "VAULT_NOT_EMPTY" to "这个分组里还有条目或子分组，请先删除或移走它们",
+        "VAULT_REVIEW" to "需要重新确认对方的文件，请刷新后再批准",
         "VAULT_BROKEN" to "密码库状态不一致，请先锁定再重新解锁。",
     )
 

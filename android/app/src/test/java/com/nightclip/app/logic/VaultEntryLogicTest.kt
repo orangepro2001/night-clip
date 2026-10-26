@@ -201,9 +201,11 @@ class MasterPasswordRulesTest {
     @Test
     fun emptyAndMismatchBlockWeakOnlyWarns() {
         assertEquals(MasterPasswordRules.Problem.EMPTY, MasterPasswordRules.problem("", ""))
-        assertEquals(MasterPasswordRules.Problem.MISMATCH, MasterPasswordRules.problem("abc", "abd"))
-        assertNull(MasterPasswordRules.problem("abc", "abc")) // weak passwords are allowed
+        assertEquals(MasterPasswordRules.Problem.MISMATCH, MasterPasswordRules.problem("abcdefgh", "abcdefgi"))
+        assertEquals(MasterPasswordRules.Problem.TOO_SHORT, MasterPasswordRules.problem("abc", "abc"))
+        assertNull(MasterPasswordRules.problem("abcdefgh", "abcdefgh")) // weak-but-long-enough passwords are allowed
         assertEquals("请输入主密码", MasterPasswordRules.problemText(MasterPasswordRules.Problem.EMPTY))
+        assertEquals("主密码至少需要 8 个字符", MasterPasswordRules.problemText(MasterPasswordRules.Problem.TOO_SHORT))
         assertNull(MasterPasswordRules.problemText(null))
     }
 

@@ -29,7 +29,7 @@ public static class ErrorMessages
         "INTERNAL" => Strings.ErrInternal,
         "INIT_FAILED" => Strings.ErrInitFailed,
         "NOT_FOUND" => Strings.ErrNotFound,
-        "VAULT_LOCKED" or "VAULT_WRONG_CREDENTIALS" or "VAULT_NOT_FOUND" or "VAULT_EXISTS" or "VAULT_UNSUPPORTED" or "VAULT_BROKEN" => ForVault(code),
+        "VAULT_LOCKED" or "VAULT_WRONG_CREDENTIALS" or "VAULT_NOT_FOUND" or "VAULT_EXISTS" or "VAULT_UNSUPPORTED" or "VAULT_NOT_EMPTY" or "VAULT_REVIEW" or "VAULT_BROKEN" => ForVault(code),
         null or "" => Strings.ErrorGeneric,
         _ => Strings.ErrorUnknown(code),
     };
@@ -45,6 +45,8 @@ public static class ErrorMessages
         "VAULT_NOT_FOUND" => Strings.ErrVaultNotFound,
         "VAULT_EXISTS" => Strings.ErrVaultExists,
         "VAULT_UNSUPPORTED" => Strings.ErrVaultUnsupported,
+        "VAULT_NOT_EMPTY" => Strings.ErrVaultNotEmpty,
+        "VAULT_REVIEW" => Strings.ErrVaultReview,
         "VAULT_BROKEN" => Strings.ErrVaultBroken,
         "RATE_LIMITED" => retryAfterSeconds > 0 ? Strings.ErrVaultRateLimited(retryAfterSeconds) : Strings.ErrRateLimited,
         "TOO_LARGE" => Strings.ErrVaultTooLarge,

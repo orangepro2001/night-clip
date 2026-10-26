@@ -176,4 +176,3 @@
 - **没有做**：Windows 快速解锁（规则 6，按文档“暂不提供”）。
 - **测试**：`Vault*Tests.cs`（逻辑）+ `VaultInteropTests.cs`（用真实核心走完创建→增删改→锁定→限速→备份→恢复→导出导入→改主密码，并在有 `keepassxc-cli` 时交叉检查导出文件）。注意：原生核心在一个进程里只能启动一次，所有用到它的测试共享 `NativeCoreFixture`，测试串行，并关闭并发 GC（在 Linux 上并发 GC 线程和 Go 核心的信号处理会让测试宿主偶尔崩溃）。
 - **无法在这台机器上验证**：真实的剪贴板标志与清除、`SetWindowDisplayAffinity` 的实际效果、`SystemEvents` 的触发、托盘菜单、所有窗口的布局与交互。
-

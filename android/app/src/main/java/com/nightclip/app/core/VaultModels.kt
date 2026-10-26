@@ -37,6 +37,8 @@ data class SyncPeer(
     val detail: String,
     val lastOkAt: Long,
     val pendingIncoming: Boolean,
+    /** SHA-256 of the incoming file the user is asked to review; `approve` must send it back. */
+    val incomingSha256: String = "",
 )
 
 data class SyncStatus(val vaultExists: Boolean, val peers: List<SyncPeer>)
@@ -182,6 +184,7 @@ object VaultParsers {
                 detail = it.optString("detail", ""),
                 lastOkAt = it.optLong("last_ok_at", 0),
                 pendingIncoming = it.optBoolean("pending_incoming", false),
+                incomingSha256 = it.optString("incoming_sha256", ""),
             )
         },
     )

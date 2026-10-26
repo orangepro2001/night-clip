@@ -1,16 +1,16 @@
 # night-clip 交接文档
 
-> 更新于 2026-10-26（功能开发完成、待真机验证阶段）。读完这一份就能接着干活。
-> **最新一轮的交接快照：[HANDOFF-20261026-220002.md](HANDOFF-20261026-220002.md)**（自动广播、密码库评估、0.1.30 发布）。
+> 更新于 2026-10-27（密码库 V1–V3 合并、0.1.59 发布、待真机验证阶段）。读完这一份就能接着干活。
+> **最新一轮的交接快照：[HANDOFF-20261027-0018.md](HANDOFF-20261027-0018.md)**（密码库合并、后台自动发送、0.1.59 发布与未验证清单）。
 > 用户文档：[docs/user-guide.md](docs/user-guide.md)。设计：[docs/README.md](docs/README.md) → `architecture.md` → `api-spec.md`。更新/发布：[docs/update.md](docs/update.md)。壳层开发指南：[docs/shell-guide.md](docs/shell-guide.md)。
 
 ## 0. 一页摘要
 
 - **产品**：Windows ↔ Android 剪贴板（文本）同步 + 文件传输。设备都在同一个 Tailscale tailnet 里直连，无服务端。仓库 `git@github.com:orangepro2001/night-clip.git`（公开，`main`）。
 - **架构**：一个 Go 核心承载全部业务；Windows 用 C# WPF 壳 + Go 编译的 DLL；Android 用 Kotlin Compose 壳 + gomobile AAR。壳只通过 `Call(method, json)` / `NextEvent(timeoutMs)` 访问核心。
-- **现状：功能完整**，已按 [docs/plan-auto-broadcast.md](docs/plan-auto-broadcast.md) 把“复制即自动广播”做成默认（见该文 §11）。配对、文本同步、文件传输、离线补发、撤销、命名管道与命令行、自动更新与本机分发、两端完整界面都已实现，核心全部有测试。**两端壳的系统相关行为（托盘、剪贴板监听、通知、相机、前台服务、MediaStore…）只编译、没在真机上跑过**——这是现在最大的未知，见 §6。
-- **验证**：`make check` 全绿；GitHub CI（linux / windows / android）全绿；核心所有包的测试同时以 Windows 程序在 Wine 下通过。
-- **本机分发**：`clipbridge-dist` 用户服务（`127.0.0.1:18780`，`Linger=yes`）经 `tailscale serve --set-path /clipbridge` 暴露；下载页 `https://tony-ai-pc-1.tail9f7f1f.ts.net/clipbridge/`。每个阶段性功能：提交 → 推送 → `scripts/release-local.sh`，设备约 1 秒内收到更新。
+- **现状：功能完整但未真机验收**。已按 [docs/plan-auto-broadcast.md](docs/plan-auto-broadcast.md) 把“复制即自动广播”做成默认；密码库 V1–V3（KDBX 4、备份/恢复、Android 设备同步、Android 自动填充）已合并，实验性；Android 后台自动发送（悬浮窗 + `READ_LOGS`）默认关闭。配对、文本同步、文件传输、离线补发、撤销、命名管道与命令行、自动更新与本机分发、两端界面都已实现，核心有测试。**两端壳的系统相关行为（托盘、剪贴板、通知、相机、前台服务、MediaStore、密码库、自动填充…）只编译、没在真机上跑过**——这是现在最大的未知，见 §6。
+- **验证**：`make check` 全绿（核心 `-race`、KeePassXC 互操作、541 个 C# 测试、443 个 Android JVM 测试、Wine 下 DLL）；GitHub CI（linux / windows / android）此前全绿。
+- **本机分发**：`clipbridge-dist` 用户服务（`127.0.0.1:18780`，`Linger=yes`）经 `tailscale serve --set-path /clipbridge` 暴露；下载页 `https://tony-ai-pc-1.tail9f7f1f.ts.net/clipbridge/`。**0.1.59 已发布**（Android + Windows，minVersionCode=0），远端下载哈希已复核；详见新快照。
 - **下一步**：真机验证清单（§6）→ 修问题 → 全部满意后配置 GitHub `nightly` 滚动发布（§7）。
 
 ## 1. 接手：5 分钟上手
@@ -18,10 +18,10 @@
 ```sh
 cd /home/tony/dev/Bark/night-clip
 export GOCACHE=$PWD/.gocache        # 沙箱里默认的 Go 构建缓存只读，必须设
-make check                          # 约 1 分钟：vet、Go 测试(-race)、C ABI、Wine 下 DLL、C# 测试、WPF 编译、CLI、AAR、APK
+make check                          # 约 3 分钟：vet、Go 测试(-race)、C ABI、Wine 下 DLL、C# 测试、WPF 编译、CLI、AAR、APK
 ```
 
-`make check` 依次：`vet` → `test`（核心，-race）→ `dll-smoke`（Linux .so + C）→ `dll-wine` → `test-interop`（C# xUnit，含 273+ 个壳逻辑测试）→ `build-windows-app` → `cli` → `aar` → `apk`（含 JVM 单测）。
+`make check` 依次：`vet` → `test`（核心，-race）→ `dll-smoke`（Linux .so + C）→ `dll-wine` → `test-interop`（C# xUnit，541 个测试）→ `build-windows-app` → `cli` → `aar` → `apk`（含 443 个 JVM 测试）。
 
 ### 工具链（本机，非仓库内容）
 
@@ -82,13 +82,20 @@ cd peer && WINEDEBUG=-all WINEPREFIX=$HOME/.wine-clipbridge WINEDLLOVERRIDES="ms
 | `cmd/cbcore-dll`、`mobile` | C ABI / gomobile 入口 | ABI 冒烟 + Wine |
 
 ### 3.2 Windows 壳（`windows/`）
-WPF + WinForms NotifyIcon。托盘、单实例、DPAPI 密钥与迁移、剪贴板监听与写入决策（序号守卫）、配对窗口（二维码用核心给的矩阵绘制）、设备/收件箱/传输/设置/诊断页面、文件收发、更新栏。逻辑在无 WPF 依赖的类里，273 个 xUnit 测试（总 299）。
+WPF + WinForms NotifyIcon。托盘、单实例、DPAPI 密钥与迁移、剪贴板监听与写入决策（序号守卫）、配对窗口（二维码用核心给的矩阵绘制）、设备/收件箱/传输/设置/诊断页面、文件收发、更新栏。逻辑在无 WPF 依赖的类里；另有密码库页面、编辑器、备份/导入导出与防截屏。541 个 xUnit 测试。
 
 ### 3.3 Android 壳（`android/`）
-Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与迁移、首次引导、扫码/粘贴/手动配对、四种发送入口、接收通知（复制/忽略）、实时模式前台服务与开机恢复、设备/收件箱/设置页、文件分享发送（fd 交接）与 MediaStore 保存。102 个新 JUnit 测试（总 108）。
+Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与迁移、首次引导、扫码/粘贴/手动配对、四种发送入口、接收通知（复制/忽略）、实时模式前台服务与开机恢复、设备/收件箱/设置页、文件分享发送（fd 交接）与 MediaStore 保存；另有密码库、快速解锁、设备同步、Android 自动填充、后台自动发送。443 个 JVM 单测。
 
 ### 3.4 构建、CI、发布
 `Makefile`（`check`、`dist-windows`、`dist-android`、`cbdist`…）；`scripts/release-local.sh`、`scripts/backup-keys.sh`、`scripts/install-dist-service.sh`；`.github/workflows/ci.yml` 三个任务全绿。
+
+### 3.5 密码库（2026-10-27 合并，实验性）
+- 核心：`core/vault`（KDBX 4，vendored gokeepasslib + 补丁）、`core/vsync`（整库密文同步）、`vault.*` 门面、schema v5、剪贴板 `vault_origin` 抑制；KeePassXC 2.7.10 双向互操作测试通过；`go test -race` 全绿。
+- Windows：密码库页面、编辑器、生成器、备份/恢复、KDBX/CSV 导入导出、TOTP、防截屏、锁定与剪贴板清除；无密码库同步界面。
+- Android：密码库页面、快速解锁（生物识别）、设备同步、自动填充服务；后台自动发送（悬浮窗 + `READ_LOGS`）默认关闭。
+- 自动填充只在 Android；Windows Auto-Type/浏览器扩展、通行密钥未做。
+- **全部自动化验证**：`make check` 通过；核心 `-race`、KeePassXC 互操作、541 个 C#、443 个 Android JVM 测试。**两端 UI、生物识别、防截屏、自动填充、真机同步均未在真机上运行**；发布按实验性处理，见 [docs/adr/007-password-vault.md](docs/adr/007-password-vault.md)。
 
 ## 4. 验证矩阵
 
@@ -105,6 +112,8 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 | **WPF 界面、托盘、剪贴板监听、DPAPI 真调用** | ❌ 未运行 | 需要真 Windows |
 | **Android 界面、通知、扫码、前台服务、Keystore、MediaStore、fd 交接** | ❌ 未运行 | 需要真机 |
 | **Android 后台自动发送（悬浮窗 + `READ_LOGS`）** | ⚠️ 部分 | JVM 单测与构建通过；Android 15 模拟器观察到 watcher 的 `logcat` 子进程启动；该模拟器 Go 核心 SIGSYS、系统 UI ANR，端到端未验证；真机待做 |
+| **密码库（核心/备份/恢复/导入导出/TOTP/同步/自动填充）** | ✅ 自动化；❌ 真机 | `make check`、KeePassXC 互操作、C# 541、Android 443；两端 UI 与真机行为未验证 |
+| **Windows/Android 密码库界面、快速解锁、防截屏、剪贴板清除** | ❌ 未运行 | 需要真机/真 Windows |
 | Tailscale 真网络下的拨号/重绑（P-A、P-E） | ❌ | 需要真设备 |
 | Android 前台服务在 OEM 上存活（P-C）、100 MiB 吞吐（P-D） | ❌ | 需要真机 |
 
@@ -130,11 +139,12 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 - **Android**：扫码配对（含无相机权限时退回）；通知“复制/忽略”；分享与磁贴；实时模式锁屏 30 分钟后仍连接或打开 App 后补齐（P-C）；接收文件保存到“下载”；Android 15 开机恢复前台服务。
 - **Android 后台自动发送（可选，需先授权）**：设置向导、悬浮窗权限、`READ_LOGS` 授权后重启、在别的应用复制后对端是否 ≤2 秒收到且不重复、键盘是否被短暂打断、关闭开关后 `logcat` 进程是否消失、撤销权限/重启/开机后的状态。详见 [plan-android-background-read.md](docs/plan-android-background-read.md) §5。
 - **两端**：配对→双向同步→断网恢复→大文件（含 DERP 路径吞吐 P-D）→撤销。
+- **密码库**：创建→解锁→锁定；快速解锁/生物识别；剪贴板 20 秒清除且不进历史；防截屏；备份→恢复；导出 KDBX 用 KeePassXC 打开；Android 自动填充在 Chrome 和常用应用；两台 Android 设备的同步（含批准/对方主密码）；Windows 密码库页面与 `SystemEvents` 锁屏锁定。**在没有真机结果前，密码库只能按实验性发布。**
 - 发现的问题请带上 `diagnostics.get` 输出（不含密钥）。
 
 ## 7. 下一步
 
-1. 真机验证与修复（§6）。
+1. 真机验证与修复（§6），密码库优先做“备份演练 + 锁定/剪贴板/自动填充/同步”这四项；没有结果前不要宣称密码库已验证。
 2. **GitHub `nightly` 滚动发布**（用户要求：全部功能完成后）：CI 在推送到 `main` 时构建 APK 与 Windows zip，更新名为 `nightly` 的预发布。需要把 **同一把** Android 签名密钥与 Ed25519 发布密钥作为仓库密钥提供（否则无法覆盖本机分发的安装、更新清单也无法验证）；版本号用提交数（`fetch-depth: 0`）。应用内更新源仍是本机分发地址。详见 update.md §9。**此项需要用户决定如何提供密钥。**
 3. Windows 安装程序（目前是解压即用的 zip；自包含 .NET 还是框架依赖待定）。
 4. 可选：Android 的 `SEND_TEXT` 外部 Intent；发布体积优化；日志落盘与脱敏的统一实现。
@@ -153,6 +163,7 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 - `FILE_FLAG_FIRST_PIPE_INSTANCE` 在真 Windows 上拒绝第二个实例的行为：依据微软文档，**未在真机验证**（Wine 不实现）。
 - 各厂商系统对后台服务、剪贴板访问、通知的具体限制。
 - Android 真机上：后台复制时 `ClipboardService` 是否确实写拒绝日志、`READ_LOGS` 是否能被 `pm grant`、1×1 悬浮窗能否取得焦点、键盘是否被影响——**全部未真机验证**。
+- 密码库真机上：KeePassXC/KeePassDX 互操作之外的界面行为、Android 生物识别与 Keystore 绑定、防截屏、剪贴板清除、自动填充在 Chrome/常用应用、两台设备的同步与合并——**全部未真机验证**。
 - `development-plan.md` 里的周期估算。
 
 ## 10. 目录

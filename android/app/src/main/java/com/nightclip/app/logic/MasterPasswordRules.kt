@@ -27,16 +27,24 @@ object KdfChoice {
 
 /** Rules of the create-vault and change-master-password forms. A weak password only warns; an empty or mismatching one blocks. */
 object MasterPasswordRules {
-    enum class Problem { EMPTY, MISMATCH }
+    /** The core refuses shorter master passwords (INVALID) for vault.create and vault.change_master. */
+    const val MIN_LENGTH = 8
+
+    enum class Problem { EMPTY, TOO_SHORT, MISMATCH }
+
+    /** Length in characters (code points), the way the core counts. */
+    fun lengthOk(password: String): Boolean = password.codePointCount(0, password.length) >= MIN_LENGTH
 
     fun problem(password: String, confirm: String): Problem? = when {
         password.isEmpty() -> Problem.EMPTY
+        !lengthOk(password) -> Problem.TOO_SHORT
         password != confirm -> Problem.MISMATCH
         else -> null
     }
 
     fun problemText(p: Problem?): String? = when (p) {
         Problem.EMPTY -> "请输入主密码"
+        Problem.TOO_SHORT -> "主密码至少需要 $MIN_LENGTH 个字符"
         Problem.MISMATCH -> "两次输入的主密码不一致"
         null -> null
     }

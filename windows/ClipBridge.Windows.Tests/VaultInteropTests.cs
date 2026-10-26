@@ -293,8 +293,8 @@ public class VaultInteropTests : IDisposable
         Assert.Contains(servers, ids);
         var shown = QuickFilters.Apply(_vault.List(new VaultQuery()), QuickFilter.All, ids, "", DateTimeOffset.UtcNow);
         Assert.Equal(c, Assert.Single(shown).Id);
-        Assert.Equal("INVALID", Code(() => _vault.GroupDelete(servers)));   // not empty: the shell explains this before calling
-        Assert.Equal("INVALID", Code(() => _vault.GroupDelete(work)));      // has a subgroup
+        Assert.Equal("VAULT_NOT_EMPTY", Code(() => _vault.GroupDelete(servers)));   // not empty: the shell explains this before calling
+        Assert.Equal("VAULT_NOT_EMPTY", Code(() => _vault.GroupDelete(work)));      // has a subgroup
 
         // Attachments by path: the core reads and writes the files itself and never overwrites.
         var src = Path.Combine(_dir, "note.txt");

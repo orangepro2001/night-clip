@@ -1,6 +1,6 @@
 # night-clip
 
-Windows ↔ Android clipboard sync and file transfer over a Tailscale tailnet.
+Windows ↔ Android clipboard sync, file transfer, and an experimental password vault over a Tailscale tailnet.
 One Go core, two thin shells. Design documents live in [`docs/`](docs)
 (start with `docs/README.md`, then `adr/005-go-core-and-tailnet-p2p.md`).
 **Using the app? See [`docs/user-guide.md`](docs/user-guide.md).** **Picking this up? Read [`HANDOFF.md`](HANDOFF.md) first** — current state, decisions, verification matrix and the detailed next steps. The persistence increment (the `store` data layer, now wired into the facade) has its own handoff: [`HANDOFF-STORE.md`](HANDOFF-STORE.md).
@@ -15,7 +15,8 @@ night-clip/
 │   ├── cmd/cbridge/         Windows CLI                                          [version only]
 │   ├── mobile/              gomobile surface → clipbridge-core.aar                [implemented; AAR builds]
 │   ├── store/               SQLite: schema v1, migrations, field encryption       [implemented; identity wired into facade]
-│   ├── peer/ pairing/ clip/ xfer/                                                 [doc.go only — Phase 0/1/2]
+│   ├── peer/ pairing/ clip/ xfer/                                                 [implemented; tests]
+│   ├── vault/ vsync/                                                              [KDBX 4 vault + device sync]
 │   └── test/abi/smoke.c     C ABI smoke test (run via `make dll-smoke`)
 ├── windows/ClipBridge.Windows/   WPF shell: P/Invoke + event pump + status window [compiles on Linux]
 ├── windows/ClipBridge.Windows.Tests/   xUnit tests of the C# interop layer against the real native core
@@ -49,6 +50,7 @@ tracked as Phase 0 PoC items in `docs/development-plan.md` §3.3:
 - WPF window actually rendering, tray, `WM_CLIPBOARDUPDATE`, DPAPI, firewall rule, Tailscale interface appearing late.
 - The core running inside an Android process under a real Tailscale VPN (P-A), foreground-service survival on OEM builds (P-C), Doze.
 - Android background auto send: whether `ClipboardService` logs the denial line, whether `adb shell pm grant … READ_LOGS` works on the phone, whether a 1×1 overlay gets focus, and how much it disturbs the keyboard. See [docs/plan-android-background-read.md](docs/plan-android-background-read.md).
+- The password vault: Windows and Android vault UI, biometric quick unlock, screen protection, clipboard auto-clear, Android AutofillService, and device-to-device sync all compile and have logic/interop tests, but none has run on a real device. Treat it as experimental; see [docs/adr/007-password-vault.md](docs/adr/007-password-vault.md).
 - Anything involving two machines; the in-process two-instance integration tests will cover protocol logic on Linux once `peer`/`store` exist.
 
 ## Build

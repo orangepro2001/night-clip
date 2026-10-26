@@ -141,12 +141,12 @@ class VaultSyncViewModel(application: Application) : VaultBaseViewModel(applicat
         }
     }
 
-    fun approve(deviceId: String) {
+    fun approve(deviceId: String, sha256: String) {
         if (_busy.value) return
         viewModelScope.launch {
             _busy.value = true
             try {
-                when (val r = VaultApi.syncResolve(deviceId, true, null)) {
+                when (val r = VaultApi.syncResolve(deviceId, true, null, sha256)) {
                     is ApiResult.Ok -> {
                         _dialog.value = null
                         say("已批准并合并")
