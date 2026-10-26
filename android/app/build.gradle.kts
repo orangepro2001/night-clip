@@ -1,7 +1,26 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+// Release identity comes from scripts/version.sh through the environment (Makefile target
+// dist-android). A plain build has code 0, which keeps self-update off. The update server URL
+// is deliberately not in the repository: it comes from the git-ignored release.local.env.
+val cbVersionCode = (System.getenv("CB_VERSION_CODE") ?: "0").toLong()
+val cbVersionName = System.getenv("CB_VERSION_NAME") ?: "0.0.0-dev"
+val cbUpdateUrl = System.getenv("CB_UPDATE_URL") ?: ""
+
+// Release builds are signed with a key kept outside the repository: storeFile, storePassword,
+// keyAlias, keyPassword in $CLIPBRIDGE_SIGNING or ~/.config/clipbridge/android-signing.properties.
+// Without it the release APK stays unsigned instead of silently using the debug key. Every
+// release must use the same key, otherwise Android refuses to install it over the old one.
+val signingProps = Properties().apply {
+    val f = file(System.getenv("CLIPBRIDGE_SIGNING")
+        ?: "${System.getProperty("user.home")}/.config/clipbridge/android-signing.properties")
+    if (f.isFile) f.inputStream().use { load(it) }
 }
 
 android {
@@ -12,14 +31,29 @@ android {
         applicationId = "com.nightclip.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.0.1"
+        versionCode = maxOf(cbVersionCode, 1L).toInt()
+        versionName = cbVersionName
+        buildConfigField("long", "CB_VERSION_CODE", "${cbVersionCode}L")
+        buildConfigField("String", "CB_VERSION_NAME", "\"$cbVersionName\"")
+        buildConfigField("String", "CB_UPDATE_URL", "\"$cbUpdateUrl\"")
         // The Go core ships only these ABIs (see Makefile `aar`).
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
+    signingConfigs {
+        if (signingProps.containsKey("storeFile")) {
+            create("release") {
+                storeFile = file(signingProps.getProperty("storeFile"))
+                storePassword = signingProps.getProperty("storePassword")
+                keyAlias = signingProps.getProperty("keyAlias")
+                keyPassword = signingProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -30,7 +64,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 }
 
 dependencies {
@@ -44,4 +81,8 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    testImplementation("junit:junit:4.13.2")
+    // Real org.json: the stubs in android.jar throw "not mocked" in JVM unit tests.
+    testImplementation("org.json:json:20240303")
 }

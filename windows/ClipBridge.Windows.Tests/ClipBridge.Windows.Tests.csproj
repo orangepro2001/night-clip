@@ -14,6 +14,8 @@
   <ItemGroup>
     <Compile Include="..\ClipBridge.Windows\Interop\CoreInterop.cs" Link="Interop\CoreInterop.cs" />
     <Compile Include="..\ClipBridge.Windows\Interop\DevKey.cs" Link="Interop\DevKey.cs" />
+    <Compile Include="..\ClipBridge.Windows\Update\UpdateApplier.cs" Link="Update\UpdateApplier.cs" />
+    <Compile Include="..\ClipBridge.Windows\Update\UpdateModel.cs" Link="Update\UpdateModel.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -3,6 +3,7 @@ package com.nightclip.app
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -30,6 +31,7 @@ class SyncForegroundService : Service() {
             while (running) {
                 val ev = CoreHost.nextEvent(1000) ?: continue
                 Log.d(TAG, "event type=${ev.optString("type")}")
+                if (ev.optString("type") == "update.ready") notifyUpdateReady(ev.optString("version_name"))
             }
         }, "clipbridge-events").also { it.start() }
         return START_STICKY
@@ -40,6 +42,28 @@ class SyncForegroundService : Service() {
         CoreHost.shutdown() // wakes the blocked nextEvent
         worker?.join(3000)
         super.onDestroy()
+    }
+
+    /** The core downloaded and verified an update; installing it needs the user's tap. */
+    private fun notifyUpdateReady(versionName: String) {
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(
+            NotificationChannel(UPDATE_CHANNEL_ID, "Updates", NotificationManager.IMPORTANCE_DEFAULT)
+        )
+        val open = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        nm.notify(
+            UPDATE_NOTIFICATION_ID,
+            Notification.Builder(this, UPDATE_CHANNEL_ID)
+                .setContentTitle("ClipBridge update ready")
+                .setContentText("Version $versionName is downloaded. Tap to install.")
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build(),
+        )
     }
 
     private fun startInForeground() {
@@ -64,5 +88,7 @@ class SyncForegroundService : Service() {
         const val TAG = "ClipBridge"
         const val CHANNEL_ID = "connection"
         const val NOTIFICATION_ID = 1
+        const val UPDATE_CHANNEL_ID = "updates"
+        const val UPDATE_NOTIFICATION_ID = 2
     }
 }

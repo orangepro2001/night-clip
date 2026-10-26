@@ -53,6 +53,9 @@
 | `KEY_INVALID` | `db_key_b64` 与已有数据库不匹配（解不开设备私钥） |
 | `NOT_INITIALIZED` | 核心未 `Init` 成功，或已 `Shutdown` |
 | `METHOD_NOT_FOUND` | 未知方法 |
+| `UPDATE_DISABLED` | 自更新未启用（开发构建或没有分发地址） |
+| `UPDATE_FAILED` | 访问分发服务器失败（网络/HTTP），可重试 |
+| `UPDATE_REJECTED` | 更新清单格式错误或签名不受信任 |
 | `INTERNAL` | 核心内部错误（已 recover） |
 
 ## 2. 事件信封
@@ -275,11 +278,16 @@ NextEvent(timeoutMs: int) -> string                  // 事件 JSON；超时返�
   "device_name": "Tony-PC",
   "platform": "windows",
   "listen": true,
-  "port": 47821
+  "port": 47821,
+  "app_version_code": 12,
+  "app_version_name": "0.1.12",
+  "update_url": "https://…/clipbridge"
 }
 ```
 
-Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传入，核心不落盘。
+Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传入，核心不落盘。`data_dir` 必须是绝对路径，`db_key_b64` 解码后必须正好 32 字节。
+
+`app_version_code`（安装包的 versionCode，单调递增）与 `update_url`（构建期写入的分发地址，https；仅回环地址允许 http）用于自更新，见 [update.md](update.md)。`app_version_code` 为 0 或未设置（开发构建）、或没有 `update_url`，则自更新关闭。
 
 ### 7.3 方法
 
@@ -301,6 +309,10 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | `file.offer` | `to`, `path` 或 `fd`+`name`+`size` | 创建 offer（`fd` 仅 Android） |
 | `file.accept` / `file.reject` / `file.cancel` | `transfer_id`, `save_dir?` | |
 | `transfers.list` | — | 传输状态与进度 |
+| `update.status` | — | 自更新状态（见 [update.md](update.md)） |
+| `update.check` | — | 立即检查；若开启自动下载则随后开始下载 |
+| `update.download` | — | 开始下载已发现的新版本（幂等） |
+| `update.config` | `auto?`, `url?` | 读取/修改自动下载开关与分发地址（`url:""` 恢复默认） |
 | `diagnostics.get` | — | 版本、游标、最近错误（脱敏） |
 | `shutdown` | — | 等同 `cb_shutdown` |
 
@@ -317,6 +329,10 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 {"type":"pair.request","pair_id":"…","name":"Pixel","platform":"android","sas":"482913"}
 {"type":"pair.result","pair_id":"…","state":"accepted|rejected|expired"}
 {"type":"core.warning","code":"NO_TAILNET"}
+{"type":"update.available","version_code":12,"version_name":"0.1.12","mandatory":false,"notes":"…"}
+{"type":"update.progress","received":1048576,"total":15000000}
+{"type":"update.ready","version_code":12,"version_name":"0.1.12","path":"…","mandatory":false}
+{"type":"update.error","code":"HASH_MISMATCH","message":"…"}
 ```
 
 敏感事件的 `clip.received` 对 UI 层的行为约束由壳实现：通知不显示 `text`。

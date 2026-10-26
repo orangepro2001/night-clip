@@ -10,6 +10,10 @@
 #   make apk         debug APK (needs JDK 17, Android SDK, make aar first)
 #   make cli         cbridge.exe (Windows) and cbridge (host)
 #   make aar         Android AAR (needs gomobile + Android NDK, see below)
+#   make cbdist      the release publisher/server (core/dist/host/cbdist)
+#   make dist-windows  signed-manifest-ready zip of the WPF app (core/dist/clipbridge-windows.zip)
+#   make dist-android  release APK signed with the key in ~/.config/clipbridge
+#   scripts/release-local.sh   build + publish to the local release directory (see docs/update.md)
 #   make clean
 
 GO        ?= go
@@ -25,7 +29,14 @@ export ANDROID_NDK_HOME ?= $(lastword $(sort $(wildcard $(ANDROID_HOME)/ndk/*)))
 export JAVA_HOME        ?= /usr/lib/jvm/java-17-openjdk-amd64
 export PATH := $(PATH):$(shell $(GO) env GOPATH)/bin
 
-.PHONY: all test vet dll dll-smoke dll-wine test-interop build-windows-app cli aar apk check clean
+# Release identity (scripts/version.sh) and the local-only update URL (git-ignored file).
+-include release.local.env
+CB_VERSION_VARS := $(shell scripts/version.sh)
+export CB_VERSION_CODE := $(patsubst CB_VERSION_CODE=%,%,$(filter CB_VERSION_CODE=%,$(CB_VERSION_VARS)))
+export CB_VERSION_NAME := $(patsubst CB_VERSION_NAME=%,%,$(filter CB_VERSION_NAME=%,$(CB_VERSION_VARS)))
+export CB_UPDATE_URL
+
+.PHONY: all test vet dll dll-smoke dll-wine test-interop build-windows-app cli aar apk cbdist dist-windows dist-android check clean
 
 all: test dll cli
 
@@ -80,7 +91,27 @@ aar:
 		-javapkg $(JAVAPKG) -o ../android/app/libs/clipbridge-core.aar ./mobile
 
 apk: aar
-	cd android && ./gradlew --no-daemon :app:assembleDebug
+	cd android && ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+
+cbdist:
+	mkdir -p $(DIST)/host
+	cd core && $(GO) build -trimpath -ldflags="-s -w" -o dist/host/cbdist ./cmd/cbdist
+
+# Windows release package: the published WPF app (framework-dependent, win-x64) plus
+# clipbridge_core.dll, zipped flat so the updater can copy it over the install folder.
+dist-windows: dll
+	rm -rf $(DIST)/publish-win
+	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) publish windows/ClipBridge.Windows -c Release -r win-x64 \
+		--self-contained false -p:EnableWindowsTargeting=true -p:DebugType=None -p:DebugSymbols=false \
+		-p:CbVersionCode=$(CB_VERSION_CODE) -p:CbVersionName=$(CB_VERSION_NAME) -p:CbUpdateUrl=$(CB_UPDATE_URL) \
+		-o $(DIST)/publish-win
+	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/clipbridge-windows.zip ClipBridge.exe clipbridge_core.dll
+
+# Android release APK (versionCode/versionName/update URL stamped from the environment above).
+dist-android: aar
+	cd android && ./gradlew --no-daemon :app:assembleRelease
+	@test -f android/app/build/outputs/apk/release/app-release.apk || { \
+		echo "release APK is unsigned: create ~/.config/clipbridge/android-signing.properties (docs/update.md)"; exit 1; }
 
 # Everything that can be verified on a Linux machine without a device.
 check: vet test dll-smoke dll-wine test-interop build-windows-app cli aar apk

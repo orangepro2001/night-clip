@@ -25,6 +25,9 @@ object CoreHost {
             .put("device_name", deviceName)
             .put("platform", "android")
             .put("listen", false) // Android only dials out (docs/architecture.md §4.1)
+            .put("app_version_code", BuildConfig.CB_VERSION_CODE) // 0 in dev builds: updates off
+            .put("app_version_name", BuildConfig.CB_VERSION_NAME)
+            .put("update_url", BuildConfig.CB_UPDATE_URL)
         // gomobile turns Go's NewCore() into the Java constructor Core().
         return Core().also {
             it.init(config.toString())

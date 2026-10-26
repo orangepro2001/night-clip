@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Go core downloads packages to <filesDir>/clipbridge/updates (CoreHost passes
+     <filesDir>/clipbridge as data_dir). Only that folder is shareable. -->
+<paths>
+    <files-path name="updates" path="clipbridge/updates/" />
+</paths>
