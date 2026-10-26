@@ -4,6 +4,10 @@
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
+#include <direct.h>
+
+/* Test-only key: base64 of the 32 bytes 0x00..0x1f. Never reuse in a shell. */
+#define TEST_KEY_B64 "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
 
 typedef int   (*init_fn)(const char *, char **);
 typedef char *(*call_fn)(const char *, const char *);
@@ -26,7 +30,31 @@ int main(int argc, char **argv) {
     CHECK(cb_init && cb_call && cb_next_event && cb_shutdown && cb_free, "exports present");
 
     char *err = NULL;
-    CHECK(cb_init("{\"device_name\":\"wine\",\"platform\":\"windows\",\"listen\":true}", &err) == 0, "cb_init");
+
+    /* Fresh data dir under %TEMP%; backslashes are doubled for JSON. */
+    char tmp[MAX_PATH], dir[MAX_PATH + 40], jsonDir[2 * MAX_PATH + 80];
+    DWORD n = GetTempPathA(sizeof tmp, tmp);
+    CHECK(n > 0 && n < sizeof tmp, "GetTempPath");
+    snprintf(dir, sizeof dir, "%sclipbridge-smoke-%lu", tmp, (unsigned long)GetCurrentProcessId());
+    CHECK(_mkdir(dir) == 0 || GetFileAttributesA(dir) != INVALID_FILE_ATTRIBUTES, "create data dir");
+    size_t j = 0;
+    for (size_t i = 0; dir[i] && j + 2 < sizeof jsonDir; i++) {
+        if (dir[i] == '\\') jsonDir[j++] = '\\';
+        jsonDir[j++] = dir[i];
+    }
+    jsonDir[j] = 0;
+    char config[1536];
+    snprintf(config, sizeof config,
+             "{\"data_dir\":\"%s\",\"db_key_b64\":\"" TEST_KEY_B64 "\","
+             "\"device_name\":\"wine\",\"platform\":\"windows\",\"listen\":true}", jsonDir);
+
+    CHECK(cb_init("{\"data_dir\":\"relative\",\"db_key_b64\":\"" TEST_KEY_B64 "\","
+                  "\"device_name\":\"wine\",\"platform\":\"windows\"}", &err) != 0 && err != NULL,
+          "relative data_dir must be rejected");
+    cb_free(err);
+    err = NULL;
+
+    CHECK(cb_init(config, &err) == 0, "cb_init");
 
     char *st = cb_call("status", "{}");
     CHECK(st && strstr(st, "\"ok\":true") && strstr(st, "dev_"), "status");
@@ -48,6 +76,19 @@ int main(int argc, char **argv) {
     DWORD t0 = GetTickCount();
     CHECK(cb_next_event(5000) == NULL, "NextEvent after shutdown");
     CHECK(GetTickCount() - t0 < 1000, "NextEvent woke promptly after shutdown");
+
+    char *after = cb_call("status", "{}");
+    CHECK(after && strstr(after, "NOT_INITIALIZED"), "status after shutdown must fail");
+    cb_free(after);
+
+    /* Best effort: the DLL has closed the database, so the files can go. */
+    char file[MAX_PATH + 80];
+    const char *leftovers[] = {"clipbridge.db", "clipbridge.db-wal", "clipbridge.db-shm"};
+    for (size_t i = 0; i < sizeof leftovers / sizeof leftovers[0]; i++) {
+        snprintf(file, sizeof file, "%s\\%s", dir, leftovers[i]);
+        DeleteFileA(file);
+    }
+    RemoveDirectoryA(dir);
 
     printf("OK\n");
     return 0;

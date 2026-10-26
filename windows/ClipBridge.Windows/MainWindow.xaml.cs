@@ -27,20 +27,22 @@ public partial class MainWindow : Window
             var dataDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ClipBridge");
             Directory.CreateDirectory(dataDir);
+            var dbKey = DevKey.LoadOrCreate(dataDir); // TODO(WP9: DPAPI): temporary, unencrypted key file
 
             _core.EventReceived += ev => Dispatcher.BeginInvoke(() => Append("event  " + ev));
             _core.Start(new
             {
                 data_dir = dataDir,
+                db_key_b64 = dbKey,
                 device_name = Environment.MachineName,
                 platform = "windows",
                 listen = true,
                 port = 47821,
-                // TODO(phase0): db_key_b64 comes from a DPAPI-protected secret.
             });
             ShowStatus();
         }
-        catch (Exception ex) when (ex is DllNotFoundException or BadImageFormatException or CoreException)
+        catch (Exception ex) when (ex is DllNotFoundException or BadImageFormatException or CoreException
+                                    or DevKeyException or IOException or UnauthorizedAccessException)
         {
             StatusLine.Text = "Core failed to start";
             Append(ex.Message);

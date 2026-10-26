@@ -21,10 +21,10 @@ object CoreHost {
         val dataDir = File(context.filesDir, "clipbridge").apply { mkdirs() }
         val config = JSONObject()
             .put("data_dir", dataDir.absolutePath)
+            .put("db_key_b64", DevKey.loadOrCreate(dataDir)) // TODO(WP10: Keystore): temporary key file
             .put("device_name", deviceName)
             .put("platform", "android")
             .put("listen", false) // Android only dials out (docs/architecture.md §4.1)
-            // TODO(phase0): db_key_b64 comes from an Android Keystore-wrapped secret.
         // gomobile turns Go's NewCore() into the Java constructor Core().
         return Core().also {
             it.init(config.toString())

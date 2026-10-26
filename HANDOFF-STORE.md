@@ -1,49 +1,54 @@
-# store 数据层交接（S1 完成）
+# store 数据层交接（S1–S5 完成）
 
-> 写于 2026-10-26。**范围被限定在 S1**：门面没有接线，产品行为与本次改动前完全一致。
+> 写于 2026-10-26，同日更新。最初范围限定在 S1；随后用户指示继续推进（按推荐方案 A 保留已写代码），又完成了 S3（CRUD 测试）、S4（门面接线）、S5（验收与文档）。
 > 项目级交接仍是 [HANDOFF.md](HANDOFF.md)；设计文档在 [`../docs`](../docs)（`architecture.md` §5、`development-plan.md` §3.2）。
 
 ## 0. 一页摘要
 
-- 新增 `core/store` 包：SQLite schema v1（10 张表 + 4 个索引）、幂等迁移、AES-256-GCM 字段加密、以及一组数据层 API。
-- 新增依赖 `modernc.org/sqlite v1.61.0`（纯 Go，无 cgo；`go.mod` 里已是直接依赖）。
-- 新增两个稳定错误码 `DB_UNAVAILABLE`、`KEY_INVALID`（只在 `proto/errors.go`，`api-spec.md` **尚未**同步）。
-- **没有接线**：`facade.Init` 仍然调用 `identity.Generate`，`device_id` 每次启动仍会变；`go list -deps` 确认 DLL/AAR 的依赖图里没有 modernc，**二进制体积与行为都没变**。
-- 验证结果：`go vet ./...`、`go test -race ./...`（14 个 store 测试）、`make dll-smoke` 全绿；`store` 在 `windows/amd64`、`android/arm64` 下交叉编译通过。
-- 未跑：`make dll-wine`、`make test-interop`、`make aar`、`make apk`、完整 `make check`。原因：本增量没有改这些路径，也没有任何二进制链接 store（见上一条）。
-- 没有 git 仓库、没有提交。
+- `core/store`：SQLite schema v1（10 张表 + 4 个索引）、幂等迁移、AES-256-GCM 字段加密、身份落盘、peers/links/outbox/inbox/settings/clip_state/revoked_fps 的 CRUD。依赖 `modernc.org/sqlite v1.61.0`（纯 Go，无 cgo）。
+- **已接线**：`facade.Init` 解析 `data_dir`（必须绝对路径）与 `db_key_b64`（标准 base64，带/不带填充皆可，必须解码为 32 字节），`store.Open` 后 `LoadOrCreateIdentity`。同一 `data_dir` + 同一 key，`device_id` 与 `fingerprint` 重启不变。
+- 错误码：`INVALID`（配置问题）、`DB_UNAVAILABLE`（库打不开/迁移失败/密文损坏）、`KEY_INVALID`（换了 key）；已写入 `api-spec.md` §1.4。
+- 失败路径：`Init` 任何一步失败都会关库、不发 `core.started`，且可以用正确配置重试。`Shutdown` 关库（幂等）；之后所有方法返回 `NOT_INITIALIZED`，再 `Init` 返回 `INVALID`。
+- 壳：Windows `Interop/DevKey.cs`、Android `DevKey.kt` 各生成一个随机 32 字节 key，明文 base64 存在数据目录的 `devkey.b64`（用户已接受这一临时方案；`TODO(WP9: DPAPI)` / `TODO(WP10: Keystore)`）。key 文件损坏会报错，**不会**重建。
+- 验证（2026-10-26）：`make check` 全绿——`vet`、`go test -race`（store 40、facade 15 顶层/25 含子用例）、`dll-smoke`、`dll-wine`、`test-interop`（2 个）、`build-windows-app`、`cli`、`aar`、`apk`。
+- 体积：AAR 7.6 → 15.6 MB；release APK 15 → 28.9 MB；debug APK 50.3 MB（均含 arm64-v8a + x86_64）。若要压小，发布时只打 arm64（见 §6 第 12 条）。
+- 提交：仓库 `git@github.com:orangepro2001/night-clip.git`，分支 `main`。
 
 ## 1. 变更清单
 
-| 文件 | 状态 | 内容 |
-| --- | --- | --- |
-| `core/store/db.go` | 新增 | `Open`/`Close`/`Path`、PRAGMA、单连接池、`seal`/`unseal`/`rowAAD`、`dbErr` |
-| `core/store/migrate.go` | 新增 | `schema_version` 表、`migrations` 切片、事务化迁移、版本过新检测 |
-| `core/store/store_test.go` | 新增 | 6 个测试：建表/重开、坏 key、版本过新、seal 往返与篡改、并发访问、PRAGMA 生效 |
-| `core/store/identity.go` | 新增（**超出 S1**） | `LoadOrCreateIdentity`，私钥封装、平台/名称校验、损坏检测 |
-| `core/store/identity_test.go` | 新增（**超出 S1**） | 8 个测试：重开不变、私钥不以明文落盘、错 key、平台不符、改名、证书损坏、密钥截断、证书与密钥不匹配 |
-| `core/store/peers.go` `links.go` `outbox.go` `inbox.go` `settings.go` `clipstate.go` `revoked.go` | 新增（**超出 S1**） | 数据层 CRUD，**没有专门单测**，也没有生产代码调用 |
-| `core/store/doc.go` | 删除 | 包注释并入 `db.go` |
-| `core/proto/errors.go` | 修改 | 追加 `CodeDBUnavailable`、`CodeKeyInvalid` |
-| `core/go.mod` / `go.sum` | 修改 | `modernc.org/sqlite v1.61.0` 直接依赖；`go.sum` 54 行 |
-| `.gitignore` | 修改 | 加 `.gocache/`（本机沙箱的 Go 构建缓存，见 §6） |
+| 文件 | 内容 |
+| --- | --- |
+| `core/store/db.go` | `Open`/`Close`/`Path`、PRAGMA、单连接池、`seal`/`unseal`/`rowAAD`、`dbErr` |
+| `core/store/migrate.go` | `schema_version` 表、`migrations` 切片、事务化迁移、版本过新检测 |
+| `core/store/identity.go` | `LoadOrCreateIdentity`，私钥封装、平台/名称校验、损坏检测 |
+| `core/store/{peers,links,outbox,inbox,settings,clipstate,revoked}.go` | 数据层 CRUD |
+| `core/store/{store,identity,crud}_test.go` | 6 + 8 + 26 = 40 个测试 |
+| `core/facade/facade.go` | `Init` 接 store；`parseDBKey`；`Shutdown` 关库；`dispatch` 在关闭后一律 `NOT_INITIALIZED` |
+| `core/facade/facade_test.go` | 配置校验表驱动、重启身份稳定、错 key、平台不符、失败可重试、Shutdown 语义 |
+| `core/test/abi/smoke.c` / `smoke_win.c` | 临时 `data_dir` + 测试 key；被拒配置不影响后续 init；关闭后 `NOT_INITIALIZED`；清理临时目录 |
+| `windows/.../Interop/DevKey.cs`、`MainWindow.xaml.cs`、`CoreInteropTests.cs`、测试 csproj | 临时 key 文件；窗口传入 `db_key_b64`；互操作测试用临时目录（并测 `DevKey`） |
+| `android/.../DevKey.kt`、`CoreHost.kt` | 同上，key 放 `filesDir/clipbridge/devkey.b64` |
+| `core/proto/errors.go` | `CodeDBUnavailable`、`CodeKeyInvalid` |
+| `docs/api-spec.md`、`docs/development-plan.md`（仓库外） | 错误码表补齐；`store` 勾选 |
 
-`go.mod` 新增的间接依赖：`modernc.org/libc v1.79.0`、`mathutil`、`memory`、`github.com/ncruces/go-strftime`、`dustin/go-humanize`、`mattn/go-isatty`、`remyoudompheng/bigfft`、`google/uuid`。
+另外：`MarkOutboxSent` 现在对已是 `sent` 的行也累加 `attempts`（重连后重发要计数），`acked`/`expired` 不会退回 `sent`。
 
 ## 2. 已验证 / 未验证
 
 | 项 | 状态 | 证据 |
 | --- | --- | --- |
-| `store` 单测 14 个 | ✅ | `go test ./store/`（约 0.04 s）；`-race` 约 1.5 s |
-| 全仓库 Go 单测 + race | ✅ | `go test -race ./...`（facade / identity / proto / store） |
-| go vet / gofmt | ✅ | `make vet` |
-| C ABI 冒烟（Linux `.so`） | ✅ | `make dll-smoke`：`status`/`core.started`/超时/未知方法/重复 init/关闭唤醒，全过 |
-| `store` 交叉编译 | ✅ | `CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./store`；`GOOS=android GOARCH=arm64` 同样通过 |
-| DLL 链接 modernc | ❌ 不需要 | `go list -deps ./cmd/cbcore-dll \| grep -c modernc` → 0 |
-| AAR 链接 modernc | ❌ 不需要 | `go list -deps ./mobile \| grep -c modernc` → 0 |
-| Wine / C# interop / AAR / APK / `make check` | ⏭ 未跑 | 本增量未改这些路径；跑一遍是 S5 的事 |
-| 门面接线 | ❌ 未做 | `facade.Init` 仍是 `identity.Generate` |
-| 真实设备 | ❌ | 与 HANDOFF §6 相同，无变化 |
+| `store` 单测 40 个 | ✅ | `go test -race ./store/`；CRUD 测试做过变异检查（还原 `MarkOutboxSent` 修复后 `TestOutboxLifecycle` 失败） |
+| `facade` 单测 15 个顶层 | ✅ | 含身份重启稳定、错 key → `KEY_INVALID`、失败无 `core.started`、Shutdown 语义 |
+| 全仓库 vet / gofmt / race | ✅ | `make check` |
+| C ABI（Linux `.so`） | ✅ | `make dll-smoke` |
+| Windows DLL + SQLite 在 Wine 下 | ✅ | `make dll-wine` |
+| C# 互操作（临时目录 + `DevKey`） | ✅ | `make test-interop`（2 个测试，对 Linux `.so`） |
+| WPF 应用编译 | ✅ | `make build-windows-app` |
+| AAR / debug APK / release APK | ✅ | `make aar apk`；release 另跑 `assembleRelease` |
+| DLL / AAR 依赖图含 modernc | ✅（预期） | `go list -deps ./cmd/cbcore-dll`、`./mobile` 均含 modernc |
+| 真实 Windows 上 WPF + 真实 DLL + `devkey.b64` | ❌ | 需要 Windows 或 CI |
+| Android 真机上 `Core.init` + `devkey.b64` | ❌ | 需要真机 |
+| 多进程同时打开同一 `data_dir` | ❌ | 无跨进程锁，见 §6 第 6 条 |
 
 ## 3. 设计要点（以及为什么）
 
@@ -89,60 +94,7 @@
 
 `store` **不做策略**：不分配 sequence、不重试、不扫 TTL、不判断该不该应用事件、不选拨号方向。它只负责「存进去、取出来、加密、去重入口」。这些规则属于 `peer` / `clip`。
 
-## 4. 超出 S1 的代码（必须先看这一节）
-
-收到「只写到 S1 就结束」时，`identity.go` 和 7 个 CRUD 文件**已经写出来了**。按你的指示我没有继续往下做（门面、调用点、文档都没动），但这些代码留在了树里。它们的状态：
-
-- `identity.go` + `identity_test.go`：**有 8 个测试，全绿**，实际上等于 S2 已做完。
-- `peers.go` / `links.go` / `outbox.go` / `inbox.go` / `settings.go` / `clipstate.go` / `revoked.go`：编译通过、`go vet` 干净，但**没有专门单测**，也**没有任何生产代码调用**。`TestConcurrentSettingsAccess` 会顺带碰到 `settings` 表。
-- 它们不改变任何现有行为：`facade` 没有 import `store`，DLL/AAR 依赖图里没有它们。
-
-两条路，选一条：
-
-**A. 保留（推荐）**
-1. 先补 `store/crud_test.go`，覆盖：peers 的 put/get/list/find-by-fp/delete 级联；links 的默认值与 upsert；outbox 插入→列表（信封原文一致）→`(peer,seq)` 唯一冲突→sent/acked→过期清扫；inbox 的 `inserted=false` 去重、按 `(peer,seq)` 的冲突报错、状态流转、过期；settings 的 get/set/delete；clip_state 往返；revoked_fps 幂等。
-2. 再进 S4（门面接线），顺序见 §5。
-
-**B. 删除，回到纯 S1**
-```sh
-rm core/store/identity.go core/store/identity_test.go \
-   core/store/peers.go core/store/links.go core/store/outbox.go \
-   core/store/inbox.go core/store/settings.go core/store/clipstate.go core/store/revoked.go
-```
-`TestConcurrentSettingsAccess` 要改成直接 `INSERT INTO settings` 的并发测试；API 设计见 §5.3，可以照着重写。
-
-## 5. 下一步（按依赖顺序）
-
-### 5.1 S2：身份落盘（代码已存在，见 §4）
-只剩「确认保留 + 在 S4 里接线」。注意 `LoadOrCreateIdentity(name, platform)` 的语义：平台不符是 `INVALID`（不是静默改名）；名称变了只更新 `name` 列；`device_id` 永远从证书 SPKI 派生并与库内比对。
-
-### 5.2 S3：CRUD 单测
-见 §4.A 的清单。补完后 `store` 才算「有测试的数据层」。
-
-### 5.3 S4：门面接线 + 所有调用点
-这是「让 `device_id` 真正稳定」的那一步，改动点：
-
-1. `core/facade/facade.go`
-   - `Init`：校验 `data_dir` 必须是**绝对路径**；`base64.StdEncoding`（可接受无填充）解码 `db_key_b64`，必须 32 字节；`store.Open(data_dir, key)`；`store.LoadOrCreateIdentity(cfg.DeviceName, cfg.Platform)`；把 `db` 存进 `Core`。
-   - 任何一步失败：关闭已打开的库，`started` 保持 false，**不发** `core.started`。
-   - `Shutdown`：`close(done)` 之后 `db.Close()`（幂等）。
-   - `dispatch`：`closed` 之后一律 `NOT_INITIALIZED`。
-   - `status` / `identity.get` 字段不变。
-2. `core/facade/facade_test.go`：配置改为 `t.TempDir()` + 随机 32 字节；新增「同目录同 key 的两个 `New()` 得到同一 `device_id`」「缺 key / 短 key / 坏 base64 / 相对路径各自的错误码」「失败时没有 `core.started`」「Shutdown 后 `status` → `NOT_INITIALIZED`」。
-3. `core/test/abi/smoke.c`：`mkdtemp("/tmp/clipbridge-smoke-XXXXXX")`，config 里加 `data_dir` 和一个固定的测试 key（base64 常量即可，仅测试）。
-4. `core/test/abi/smoke_win.c`：`GetTempPathA` + `_mkdir`，同样的 key；其余断言不变。
-5. `windows/ClipBridge.Windows.Tests/CoreInteropTests.cs`：`Path.Combine(Path.GetTempPath(), Guid…)` + `RandomNumberGenerator.GetBytes(32)` → base64。
-6. `windows/ClipBridge.Windows/MainWindow.xaml.cs`：临时 key 文件 `%LOCALAPPDATA%\ClipBridge\devkey.b64`（首次生成），`TODO(WP9: DPAPI)`。
-7. `android/.../CoreHost.kt`：`filesDir/clipbridge/devkey.b64`（应用私有目录），`TODO(WP10: Keystore)`。
-
-> 第 6、7 条是临时方案：key 未加密，只靠 OS 文件 ACL / 应用沙箱。如果你不接受，就只改测试，让壳在 `Init` 处明确失败，并在 HANDOFF §5 记一条。
-
-### 5.4 S5：验收与文档
-- `make check` 全绿（注意 §6 的 GOCACHE / 工具缓存问题）。
-- 记录体积变化：`core/dist/windows-amd64/clipbridge_core.dll`、`android/app/libs/clipbridge-core.aar`、APK（sqlite 会让它们变大，这是预期）。
-- 文档：`../docs/api-spec.md` §1.4 加两个错误码；`../docs/development-plan.md` §3.2 勾 `store`；[HANDOFF.md](HANDOFF.md) 的 §1/§3.2/§4/§5(1)/§10/§11；[README.md](README.md) 第 17、39 行。
-
-### 5.5 已实现的 API（删除后照此重写）
+## 4. 已实现的 API
 
 ```go
 // db.go
@@ -198,7 +150,7 @@ func (db *DB) AddRevokedFP(certFP string, at int64) error
 func (db *DB) IsRevoked(certFP string) (bool, error)
 ```
 
-## 6. 构建与环境（本机特有，换机器可忽略）
+## 5. 构建与环境（本机特有，换机器可忽略）
 
 - **Go 构建缓存是只读的**：沙箱下 `~/.cache/go-build` 不能写，任何编译都会报 `read-only file system`。本机做法：
   ```sh
@@ -210,7 +162,7 @@ func (db *DB) IsRevoked(certFP string) (bool, error)
 - 不需要 `sqlite3` CLI：驱动是进程内的。
 - `modernc.org/sqlite v1.61.0` 要求 Go ≥ 1.26.0，本机 1.27.3。
 
-## 7. 坑与已知限制（按踩坑概率排序）
+## 6. 坑与已知限制（按踩坑概率排序）
 
 1. **`offset` 是关键字**：`transfers."offset"` 必须带引号，查询也是。
 2. **单连接池**：`rows` 不关就再查询会死锁；`SetMaxOpenConns(1)` 是刻意的。
@@ -223,12 +175,15 @@ func (db *DB) IsRevoked(certFP string) (bool, error)
 9. **`inbox` 的 `(peer, seq)` 唯一约束**：乱序缓存若要用到相同 sequence 的占位行，得先在 WP2 里设计好（当前实现是直接插入，冲突即报错）。
 10. **`go mod tidy` 之后 `modernc.org/sqlite` 才是直接依赖**：现在已经是；如果谁手改 `go.mod` 去掉它，`store` 会编译失败。
 11. **测试用的 key 是常量**（`testKey(seed)`）：只用于测试，不要复制到壳里。
+12. **体积**：modernc 把整个 SQLite（Go 转译版）链进二进制。Release APK 现在含两个 ABI，28.9 MB；发布构建只打 `android/arm64` 可以省掉约一半（真机基本都是 arm64，x86_64 仅模拟器需要）。
+13. **壳里的 key 是明文文件**：见 §0。换成 DPAPI/Keystore 时，要写一次性迁移（读旧 `devkey.b64` → 封装 → 删除明文），否则已有数据库会被新 key 锁死。
+14. **`MarkOutboxAcked`/`SetInboxState` 对不存在的行静默成功**（0 行受影响不报错）。调用方不要依赖它们来判断行是否存在，需要时先 `GetOutbox`/`GetInbox`。
 
-## 8. 本次没有做的事（避免被误认为已完成）
+## 7. 没做的事
 
-- `facade` 未接线，`device_id` 仍不稳定（HANDOFF §5 第 1 条仍然成立）。
-- 没有 `crud_test.go`（§4）。
-- 没有改 `api-spec.md`（两个新错误码还没进规范）、`development-plan.md`、[HANDOFF.md](HANDOFF.md)、[README.md](README.md)。
-- 没有跑 `make check` / `dll-wine` / `test-interop` / `aar` / `apk`。
-- 没有 `git init`、没有提交、没有推送。
-- 没有做 §5 第 10 条的规范补齐（SAS 排序、proof 编码、`/v1/pair` 限流）。
+- `transfers` 表只建了表，没有 Go API（WP7）。
+- `peer` 还没有调用 outbox/inbox/links（WP2）；这些 API 的并发语义（单连接串行）已测，但「事务内递增 `next_seq_out` 并插入 outbox」这种组合操作还没有封装，WP2 需要一个 `db.Tx(func(tx))` 或专用方法。
+- 没有 key 校验哨兵（§6 第 5 条）。
+- Android 壳不处理 `Core.init` 异常（HANDOFF §5 第 7 条）。
+- `facade` 的 panic 日志仍写 stderr。
+- 真机/真 Windows 上的验证：WPF 里的 `DevKey` 与真实 DLL 加载没有跑过。

@@ -1,7 +1,7 @@
 # night-clip 交接文档
 
 > 写于 2026-10-26。读完这一份就能接着干活，不需要翻聊天记录。  
-> **2026-10-26 增量**：`store` 数据层（S1）已落地但**未接线**，细节、验证结果和下一步见 [HANDOFF-STORE.md](HANDOFF-STORE.md)。  
+> **2026-10-26 增量**：`store` 数据层已完成并**已接进门面**（`device_id` 重启不变），细节、验证结果见 [HANDOFF-STORE.md](HANDOFF-STORE.md)。仓库已推到 `git@github.com:orangepro2001/night-clip.git`（`main`）。  
 > 设计文档在 [`../docs`](../docs)（`README.md` → `adr/005-go-core-and-tailnet-p2p.md` → `architecture.md` → `api-spec.md` → `development-plan.md`）。  
 > 本文只讲：**现在是什么状态、怎么验证、为什么这么做、下一步做什么、哪些事要等用户拍板。**
 
@@ -10,10 +10,10 @@
 - **产品**：Windows ↔ Android 剪贴板同步 + 文件传输。所有设备在同一个 Tailscale tailnet，设备间直连（无服务端）。工作名 ClipBridge，仓库目录 `night-clip`。
 - **架构**：一个 Go 核心库承载全部业务；Windows 用 C# WPF 壳 + Go 编译的 DLL；Android 用 Kotlin 壳 + gomobile AAR。两个壳只通过 `Call(method, json)` / `NextEvent(timeoutMs)` 两个入口访问核心。
 - **现状**：**脚手架 + 验证体系已完成**。协议类型（信封、规范 JSON、content_hash、校验）和设备身份（Ed25519、自签证书、device_id、指纹）已实现并有测试；门面、DLL、AAR、两个壳的最小骨架都能编译并跑通冒烟测试。`make check` 全绿。
-- **没有的**：网络、配对、剪贴板逻辑、文件传输、托盘、通知、命名管道——全部未开始。持久化数据层（`store`）已写出并有单测，但**没有接进门面**，`device_id` 仍每次启动都变；见 [HANDOFF-STORE.md](HANDOFF-STORE.md)。`peer/ pairing/ clip/ xfer/` 目前只有 `doc.go`。
-- **下一步**：先把 `store` 接进门面（[HANDOFF-STORE.md](HANDOFF-STORE.md) §5.3），再 `peer` → `pairing` → 双实例集成测试 → `clip` → `xfer`（详见 §7）。
+- **没有的**：网络、配对、剪贴板逻辑、文件传输、托盘、通知、命名管道——全部未开始。持久化已完成：`facade.Init` 现在要求 `data_dir`（绝对路径）+ `db_key_b64`（32 字节），身份落盘，重启后 `device_id` 不变；见 [HANDOFF-STORE.md](HANDOFF-STORE.md)。`peer/ pairing/ clip/ xfer/` 目前只有 `doc.go`。
+- **下一步**：补 `api-spec.md` 的三个规范空缺（§5 第 10 条），然后 `peer`（WP2）与双实例测试框架（WP5）→ `pairing` → `clip` → `xfer`（详见 §7；WP1 已完成）。
 - **环境**：全部在这台 Linux（Ubuntu 26.04，无 KVM，无 Windows）上验证。真机项目（WPF 渲染、剪贴板、Android 真实 VPN）见 §6。
-- **没有 git 仓库、没有远端、没有提交。** 没有向任何外部服务推送过任何东西。
+- **Git**：本地仓库在 `night-clip/`，远端 `origin = git@github.com:orangepro2001/night-clip.git`。用户已授权：每个阶段性新增功能完成后提交并推送，无需再询问；push 之外的破坏性操作（amend/reset/force）仍需明确授权。`docs/` 在仓库之外（`../docs`），**没有**被提交。
 
 ## 1. 接手：5 分钟上手
 
@@ -72,11 +72,11 @@ v3 全套已定稿：`README.md`、`feasibility-analysis.md`、`architecture.md`
 | --- | --- | --- |
 | `proto` | `Canonical`（规范 JSON：键排序、去空白、仅整数、`SetEscapeHTML(false)`）；`ContentHash`；`Envelope` + `Validate(now)`（版本、event_id UUIDv4、kind、device_id 格式、source≠target、sequence≥1、过期、hash 格式与一致性、剪贴板 mime/size/上限 64 KiB）；`Code` 常量与 `*Error` | 5 个测试函数，含 9 个表驱动用例 |
 | `identity` | `Generate(name)`（Ed25519 + 10 年自签 X.509，ExtKeyUsage 同时含 server/client auth）；`FromParts`（校验证书与私钥匹配）；`PrivateKeyPKCS8`/`ParsePrivateKeyPKCS8`；`DeviceID`（`dev_` + base32(sha256(SPKI))[:26] 小写）；`Fingerprint`（base64url(sha256(cert DER))，43 字符）；`TLSCertificate()` | 4 个 |
-| `facade` | `Core{Init, Call, NextEvent, Shutdown}`；方法 `version`、`status`、`identity.get`；事件 `core.started`；事件队列 256 条，满则丢弃并计数（`events_dropped`）；`Call`/`Init` 统一 `recover` 转 `INTERNAL`；panic 栈写 stderr | 7 个 |
+| `facade` | `Core{Init, Call, NextEvent, Shutdown}`；方法 `version`、`status`、`identity.get`；事件 `core.started`；事件队列 256 条，满则丢弃并计数（`events_dropped`）；`Call`/`Init` 统一 `recover` 转 `INTERNAL`；panic 栈写 stderr。`Init` 校验 `data_dir`（绝对路径）与 `db_key_b64`（标准 base64，带或不带填充，解码后 32 字节），打开 `store` 并 `LoadOrCreateIdentity`；任何一步失败都关库、不发 `core.started`，且可重试。`Shutdown` 关库（幂等），之后所有方法返回 `NOT_INITIALIZED`，再 `Init` 返回 `INVALID` | 15 个顶层（含子用例 25） |
 | `cmd/cbcore-dll` | `-buildmode=c-shared`，导出 `cb_init/cb_call/cb_next_event/cb_shutdown/cb_free`；每个导出都 `defer recover` | `test/abi/smoke.c`（Linux .so）、`test/abi/smoke_win.c`（Wine） |
 | `mobile` | gomobile 表面：`Core`（`NewCore`→Java 构造器）+ `Init/Call/NextEvent/Shutdown` | AAR 构建 + `javap` 核对签名 |
 | `cmd/cbridge` | 仅 `version`；其它子命令返回退出码 3（命名管道未实现） | — |
-| `store` | `Open`/`Close`、schema v1（10 表 + 4 索引）、幂等迁移、AES-256-GCM 字段封装、身份落盘与数据层 CRUD；**门面未接线**，CRUD 无专门单测（见 [HANDOFF-STORE.md](HANDOFF-STORE.md) §4） | 14 个（打开/迁移/seal/身份） |
+| `store` | `Open`/`Close`、schema v1（10 表 + 4 索引）、幂等迁移、AES-256-GCM 字段封装、身份落盘与数据层 CRUD；**已由 `facade.Init` 使用**。其余 API（peers/links/outbox/inbox/settings/clip_state/revoked_fps）已有单测，等 `peer`/`clip` 调用（见 [HANDOFF-STORE.md](HANDOFF-STORE.md)） | 40 个 |
 | `peer/ pairing/ clip/ xfer/` | 仅 `doc.go`，指向设计章节 | — |
 | `tools.go`（build tag `tools`） | 固定 `golang.org/x/mobile/bind`，防止 `go mod tidy` 删掉它（已验证 tidy 后 `make aar` 仍成功） | — |
 
@@ -104,13 +104,13 @@ Gradle wrapper 8.11.1 已生成；AGP 8.7.3、Kotlin 2.1.0（compose 插件）�
 
 | 项 | 状态 | 证据 / 方法 |
 | --- | --- | --- |
-| Go 单测（含 `-race`） | ✅ 已验证 | `make test`，16 个顶层测试通过；加上 `store` 的 14 个 |
+| Go 单测（含 `-race`） | ✅ 已验证 | `make test`：facade 15、store 40、identity 4、proto 5 个顶层测试 |
 | gofmt / go vet | ✅ | `make vet` |
 | C ABI 逻辑 | ✅ | `make dll-smoke` |
-| Windows DLL 可加载、Go 运行时启动、UTF-8、`shutdown` 唤醒 | ✅（在 Wine 下） | `make dll-wine` |
+| Windows DLL 可加载、Go 运行时启动、UTF-8、`shutdown` 唤醒、SQLite 在 Windows 用户态读写 | ✅（在 Wine 下） | `make dll-wine`（含临时 `data_dir`、被拒配置不影响后续 init、关闭后 `NOT_INITIALIZED`） |
 | C# P/Invoke 编组、UTF-8 往返、事件泵、`Dispose` <2s | ✅（对 Linux .so） | `make test-interop` |
 | WPF 应用编译（含 XAML） | ✅ | `make build-windows-app`（`EnableWindowsTargeting`） |
-| AAR（arm64-v8a、x86_64）、debug/release APK、lint 运行 | ✅ | `make apk`；AAR 7.6 MB；release APK 15 MB |
+| AAR（arm64-v8a、x86_64）、debug/release APK、lint 运行 | ✅ | `make apk` 只构建 debug；release 另跑 `./gradlew :app:assembleRelease`（需 `ANDROID_HOME`/`JAVA_HOME`）。接入 SQLite 后：AAR 7.6 → 15.6 MB，release APK 15 → 28.9 MB，debug APK 50.3 MB |
 | gomobile 生成的 Java API 与 Kotlin 调用一致 | ✅ | `javap` 核对 `Core()`、`call`、`init`、`nextEvent(long)`、`shutdown` |
 | WPF 窗口实际渲染 / 托盘 / 剪贴板 / DPAPI / 防火墙 | ❌ 未验证 | 需要真实 Windows 或 Windows CI |
 | C# 互操作在真实 Windows 上加载真实 DLL | ❌ 未验证 | Windows CI 任务会做，但未运行 |
@@ -120,14 +120,14 @@ Gradle wrapper 8.11.1 已生成；AGP 8.7.3、Kotlin 2.1.0（compose 插件）�
 
 ## 5. 已知限制与代码层面的坑
 
-1. **身份是临时的**：`facade.Init` 每次启动都 `identity.Generate`，device_id 每次都变。`store` 已实现持久化身份但还没接进门面（见 [HANDOFF-STORE.md](HANDOFF-STORE.md)），接线前不可用于配对。
+1. **壳里的 key 是临时方案**：Windows `Interop/DevKey.cs` 与 Android `DevKey.kt` 把随机 32 字节 key 以明文 base64 放在数据目录的 `devkey.b64`，只靠用户配置文件 ACL / 应用沙箱保护。`TODO(WP9: DPAPI)`、`TODO(WP10: Keystore)`。key 文件损坏时壳会报错而不是重建（重建会让已有加密库永远打不开）。
 2. **核心不能重启**：`facade.Core.Init` 只能调用一次；DLL 里是进程级全局单例，`cb_shutdown` 之后同进程不能再 `cb_init`。Android 的 `CoreHost.shutdown()` 会置空并可新建 `Core()`（gomobile 对象是新实例），但服务和 Activity 共用同一个 `CoreHost`：服务 `onDestroy` 会关掉 Activity 也在用的核心。接入真实逻辑前要重新设计生命周期（建议核心由 Application 级持有，服务只负责保活）。
 3. **`NextEvent` 单消费者**：事件通道只有一个，多个消费者会互相抢事件。当前每个壳只有一个事件泵线程，符合设计。
 4. **`emit` 在 `Shutdown` 之后仍会入队**，没有被阻止；无害但不整洁。
 5. **`Canonical` 拒绝非整数数字**（包括 `1.5`、`1e2`）。这是有意的（保证跨实现确定性），将来 payload 如果需要浮点必须改规范。
 6. **`Envelope.Validate` 不检查对端关系**：不核对 TLS 指纹与 `source_device_id` 是否一致，不核对 `target_device_id == 本机`。这些归 `peer` 层。
-7. **`db_key_b64` 目前被接受但未使用**（Windows 和 Android 壳里都有 TODO 注释）。
-8. **panic 日志**直接写 `os.Stderr`，尚无结构化日志；Windows GUI 进程没有控制台，stderr 会丢失。接 `store` 时应改成写文件，并确保不含 payload/密钥。
+7. **Android 壳不处理 `Core.init` 异常**：`CoreHost.start` 失败（key 文件损坏、`KEY_INVALID`、`DB_UNAVAILABLE`）会直接抛出到 `MainActivity`/`SyncForegroundService`，没有用户可见的错误页。接 WP10 时补。
+8. **panic 日志**直接写 `os.Stderr`，尚无结构化日志；Windows GUI 进程没有控制台，stderr 会丢失。应改成写文件，并确保不含 payload/密钥（`facade.go` 里留有 TODO）。
 9. **gomobile 的 `go.mod` 依赖**：`golang.org/x/mobile` 现在是直接依赖（通过 `tools.go`）；`go mod tidy` 会下载 `go-cmp` 等；这不影响运行时二进制。
 10. **规范文档与代码的空缺**（实现 `pairing` 前必须先补进 `api-spec.md`）：
     - SAS 公式 `sha256(fpA || fpB || nonce)` 没有规定 fpA/fpB 的顺序。建议按指纹字典序排序后拼接，使两端得到相同结果。
@@ -155,7 +155,7 @@ Gradle wrapper 8.11.1 已生成；AGP 8.7.3、Kotlin 2.1.0（compose 插件）�
 
 顺序按依赖排列。估算沿用 `development-plan.md`，**未验证**。每个工作包都以"测试先行、Linux 上能跑完"为目标。
 
-### WP1 `store`：持久化 + 身份落盘（约 3–4 天）
+### WP1 `store`：持久化 + 身份落盘 —— ✅ 已完成（2026-10-26）；下面的原始规格保留作参考
 
 **目标**：重启后 device_id 不变；敏感字段落盘加密。
 
@@ -242,7 +242,7 @@ Gradle wrapper 8.11.1 已生成；AGP 8.7.3、Kotlin 2.1.0（compose 插件）�
 
 | 事项 | 为什么需要问 | 我的建议 |
 | --- | --- | --- |
-| 是否 `git init` 并提交；是否建远端并推送（启用 GitHub Actions） | 对外发布、不可轻易撤回；CI 才能给出 Windows 真实证据 | 先 `git init` 本地提交；推远端前确认仓库名和可见性（建议私有） |
+| ~~是否 `git init` 并提交；是否建远端并推送~~ | 已决定（2026-10-26）：远端 `orangepro2001/night-clip`，阶段性功能完成后直接提交推送 | 已执行 |
 | 新增第三方依赖：`modernc.org/sqlite`、`github.com/coder/websocket`，以及后续的 `go-winio` | 设计已认可，但属于新增依赖 | 同意 |
 | 命名：目录 `night-clip` vs 协议/产品 `ClipBridge` | 目前混用（线上名 `clipbridge/v1`、`clipbridge_core.dll`、`\\.\pipe\clipbridge.v1`；仓库名 `night-clip`） | 保持现状，README 已说明；若要统一，现在改成本最低 |
 | 把 `docs/` 移进 `night-clip/` 使仓库自洽 | 目前在 `night-clip/` 之外（`../docs`） | 建议移入 |
@@ -269,14 +269,14 @@ core/identity/{identity.go,identity_test.go}
 core/facade/{facade.go,facade_test.go}
 core/cmd/cbcore-dll/main.go          core/cmd/cbridge/main.go
 core/mobile/mobile.go
-core/store/{db.go,migrate.go,identity.go,peers.go,links.go,outbox.go,inbox.go,settings.go,clipstate.go,revoked.go,store_test.go,identity_test.go}
+core/store/{db.go,migrate.go,identity.go,peers.go,links.go,outbox.go,inbox.go,settings.go,clipstate.go,revoked.go,store_test.go,identity_test.go,crud_test.go}
 core/{peer,pairing,clip,xfer}/doc.go
 core/test/abi/{smoke.c,smoke_win.c}
-windows/ClipBridge.Windows/{ClipBridge.Windows.csproj,App.xaml,App.xaml.cs,MainWindow.xaml,MainWindow.xaml.cs,Interop/CoreInterop.cs}
+windows/ClipBridge.Windows/{ClipBridge.Windows.csproj,App.xaml,App.xaml.cs,MainWindow.xaml,MainWindow.xaml.cs,Interop/CoreInterop.cs,Interop/DevKey.cs}
 windows/ClipBridge.Windows.Tests/{ClipBridge.Windows.Tests.csproj,CoreInteropTests.cs}
 android/{settings.gradle.kts,build.gradle.kts,gradle.properties,gradlew,gradlew.bat,gradle/wrapper/*}
 android/app/{build.gradle.kts,proguard-rules.pro,libs/.gitignore}
-android/app/src/main/{AndroidManifest.xml,java/com/nightclip/app/{CoreHost,MainActivity,SyncForegroundService}.kt}
+android/app/src/main/{AndroidManifest.xml,java/com/nightclip/app/{CoreHost,DevKey,MainActivity,SyncForegroundService}.kt}
 ```
 
 构建产物（均被 `.gitignore` 忽略）：`core/dist/`（各平台 DLL/.so/.h/exe/smoke）、`android/app/libs/*.aar|*.jar`、`android/**/build/`、`windows/**/bin|obj`。
@@ -286,13 +286,13 @@ android/app/src/main/{AndroidManifest.xml,java/com/nightclip/app/{CoreHost,MainA
 | Phase 0 项 | 状态 |
 | --- | --- |
 | 仓库与模块结构、`go.mod`、CI | 结构 ✅；CI 文件已写未跑 |
-| `identity` | ✅（无持久化） |
+| `identity` | ✅（已持久化） |
 | `proto`（信封、规范 JSON、hash、Schema 校验测试） | ✅ 信封与 hash；❌ 尚未对照 `event.schema.json` 做自动化校验测试（建议补：用 JSON Schema 库或手写用例保证二者一致） |
-| `store` | 部分：S1（schema/迁移/加密）+ 身份与数据层 API 已写；facade 未接线，CRUD 无单测 |
+| `store` | ✅ schema/迁移/加密/身份落盘/CRUD 全部有测试，身份已接入门面 |
 | 发件箱 / sequence / 游标 / skip / 去重 / TTL | ❌ |
 | `pairing` | ❌ |
 | WebSocket 链路 | ❌ |
-| `facade` | 部分（3 个方法 + 1 个事件） |
+| `facade` | 部分（3 个方法 + 1 个事件；已接 store） |
 | `cbcore-dll` 与 `mobile` | ✅ |
 | 双进程集成测试 | ❌ |
 | Windows：托盘骨架、`CoreInterop`、DPAPI、配对 UI、手动发送/接收 | 仅 `CoreInterop` ✅ 与最小窗口 |

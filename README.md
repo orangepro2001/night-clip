@@ -3,24 +3,24 @@
 Windows ↔ Android clipboard sync and file transfer over a Tailscale tailnet.
 One Go core, two thin shells. Design documents live in [`../docs`](../docs)
 (start with `README.md`, then `adr/005-go-core-and-tailnet-p2p.md`).
-**Picking this up? Read [`HANDOFF.md`](HANDOFF.md) first** — current state, decisions, verification matrix and the detailed next steps. The latest increment (the `store` data layer) has its own handoff: [`HANDOFF-STORE.md`](HANDOFF-STORE.md).
+**Picking this up? Read [`HANDOFF.md`](HANDOFF.md) first** — current state, decisions, verification matrix and the detailed next steps. The persistence increment (the `store` data layer, now wired into the facade) has its own handoff: [`HANDOFF-STORE.md`](HANDOFF-STORE.md).
 
 ```text
 night-clip/
 ├── core/                    Go module `nightclip/core` — all business logic
 │   ├── proto/               envelope, canonical JSON, content hash, error codes   [implemented]
 │   ├── identity/            Ed25519 key, self-signed cert, device_id, fingerprint [implemented]
-│   ├── facade/              Call / NextEvent JSON facade shared by all shells     [skeleton: version, status, identity.get]
+│   ├── facade/              Call / NextEvent JSON facade shared by all shells     [skeleton: version, status, identity.get; persists identity via store]
 │   ├── cmd/cbcore-dll/      c-shared build → clipbridge_core.dll (5 C functions)  [implemented]
 │   ├── cmd/cbridge/         Windows CLI                                          [version only]
 │   ├── mobile/              gomobile surface → clipbridge-core.aar                [implemented; AAR builds]
-│   ├── store/               SQLite: schema v1, migrations, field encryption       [data layer only, not wired]
+│   ├── store/               SQLite: schema v1, migrations, field encryption       [implemented; identity wired into facade]
 │   ├── peer/ pairing/ clip/ xfer/                                                 [doc.go only — Phase 0/1/2]
 │   └── test/abi/smoke.c     C ABI smoke test (run via `make dll-smoke`)
 ├── windows/ClipBridge.Windows/   WPF shell: P/Invoke + event pump + status window [compiles on Linux]
 ├── windows/ClipBridge.Windows.Tests/   xUnit tests of the C# interop layer against the real native core
 ├── android/                      Kotlin/Compose shell: AAR wrapper + foreground service [debug/release APK build]
-├── .github/workflows/ci.yml      prepared CI (not pushed; no git remote configured)
+├── .github/workflows/ci.yml      CI (runs on push to origin/main)
 └── Makefile
 ```
 
@@ -31,13 +31,13 @@ runs everything below and passes on the dev machine (Ubuntu 26.04, no KVM, no Wi
 
 | Part | What is verified | How |
 | --- | --- | --- |
-| Go core | proto, identity, facade unit tests, race detector on | `make test` |
+| Go core | proto, identity, store, facade unit tests, race detector on | `make test` |
 | C ABI | all 5 exports, UTF-8, timeout, prompt wake on shutdown | `make dll-smoke` (Linux `.so`) |
 | Windows DLL | cross-compiled PE DLL loads and works in Windows userland | `make dll-wine` (mingw `smoke_win.exe` under Wine) |
 | C# interop | `CoreHost`: P/Invoke marshaling, UTF-8 round trip, event pump thread, `Dispose` stops the pump | `make test-interop` (xUnit against the Linux `.so`) |
 | WPF app | compiles (XAML included) for `net10.0-windows` | `make build-windows-app` |
 | Android | gomobile AAR builds (arm64-v8a, x86_64); debug and release (R8) APKs build; lint runs | `make apk` |
-| `store` data layer | schema v1 + migrations, AES-256-GCM field sealing, identity persistence, data-layer CRUD; 14 unit tests. **Not wired into the facade**, so identity is still ephemeral per process | `make test` (see [HANDOFF-STORE.md](HANDOFF-STORE.md)) |
+| `store` + persistent identity | schema v1 + migrations, AES-256-GCM field sealing, identity persistence, data-layer CRUD; 40 `store` + 15 `facade` tests. `device_id` is stable across restarts for the same `data_dir` + key. Shells keep a temporary plaintext `devkey.b64` (DPAPI/Keystore later) | `make check` (see [HANDOFF-STORE.md](HANDOFF-STORE.md)) |
 | Networking, pairing, files | not started | — |
 
 ### What this machine cannot prove

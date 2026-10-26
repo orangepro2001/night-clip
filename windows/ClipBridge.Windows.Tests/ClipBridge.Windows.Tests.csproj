@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <Compile Include="..\ClipBridge.Windows\Interop\CoreInterop.cs" Link="Interop\CoreInterop.cs" />
+    <Compile Include="..\ClipBridge.Windows\Interop\DevKey.cs" Link="Interop\DevKey.cs" />
   </ItemGroup>
 
   <ItemGroup>
