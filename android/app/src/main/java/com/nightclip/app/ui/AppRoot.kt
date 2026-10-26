@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,6 +37,8 @@ import com.nightclip.app.app
 import com.nightclip.app.core.CoreHost
 import com.nightclip.app.core.CoreState
 import com.nightclip.app.platform.Actions
+import com.nightclip.app.ui.vault.VAULT_TAB_ID
+import com.nightclip.app.ui.vault.VaultRoot
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -101,6 +104,7 @@ private fun MainScaffold(requests: LaunchRequests) {
     val tabs = listOf(
         TabSpec(Actions.TAB_DEVICES, R.string.nav_devices, Icons.Filled.Phone),
         TabSpec(Actions.TAB_INBOX, R.string.nav_inbox, Icons.Filled.Email),
+        TabSpec(VAULT_TAB_ID, R.string.nav_vault, Icons.Filled.Lock),
         TabSpec(Actions.TAB_SETTINGS, R.string.nav_settings, Icons.Filled.Settings),
     )
 
@@ -128,6 +132,7 @@ private fun MainScaffold(requests: LaunchRequests) {
                 appVm.refreshPeers()
             }, modifier = mod)
             tab == Actions.TAB_INBOX -> InboxScreen(inboxVm, onMessage = show, modifier = mod)
+            tab == VAULT_TAB_ID -> VaultRoot(onMessage = show, modifier = mod)
             tab == Actions.TAB_SETTINGS -> SettingsScreen(settingsVm, onMessage = show, modifier = mod)
             else -> DevicesScreen(appVm, onPair = { showPair = true }, modifier = mod)
         }

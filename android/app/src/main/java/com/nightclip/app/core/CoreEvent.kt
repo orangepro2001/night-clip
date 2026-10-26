@@ -110,6 +110,9 @@ sealed interface CoreEvent {
 
     data class UpdateError(val code: String, val message: String) : CoreEvent { override val type = "update.error" }
 
+    /** The password vault locked itself or was locked ([reason]: idle, user …). Carries no secrets. */
+    data class VaultLocked(val reason: String) : CoreEvent { override val type = "vault.locked" }
+
     data class Unknown(override val type: String) : CoreEvent
 
     companion object {
@@ -181,6 +184,7 @@ sealed interface CoreEvent {
             "update.progress" -> UpdateProgress(o.optLong("received"), o.optLong("total"))
             "update.ready" -> UpdateReady(o.optLong("version_code"), o.optString("version_name"), o.optString("path"), o.optBoolean("mandatory"))
             "update.error" -> UpdateError(o.optString("code"), o.optString("message"))
+            "vault.locked" -> VaultLocked(o.optString("reason"))
             else -> Unknown(type)
         }
     }

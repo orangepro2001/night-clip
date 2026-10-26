@@ -106,6 +106,18 @@
 
 建议结构：`core/`（`CoreHost`、`CoreEvents`、`CoreApi` 类型安全封装）、`ui/`（Compose 页面 + 各自的 `ViewModel`）、`platform/`（`KeystoreKey`、`ClipboardAccess`、`Notifications`、`MediaStoreSaver`）。把“事件 → 动作”的决策（`ReceiveDecider`）、JSON → 模型的解析、文件名/大小处理、配对 link 校验写成纯 Kotlin 并用 JUnit 测试（`org.json` 在单元测试里已有真实实现依赖）。
 
+### Vault screens (Android)
+
+密码库页（底部导航第四个标签“密码库”，接口依据 [vault-api.md](vault-api.md)，规则 §4 全部适用）。**只编译、跑过 JVM 单测，没有在真机上运行过。** 自动填充（Autofill）和通行密钥不在这一阶段。
+
+- **结构**：`core/VaultApi.kt`（`vault.*` 的类型化封装，一律挂起、不在主线程）与 `core/VaultModels.kt`（`VaultParsers`：所有结果形状的解析）；`logic/` 里是无 Android 依赖的纯逻辑（列表过滤与排序、TOTP 倒计时、强度标签、条目校验与模板、备份原因与差异分组、剪贴板清除决策、快速解锁策略、自动锁策略、错误码文案），每个都有 JUnit 测试；`platform/` 里是 `VaultSession`（后台宽限期、熄屏、`vault.locked` 事件）、`VaultClipboard`、`VaultFiles`（SAF ⇄ 缓存临时文件）、`QuickUnlock`（Keystore + `BiometricPrompt`）、`VaultPrefs`；`ui/vault/` 是 Compose 页面与三个 ViewModel（解锁与导航、浏览与编辑、备份与导入导出）。用户可见文字在 `res/values/strings_vault.xml`（页面）和 `logic/VaultTexts.kt`（逻辑层）。
+- **FLAG_SECURE**：`SecureWindowEffect` 在“密码库”标签可见的整个期间给窗口加 `FLAG_SECURE`，离开时清除；每个 Activity 实例只管自己的窗口，旋转重建后由新的组合重新加上。对话框和底部面板沿用宿主窗口的安全标志（`SecureFlagPolicy.Inherit`）。
+- **复制**：一律 `vault.copy` → `VaultClipboard.copy`：`ClipData` 标签固定为 `ClipBridge vault`（`ClipClearPolicy.MARKER_LABEL`），Android 13+ 带 `EXTRA_IS_SENSITIVE`；只记住文本的 SHA-256；定时器挂在 Application 作用域，界面关闭也会触发；到点（或密码库锁定时立刻）读剪贴板，`ClipClearPolicy.decide` 决定：能读且仍是那一份 → 清除；能读但已是别的内容 → 保留；读不到（无焦点时 Android 10+ 连描述也不给）→ 描述是我们的标签则清除，什么都读不到则直接清除（代价：用户在这 20 秒内在别处复制的东西也可能被清掉）。`ClipboardAccess.readClip` 对带这个标签的剪贴板返回 null，所以焦点自动发送和手动“发送剪贴板”都不会读到密码库复制的内容（核心还会以 `vault_origin` 兜底）。
+- **自动锁**：应用在后台超过 30 秒（`AutoLockPolicy.BACKGROUND_GRACE_MS`；刚拉起文件选择器或生物识别提示时放宽到 5 分钟，因为那时本应用也处于“停止”状态）、熄屏（`ACTION_SCREEN_OFF`，仅在已解锁期间注册）、核心空闲超时（`vault.locked` 事件）都会锁定。锁定后三个 ViewModel 的列表、详情、草稿、搜索词、导航栈、待导出的密码全部清空，页面回到解锁界面。
+- **快速解锁**（默认关，首次主密码解锁后询问，也可在“密码库设置”里开）：Keystore 的 AES-256-GCM 密钥，`setUserAuthenticationRequired(true)`、`setInvalidatedByBiometricEnrollment(true)`、仅 `BIOMETRIC_STRONG`、每次使用都要认证（API 30+ `setUserAuthenticationParameters(0, …)`，更低版本 `ValidityDuration=-1`），包装主密码（和密钥文件字节），密文放在应用私有 SharedPreferences。只有“已启用 + 距上次主密码解锁 < 72 小时 + 连续失败 < 5 次 + 开机计数未变”时才提供；主密码输错、更换主密码、关闭开关、过期、失败过多、重启都会删除密钥和密文。开机计数读 `Settings.Global.BOOT_COUNT`，读不到时跳过“重启”这一条（只剩 72 小时限制）。
+- **文件**：导入/导出/附件都经应用缓存里的随机名临时文件（`vault.import_file` / `export_file` / `attach_add` / `attach_get` 的 `path`），用完立即清零并删除，锁定和启动时再清扫一遍；导出失败会删掉选择器已创建的空文件。
+- **Activity 基类**：`MainActivity` 改为继承 `FragmentActivity`（`BiometricPrompt` 的要求，`ComponentActivity` 的子类，其余不变）。新增依赖 `androidx.biometric:biometric:1.1.0`（官方 AndroidX 库）。
+
 ## 5. 验收
 
 - `make check` 通过（含新增的 C# / Kotlin 单元测试）。
