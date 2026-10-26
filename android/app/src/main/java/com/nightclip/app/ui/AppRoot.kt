@@ -2,8 +2,8 @@ package com.nightclip.app.ui
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
@@ -120,13 +120,12 @@ private fun MainScaffold(requests: LaunchRequests) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp,
-                    modifier = Modifier.height(66.dp),
                 ) {
                     tabs.forEach { t ->
                         NavigationBarItem(
                             selected = tab == t.id,
                             onClick = { tab = t.id },
-                            icon = { Icon(t.icon, contentDescription = null, modifier = Modifier.height(21.dp)) },
+                            icon = { Icon(t.icon, contentDescription = null, modifier = Modifier.size(21.dp)) },
                             label = { Text(stringResource(t.label)) },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = MaterialTheme.colorScheme.primary,
