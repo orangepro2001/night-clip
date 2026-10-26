@@ -36,6 +36,7 @@ const (
 	CodeVaultUnsupported Code = "VAULT_UNSUPPORTED"
 	CodeVaultBroken      Code = "VAULT_BROKEN"
 	CodeVaultNotEmpty    Code = "VAULT_NOT_EMPTY"
+	CodeVaultReview      Code = "VAULT_REVIEW" // a sync or merge needs the user's approval (see vault.sync_status)
 	CodeInvalid          Code = "INVALID"
 	CodeMethodNotFound   Code = "METHOD_NOT_FOUND"
 	CodeNotInitialized   Code = "NOT_INITIALIZED"

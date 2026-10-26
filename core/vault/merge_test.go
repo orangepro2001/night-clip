@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -413,5 +414,314 @@ func TestDeleteGroupNotEmptyHasItsOwnError(t *testing.T) {
 	_, _ = v.AddEntry(Entry{Title: "x", GroupID: gid})
 	if err := v.DeleteGroup(gid); !errors.Is(err, ErrNotEmpty) {
 		t.Fatalf("DeleteGroup = %v", err)
+	}
+}
+
+// Review finding 1: moving a group into a LATER sibling lost the group and its entries.
+func TestMergeMoveGroupIntoALaterSiblingLosesNothing(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		a, clock := baseVault(t)
+		ga, _ := a.AddGroup("", "A")
+		gb, _ := a.AddGroup("", "B")
+		gc, _ := a.AddGroup("", "C")
+		target := gb
+		if nested {
+			gd, _ := a.AddGroup(gc, "D") // a later sibling's child
+			target = gd
+		}
+		e1, _ := a.AddEntry(Entry{Title: "in A (shared)", GroupID: ga, Password: "p"})
+		b := fork(t, a, clock)
+		// b drags folder A into the later sibling; a keeps working in A meanwhile
+		bGroup, _, _ := b.findGroup(ga)
+		moveGroupForTest(t, b, ga, target, clock)
+		_ = bGroup
+		if gs, _ := b.Groups(); true {
+			for _, g := range gs {
+				if g.ID == ga && g.ParentID != target {
+					t.Fatalf("test helper did not move the group: parent %s want %s", g.ParentID, target)
+				}
+			}
+		}
+		e2, _ := a.AddEntry(Entry{Title: "added later on a", GroupID: ga, Password: "p"})
+		merge(t, a, b)
+		merge(t, b, a)
+		for name, v := range map[string]*Vault{"a": a, "b": b} {
+			for _, id := range []string{e1, e2} {
+				if _, err := v.Get(id); err != nil {
+					t.Fatalf("nested=%v %s lost an entry: %v", nested, name, err)
+				}
+			}
+			gs, _ := v.Groups()
+			found := false
+			for _, g := range gs {
+				if g.ID == ga {
+					found = true
+					if g.ParentID != target {
+						t.Errorf("nested=%v %s: group A is under %q, want %q", nested, name, g.ParentID, target)
+					}
+					if g.Entries != 2 {
+						t.Errorf("nested=%v %s: group A holds %d entries, want 2", nested, name, g.Entries)
+					}
+				}
+			}
+			if !found {
+				t.Fatalf("nested=%v %s: group A vanished", nested, name)
+			}
+		}
+		if state(a) != state(b) {
+			t.Fatalf("nested=%v: replicas differ", nested)
+		}
+	}
+}
+
+// moveGroupForTest does what KeePassXC does when a folder is dragged: the group changes parent and
+// its location time moves.
+func moveGroupForTest(t *testing.T, v *Vault, id, newParent string, clock *fakeClock) {
+	t.Helper()
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	gr, par, _ := v.findGroup(id)
+	np, _, _ := v.findGroup(newParent)
+	if gr == nil || par == nil || np == nil {
+		t.Fatal("groups not found")
+	}
+	moved := *gr
+	now := v.nowWrap()
+	moved.Times.LocationChanged = &now
+	for i := range par.Groups {
+		if par.Groups[i].UUID == gr.UUID {
+			par.Groups = append(par.Groups[:i], par.Groups[i+1:]...)
+			break
+		}
+	}
+	np, _, _ = v.findGroup(newParent) // pointers moved with the slice
+	np.Groups = append(np.Groups, moved)
+	if err := v.commit("save"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Review finding 3: big merges must be cheap, and a refused merge must leave the vault untouched.
+func TestMergeOfThousandsOfEntriesIsFastAndTheLimitIsCheckedFirst(t *testing.T) {
+	a, clock := baseVault(t)
+	b := fork(t, a, clock)
+	b.mu.Lock()
+	for i := 0; i < 6000; i++ {
+		le := newEntry()
+		le.Values = nil
+		entrySet(&le, fTitle, fmt.Sprintf("bulk %d", i), false)
+		entrySet(&le, fPassword, "p", true)
+		b.root().Entries = append(b.root().Entries, le)
+	}
+	b.mu.Unlock()
+	if err := b.Save(); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	st := merge(t, a, b)
+	if st.EntriesAdded != 6000 {
+		t.Fatalf("stats = %+v", st)
+	}
+	if d := time.Since(start); d > 8*time.Second {
+		t.Fatalf("merging 6000 entries took %s (it used to be quadratic)", d)
+	}
+	// 6000 existing + the file with MaxEntries more must be refused BEFORE anything changes
+	c, _ := baseVault(t)
+	c.mu.Lock()
+	for i := 0; i < MaxEntries-10; i++ {
+		le := newEntry()
+		entrySet(&le, fTitle, "c", false)
+		c.root().Entries = append(c.root().Entries, le)
+	}
+	c.mu.Unlock()
+	data, _ := os.ReadFile(b.path())
+	before := c.countEntries()
+	if _, err := c.MergeBytes(data, b.creds, "import"); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("over the entry limit: %v", err)
+	}
+	if after := c.countEntries(); after != before {
+		t.Fatalf("a refused merge changed the vault: %d -> %d entries", before, after)
+	}
+}
+
+// Review findings 3/11/13: hostile shapes and names are refused or neutralised when a file is read.
+func TestHostileShapesAreRefusedAndNamesNeutralised(t *testing.T) {
+	deep := newTestVault(t)
+	deep.mu.Lock()
+	cur := deep.root()
+	for i := 0; i < maxGroupDepth+3; i++ {
+		cur.Groups = append(cur.Groups, deep.newGroupNamed(fmt.Sprint("d", i)))
+		cur = &cur.Groups[0]
+	}
+	deep.mu.Unlock()
+	if err := deep.Save(); err == nil {
+		t.Fatal("a vault nested deeper than the limit was saved (it must not read back)")
+	}
+
+	v := newTestVault(t)
+	id, _ := v.AddEntry(Entry{Title: "with file"})
+	if err := v.AddAttachment(id, "ok.txt", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	v.mu.Lock()
+	le, _, _, _ := v.findEntry(id)
+	le.Binaries[0].Name = `..\..\AppData\Roaming\Startup\evil.bat`
+	v.mu.Unlock()
+	if err := v.Save(); err != nil {
+		t.Fatal(err)
+	}
+	w, err := Open(v.Dir(), creds("correct horse battery staple"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	e, _ := w.Get(id)
+	if len(e.Attachments) != 1 || strings.ContainsAny(e.Attachments[0].Name, `/\:`) || strings.HasPrefix(e.Attachments[0].Name, ".") {
+		t.Fatalf("attachment name from a file is not neutralised: %q", e.Attachments[0].Name)
+	}
+}
+
+func TestCSVDeepGroupPathsAreCapped(t *testing.T) {
+	v := newTestVault(t)
+	path := strings.Repeat("g/", 3000) + "leaf"
+	start := time.Now()
+	added, _, err := v.ImportCSV(strings.NewReader("Group,Title,Password\n" + path + ",deep,p\n"))
+	if err != nil || added != 1 {
+		t.Fatalf("import = %d %v", added, err)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("took %s", time.Since(start))
+	}
+	if err := v.Save(); err != nil {
+		t.Fatalf("the vault can no longer be saved after a deep CSV: %v", err)
+	}
+	gs, _ := v.Groups()
+	for _, g := range gs {
+		if strings.Count(g.Path, " / ") >= maxGroupDepth {
+			t.Fatalf("group deeper than the cap: %s", g.Path)
+		}
+	}
+}
+
+func TestCSVExportDefusesFormulasButNotPasswords(t *testing.T) {
+	v := newTestVault(t)
+	_, _ = v.AddEntry(Entry{Title: "=HYPERLINK(\"http://evil\",\"x\")", Username: "+cmd|' /C calc'!A0", Password: "=keep-this-password", Notes: "@SUM(1)"})
+	var buf bytes.Buffer
+	_ = v.ExportCSV(&buf)
+	out := buf.String()
+	if strings.Contains(out, ",=HYPERLINK") || strings.Contains(out, ",+cmd") || strings.Contains(out, ",@SUM") {
+		t.Fatalf("a spreadsheet would run this:\n%s", out)
+	}
+	if !strings.Contains(out, ",=keep-this-password,") {
+		t.Fatalf("the password must be exported as it is:\n%s", out)
+	}
+	w := newTestVault(t)
+	if _, _, err := w.ImportCSV(&buf); err != nil {
+		t.Fatal(err)
+	}
+	l, _ := w.List(Filter{})
+	e, _ := w.Get(l[0].ID)
+	if e.Title != "=HYPERLINK(\"http://evil\",\"x\")" || e.Password != "=keep-this-password" {
+		t.Fatalf("round trip: %+v", e)
+	}
+}
+
+func TestExportDoesNotFollowASymlink(t *testing.T) {
+	v := newTestVault(t)
+	dir := t.TempDir()
+	target := filepath.Join(dir, "victim")
+	link := filepath.Join(dir, "export.kdbx")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skip("no symlinks here")
+	}
+	if err := v.ExportFile(link, Creds{Password: []byte("x")}, KDFTest); err == nil {
+		t.Fatal("the export went through a symlink")
+	}
+	if _, err := os.Stat(target); err == nil {
+		t.Fatal("the symlink target was created")
+	}
+}
+
+func TestCheckPeerKDFRejectsExpensiveHeadersBeforeAnyDerivation(t *testing.T) {
+	v := newTestVault(t)
+	data, _ := os.ReadFile(v.path())
+	if err := CheckPeerKDF(data); err != nil {
+		t.Fatalf("a normal file was refused: %v", err)
+	}
+	big, err := Create(filepath.Join(t.TempDir(), "big"), creds("x"), KDF{MemoryMiB: 200, Iterations: 2, Parallelism: 2}, "Big")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer big.Close()
+	bigData, _ := os.ReadFile(big.path())
+	if err := CheckPeerKDF(bigData); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("a file asking for 200 MiB from a peer was accepted: %v", err)
+	}
+	if err := CheckPeerKDF([]byte("garbage")); err == nil {
+		t.Fatal("garbage accepted")
+	}
+}
+
+func TestWeakKeyDerivationIsRaisedOnOpen(t *testing.T) {
+	v := newTestVault(t) // created with KDFTest: 1 MiB, 1 iteration
+	dir := v.Dir()
+	v.Close()
+	kdfFloorOn = true
+	defer func() { kdfFloorOn = false }()
+	w, err := Open(dir, creds("correct horse battery staple"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, _ := w.KDFInfo()
+	if k.MemoryMiB < 16 || k.Iterations < 2 {
+		t.Fatalf("the weak parameters were kept: %+v", k)
+	}
+	w.Close()
+	data, _ := os.ReadFile(filepath.Join(dir, FileName))
+	if c, ok := peekKDF(data); !ok || !c.argon2 || c.memoryBytes < 16<<20 {
+		t.Fatalf("the file on disk still has weak parameters: %+v", c)
+	}
+	if _, err := Open(dir, creds("correct horse battery staple")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBackupsTheUserAskedForSurviveRoutineChurn(t *testing.T) {
+	v := newTestVault(t)
+	clock := time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC)
+	v.now = func() time.Time { return clock }
+	_, _ = v.AddEntry(Entry{Title: "one", Password: "p"})
+	manual, err := v.BackupNow()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 60; i++ { // many routine saves, each far enough apart to snapshot
+		clock = clock.Add(11 * time.Second)
+		_, _ = v.AddEntry(Entry{Title: fmt.Sprint("n", i), Password: "p"})
+	}
+	found := false
+	for _, b := range ListBackups(v.Dir()) {
+		if b.Name == manual.Name {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the manual backup was pushed out by routine snapshots")
+	}
+	// sync snapshots are rate limited
+	before := len(ListBackups(v.Dir()))
+	b, _ := os.ReadFile(v.path())
+	for i := 0; i < 5; i++ {
+		clock = clock.Add(2 * time.Second)
+		v.mu.Lock()
+		v.snapshotLocked(b, "sync")
+		v.mu.Unlock()
+	}
+	if after := len(ListBackups(v.Dir())); after > before+1 {
+		t.Fatalf("sync snapshots are not rate limited: %d -> %d", before, after)
+	}
+	n, err := v.PurgeBackups()
+	if err != nil || n == 0 || len(ListBackups(v.Dir())) != 0 {
+		t.Fatalf("PurgeBackups = %d %v, left %d", n, err, len(ListBackups(v.Dir())))
 	}
 }

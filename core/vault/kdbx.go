@@ -23,7 +23,7 @@ import (
 const (
 	MaxFileBytes       = 64 << 20 // a database file
 	MaxAttachmentBytes = 5 << 20  // one attachment
-	MaxEntries         = 50000
+	MaxEntries         = 20000
 	MaxFieldBytes      = 256 << 10 // one text field
 )
 
@@ -169,6 +169,9 @@ func decodeEx(data []byte, c Creds) (db *g.Database, upgraded bool, err error) {
 	}
 	if db.Content == nil || db.Content.Root == nil || len(db.Content.Root.Groups) == 0 || db.Content.Meta == nil {
 		return nil, false, fmt.Errorf("%w: the database has no root group", ErrWrongCredentials)
+	}
+	if err := checkShape(db); err != nil {
+		return nil, false, err
 	}
 	if !db.Header.IsKdbx4() {
 		nd, err := upgradeToV4(db, c)

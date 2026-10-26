@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -191,7 +193,15 @@ func TestVaultSyncStopsAMassDeletionUntilApproved(t *testing.T) {
 	if len(titles(win)) != 9 {
 		t.Fatalf("the PC applied a mass deletion on its own: %v", titles(win))
 	}
-	win.call("vault.sync_resolve", map[string]any{"device_id": pixID, "approve": true})
+	// an approval must name the file that was reviewed
+	if code := win.errorCode("vault.sync_resolve", map[string]any{"device_id": pixID, "approve": true}); code != "VAULT_REVIEW" {
+		t.Fatalf("approval without naming the file: %s", code)
+	}
+	if code := win.errorCode("vault.sync_resolve", map[string]any{"device_id": pixID, "approve": true, "sha256": "00"}); code != "VAULT_REVIEW" {
+		t.Fatalf("approval of some other file: %s", code)
+	}
+	sha := syncState(win, pixID)["incoming_sha256"].(string)
+	win.call("vault.sync_resolve", map[string]any{"device_id": pixID, "approve": true, "sha256": sha})
 	waitFor(t, "the approved deletions", func() bool { return len(titles(win)) == 2 })
 }
 
@@ -219,10 +229,18 @@ func TestVaultSyncRejectsGarbageAndSwitchedOffPeers(t *testing.T) {
 		t.Fatalf("garbage upload = %d", code)
 	}
 	time.Sleep(50 * time.Millisecond)
-	if code := put(append([]byte{0x03, 0xd9, 0xa2, 0x9a, 0x67, 0xfb, 0x4b, 0xb5}, bytes.Repeat([]byte{7}, 200)...)); code != http.StatusAccepted {
-		t.Fatalf("a file with the right signature is kept aside for the merge to judge, got %d", code)
+	if code := put(append([]byte{0x03, 0xd9, 0xa2, 0x9a, 0x67, 0xfb, 0x4b, 0xb5}, bytes.Repeat([]byte{7}, 200)...)); code != http.StatusBadRequest {
+		t.Fatalf("a file that only starts with the right signature must be refused at the door, got %d", code)
 	}
-	waitFor(t, "the PC to judge the fake file", func() bool {
+	time.Sleep(50 * time.Millisecond)
+	// a real vault of somebody else (a different master password) is kept aside and judged by the merge
+	other := startNode(t, "Other", "windows", false)
+	other.call("vault.create", map[string]any{"password": "another master password", "kdf": "low"})
+	otherFile, _ := os.ReadFile(filepath.Join(other.c.vaultDir(), "vault.kdbx"))
+	if code := put(otherFile); code != http.StatusAccepted {
+		t.Fatalf("a real vault file is accepted for review, got %d", code)
+	}
+	waitFor(t, "the PC to judge the foreign vault", func() bool {
 		st := syncState(win, pixID)
 		return st["state"] == "needs_password" || st["state"] == "error"
 	})

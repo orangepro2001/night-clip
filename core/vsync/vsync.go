@@ -13,6 +13,8 @@ package vsync
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -41,10 +44,23 @@ const (
 const (
 	// MaxFileBytes is the largest vault file we accept from a peer.
 	MaxFileBytes = vault.MaxFileBytes
-	// MaxRemovals: a sync that would delete more entries than this waits for the user's approval.
+	// MaxRemovals: one sync that would delete more entries than this waits for the user's approval.
 	MaxRemovals = 5
-	incomingDir = "incoming"
+	// RemovalBudget: all the deletions applied from one peer within RemovalWindow; more waits for approval.
+	// A compromised device that knows the master password cannot empty the vault five entries at a time.
+	RemovalBudget = 15
+	RemovalWindow = 24 * time.Hour
+	// MaxOverwrites: one sync that would overwrite more entries than this waits for approval.
+	MaxOverwrites = 50
+	incomingDir   = "incoming"
 )
+
+type removal struct {
+	at time.Time
+	n  int
+}
+
+var peerIDRe = regexp.MustCompile(`^dev_[a-z2-7]{26}$`)
 
 // Provider gives the service the vault of this device.
 type Provider interface {
@@ -93,7 +109,10 @@ type Service struct {
 	now    func() time.Time
 	timing Timing
 
-	procMu  sync.Mutex // one merge at a time
+	procMu  sync.Mutex           // one merge at a time
+	putSem  chan struct{}        // one upload body is read at a time: a peer cannot queue gigabytes in memory
+	failed  map[string]string    // peer -> sha256 of a stashed file that could not be merged yet (wrong password, needs review)
+	budget  map[string][]removal // peer -> deletions applied from it recently
 	mu      sync.Mutex
 	lastPut map[string]time.Time
 	kick    chan struct{}
@@ -112,7 +131,8 @@ func New(cfg Config) *Service {
 		cfg.Emit = func(map[string]any) {}
 	}
 	s := &Service{e: cfg.Engine, db: cfg.DB, prov: cfg.Provider, emit: cfg.Emit, now: cfg.Now, timing: cfg.Timing.withDefaults(),
-		lastPut: map[string]time.Time{}, kick: make(chan struct{}, 1)}
+		lastPut: map[string]time.Time{}, kick: make(chan struct{}, 1), putSem: make(chan struct{}, 1),
+		failed: map[string]string{}, budget: map[string][]removal{}}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.e.Handle("GET /v1/vault/head", http.HandlerFunc(s.serveHead), false)
 	s.e.Handle("GET /v1/vault/file", http.HandlerFunc(s.serveFile), false)
@@ -156,8 +176,18 @@ func (s *Service) OnPeerState(peerID, state string) {
 
 func (s *Service) dir() string { return s.prov.Dir() }
 
+// incomingPath is where a peer's file waits. Peer ids are validated: a made-up id must never reach
+// the file system ("../vault" would be the live vault).
 func (s *Service) incomingPath(peerID string) string {
+	if !peerIDRe.MatchString(peerID) {
+		return ""
+	}
 	return filepath.Join(s.dir(), incomingDir, peerID+".kdbx")
+}
+
+func fileSHA(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *Service) loop() {
@@ -269,7 +299,7 @@ func (s *Service) syncPeer(p store.Peer) {
 	// 1. nothing here, something there: join
 	if !haveLocal && h.Present {
 		data, err := getBytes(ctx, ep.Client, base+"/v1/vault/file")
-		if err != nil {
+		if err != nil || !s.stillEnabled(p.DeviceID) {
 			return
 		}
 		s.adopt(p, data, h.SHA256)
@@ -278,7 +308,7 @@ func (s *Service) syncPeer(p store.Peer) {
 	// 2. their file changed since we last looked: fetch, keep aside, merge
 	if h.Present && h.SHA256 != row.SeenHash {
 		data, err := getBytes(ctx, ep.Client, base+"/v1/vault/file")
-		if err != nil {
+		if err != nil || !s.stillEnabled(p.DeviceID) {
 			return
 		}
 		s.receive(p.DeviceID, data, h.SHA256)
@@ -397,11 +427,16 @@ func (s *Service) adopt(p store.Peer, data []byte, hash string) {
 	if !looksLikeKDBX(data) || vault.Exists(s.dir()) {
 		return
 	}
+	// A file that merely starts with the right bytes, or asks for an absurd key derivation, is not a vault.
+	if err := vault.CheckPeerKDF(data); err != nil {
+		s.setState(p.DeviceID, StateError, "the other device's vault file was refused: "+err.Error(), nil)
+		return
+	}
 	if err := os.MkdirAll(s.dir(), 0o700); err != nil {
 		return
 	}
 	path := filepath.Join(s.dir(), vault.FileName)
-	if err := writeAtomic(path, data); err != nil {
+	if err := writeAtomicAs(path, path+".join.tmp", data); err != nil {
 		return
 	}
 	got, _, _ := vault.FileHash(s.dir())
@@ -409,8 +444,9 @@ func (s *Service) adopt(p store.Peer, data []byte, hash string) {
 	s.emit(map[string]any{"type": "vault.joined", "device_id": p.DeviceID, "name": p.Name})
 }
 
-func writeAtomic(path string, data []byte) error {
-	tmp := path + ".tmp"
+func writeAtomic(path string, data []byte) error { return writeAtomicAs(path, path+".tmp", data) }
+
+func writeAtomicAs(path, tmp string, data []byte) error {
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
@@ -434,10 +470,14 @@ func writeAtomic(path string, data []byte) error {
 func (s *Service) receive(peerID string, data []byte, remoteHash string) {
 	s.procMu.Lock()
 	defer s.procMu.Unlock()
+	if s.incomingPath(peerID) == "" {
+		return
+	}
 	if !looksLikeKDBX(data) {
 		s.setState(peerID, StateError, "the other device sent something that is not a vault file", nil)
 		return
 	}
+	delete(s.failed, peerID) // a new file deserves a new try
 	if err := os.MkdirAll(filepath.Join(s.dir(), incomingDir), 0o700); err != nil {
 		return
 	}
@@ -447,30 +487,67 @@ func (s *Service) receive(peerID string, data []byte, remoteHash string) {
 	s.mergeStash(peerID, remoteHash, vault.Creds{}, false)
 }
 
-// mergeStash merges the peer's stashed file into the open vault. procMu held.
+// removalsLeft is how many more deletions may be applied from this peer right now.
+func (s *Service) removalsLeft(peerID string) int {
+	now := s.now()
+	kept, used := s.budget[peerID][:0], 0
+	for _, r := range s.budget[peerID] {
+		if now.Sub(r.at) < RemovalWindow {
+			kept = append(kept, r)
+			used += r.n
+		}
+	}
+	s.budget[peerID] = kept
+	left := RemovalBudget - used
+	if left < 0 {
+		left = 0
+	}
+	return left
+}
+
+// mergeStash merges the peer's stashed file into the open vault. procMu held. force skips the
+// "this exact file already failed" memory (the user supplied a password or approved).
 func (s *Service) mergeStash(peerID, remoteHash string, c vault.Creds, approve bool) {
 	seen := func(r *store.VaultSyncRow) {
 		if remoteHash != "" {
 			r.SeenHash = remoteHash
 		}
 	}
-	data, err := os.ReadFile(s.incomingPath(peerID))
+	path := s.incomingPath(peerID)
+	if path == "" {
+		return
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return
+	}
+	sum := fileSHA(data)
+	force := approve || len(c.Password) > 0
+	if !force && s.failed[peerID] == sum {
+		return // the same file failed before and nothing has changed: do not pay for the key derivation again
 	}
 	v := s.prov.Current()
 	if v == nil {
 		s.setState(peerID, StatePendingUnlock, "the other device's changes are merged when you unlock the vault", seen)
 		return
 	}
-	opts := vault.MergeOptions{RequireSameVault: !approve, MaxRemoved: MaxRemovals}
-	if approve {
-		opts.MaxRemoved = 0
+	opts := vault.MergeOptions{PeerFile: true, RequireSameVault: !approve}
+	if !approve {
+		left := s.removalsLeft(peerID)
+		if left > MaxRemovals {
+			left = MaxRemovals
+		}
+		opts.LimitRemoved, opts.MaxRemoved = true, left
+		opts.LimitUpdated, opts.MaxUpdated = true, MaxOverwrites
 	}
 	st, err := v.MergeGuarded(data, c, "sync", opts)
 	switch {
 	case err == nil:
-		_ = os.Remove(s.incomingPath(peerID))
+		delete(s.failed, peerID)
+		_ = os.Remove(path)
+		if st.EntriesRemoved > 0 {
+			s.budget[peerID] = append(s.budget[peerID], removal{s.now(), st.EntriesRemoved})
+		}
 		s.setState(peerID, StateIdle, "", func(r *store.VaultSyncRow) { seen(r); r.LastOKAt = s.now().Unix() })
 		if st.Changed() {
 			s.emit(map[string]any{"type": "vault.changed", "reason": "sync", "device_id": peerID, "stats": st})
@@ -478,11 +555,17 @@ func (s *Service) mergeStash(peerID, remoteHash string, c vault.Creds, approve b
 	case errors.Is(err, vault.ErrLocked):
 		s.setState(peerID, StatePendingUnlock, "the other device's changes are merged when you unlock the vault", seen)
 	case errors.Is(err, vault.ErrWrongCredentials):
+		s.failed[peerID] = sum
 		s.setState(peerID, StateNeedsPassword, "the other device's vault uses a different master password: enter it to merge", seen)
 	case errors.Is(err, vault.ErrDifferentVault):
+		s.failed[peerID] = sum
 		s.setState(peerID, StateReview, "the other device has a different vault: approve to merge both", seen)
 	case errors.Is(err, vault.ErrReview):
-		s.setState(peerID, StateReview, "the other device's copy would delete several entries: review and approve", seen)
+		s.failed[peerID] = sum
+		s.setState(peerID, StateReview, "the other device's copy would delete or overwrite many entries: review and approve", seen)
+	case errors.Is(err, vault.ErrUnsupported), errors.Is(err, vault.ErrTooLarge):
+		s.failed[peerID] = sum
+		s.setState(peerID, StateError, "the other device's file was refused: "+err.Error(), seen)
 	default:
 		s.setState(peerID, StateError, err.Error(), seen)
 	}
@@ -509,12 +592,21 @@ func (s *Service) OnUnlocked() {
 }
 
 // Resolve finishes a stuck sync: the master password of the other device's vault (needs_password)
-// and/or the user's approval (review).
-func (s *Service) Resolve(peerID string, c vault.Creds, approve bool) error {
+// and/or the user's approval (review). An approval names the SHA-256 of the file the user looked at
+// (see Status): if the stashed file has changed since, nothing is merged.
+func (s *Service) Resolve(peerID string, c vault.Creds, approve bool, sha string) error {
 	s.procMu.Lock()
 	defer s.procMu.Unlock()
-	if _, err := os.Stat(s.incomingPath(peerID)); err != nil {
+	path := s.incomingPath(peerID)
+	if path == "" {
 		return vault.ErrNotFound
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return vault.ErrNotFound
+	}
+	if approve && (sha == "" || sha != fileSHA(data)) {
+		return vault.ErrReview // the file changed since it was reviewed, or no file was named
 	}
 	if s.prov.Current() == nil {
 		return vault.ErrLocked
@@ -583,6 +675,16 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// One body is read and judged at a time: waiting requests are turned away at once instead of
+	// holding up to 64 MiB each in memory.
+	select {
+	case s.putSem <- struct{}{}:
+		defer func() { <-s.putSem }()
+	default:
+		w.Header().Set("Retry-After", "5")
+		writeErr(w, http.StatusTooManyRequests, "RATE_LIMITED", "another upload is being processed")
+		return
+	}
 	s.mu.Lock()
 	if last, seen := s.lastPut[p.DeviceID]; seen && s.now().Sub(last) < s.timing.MinPutGap {
 		s.mu.Unlock()
@@ -601,6 +703,10 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 	}
 	if !looksLikeKDBX(data) {
 		writeErr(w, http.StatusBadRequest, "INVALID", "not a vault file")
+		return
+	}
+	if err := vault.CheckPeerKDF(data); err != nil {
+		writeErr(w, http.StatusBadRequest, "INVALID", "key derivation parameters refused")
 		return
 	}
 	if !vault.Exists(s.dir()) {
@@ -624,6 +730,7 @@ type PeerStatus struct {
 	Detail          string `json:"detail"`
 	LastOKAt        int64  `json:"last_ok_at"`
 	PendingIncoming bool   `json:"pending_incoming"`
+	IncomingSHA256  string `json:"incoming_sha256,omitempty"` // what an approval must name
 }
 
 // Status lists every paired device with its vault sync state.
@@ -639,9 +746,15 @@ func (s *Service) Status() []PeerStatus {
 			continue
 		}
 		row, _, _ := s.db.GetVaultSync(p.DeviceID)
+		var sha string
 		_, err := os.Stat(s.incomingPath(p.DeviceID))
+		if err == nil {
+			if b, rerr := os.ReadFile(s.incomingPath(p.DeviceID)); rerr == nil {
+				sha = fileSHA(b)
+			}
+		}
 		st := PeerStatus{DeviceID: p.DeviceID, Name: p.Name, Enabled: p.VaultSync, Connected: conn[p.DeviceID], State: row.State,
-			Detail: row.Detail, LastOKAt: row.LastOKAt, PendingIncoming: err == nil}
+			Detail: row.Detail, LastOKAt: row.LastOKAt, PendingIncoming: err == nil, IncomingSHA256: sha}
 		if !p.VaultSync {
 			st.State, st.Detail = StateIdle, ""
 		}
@@ -654,6 +767,10 @@ func (s *Service) Status() []PeerStatus {
 func (s *Service) Forget(peerID string) {
 	s.procMu.Lock()
 	defer s.procMu.Unlock()
-	_ = os.Remove(s.incomingPath(peerID))
+	if p := s.incomingPath(peerID); p != "" {
+		_ = os.Remove(p)
+	}
+	delete(s.failed, peerID)
+	delete(s.budget, peerID)
 	_ = s.db.PutVaultSync(store.VaultSyncRow{PeerID: peerID})
 }

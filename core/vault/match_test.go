@@ -30,7 +30,7 @@ func TestFindMatchesIsStrict(t *testing.T) {
 		}
 		return out
 	}
-	got, err := v.FindMatches("https://login.example.com:8443/path?x=1", "")
+	got, err := v.FindMatches("https://login.example.com/path?x=1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,5 +82,44 @@ func TestFindMatchesIsStrict(t *testing.T) {
 	}
 	if got, _ = v.FindMatches("http://192.168.1.2", ""); len(got) != 0 {
 		t.Fatalf("other ip: %+v", got)
+	}
+}
+
+// Review finding 10: scheme and port decide too.
+func TestFindMatchesChecksSchemeAndPort(t *testing.T) {
+	v := newTestVault(t)
+	good, _ := v.AddEntry(Entry{Title: "good", URL: "https://good.com/login", Password: "p"})
+	legacy, _ := v.AddEntry(Entry{Title: "legacy http", URL: "http://old.example.net", Password: "p"})
+	ported, _ := v.AddEntry(Entry{Title: "ported", URL: "https://app.example.org:8443", Password: "p"})
+	lan, _ := v.AddEntry(Entry{Title: "router", URL: "https://192.168.0.1", Password: "p"})
+	has := func(page, id string) bool {
+		got, _ := v.FindMatches(page, "")
+		for _, m := range got {
+			if m.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+	for page, want := range map[string]bool{
+		"https://good.com/": true, "https://sub.good.com": true, "good.com": true,
+		"http://good.com/": false, "http://good.com:1337/": false, "https://good.com:1337/": false,
+		"ftp://good.com": false, "file://good.com/x": false, "javascript://good.com/%0aalert(1)": false,
+	} {
+		if has(page, good) != want {
+			t.Errorf("page %q for an https entry: got %v, want %v", page, !want, want)
+		}
+	}
+	if !has("http://old.example.net/", legacy) || !has("https://old.example.net/", legacy) {
+		t.Error("an entry saved for http must fit its http page (and the https page, which is safer)")
+	}
+	if !has("https://app.example.org:8443/x", ported) || has("https://app.example.org/x", ported) || has("https://app.example.org:9000/", ported) {
+		t.Error("an explicit port must match exactly")
+	}
+	if !has("http://192.168.0.1/", lan) {
+		t.Error("plain http on the local network may use an https entry")
+	}
+	if has("http://203.0.113.9/", lan) {
+		t.Error("another host matched an IP entry")
 	}
 }
