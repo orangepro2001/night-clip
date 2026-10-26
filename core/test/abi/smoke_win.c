@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
     char config[1536];
     snprintf(config, sizeof config,
              "{\"data_dir\":\"%s\",\"db_key_b64\":\"" TEST_KEY_B64 "\","
-             "\"device_name\":\"wine\",\"platform\":\"windows\",\"listen\":true}", jsonDir);
+             "\"device_name\":\"wine\",\"platform\":\"windows\",\"listen\":false}", jsonDir);
 
     CHECK(cb_init("{\"data_dir\":\"relative\",\"db_key_b64\":\"" TEST_KEY_B64 "\","
                   "\"device_name\":\"wine\",\"platform\":\"windows\"}", &err) != 0 && err != NULL,

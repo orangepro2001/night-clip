@@ -266,7 +266,11 @@ func TestADialerTheServerDoesNotKnowIsToldNotPairedAndStopsRetrying(t *testing.T
 	pix := newNode(t, "pixel", "android", false, nil)
 	win.start() // knows nobody
 	waitUntil(t, "listen", func() bool { return win.e.ListenPort() != 0 })
-	pix.know(win, win.e.ListenPort(), "")
+	rec := pix.know(win, win.e.ListenPort(), "")
+	rec.PairedAt = 1 // long ago: this is not the "just paired" grace window
+	if err := pix.db.PutPeer(rec); err != nil {
+		t.Fatal(err)
+	}
 	pix.start()
 	pix.waitState(win.id.DeviceID, StateUnpaired)
 
@@ -589,4 +593,22 @@ func TestEngineRefusesToStartTwiceAndClosesCleanly(t *testing.T) {
 	if win.e.ListenPort() != 0 {
 		t.Fatal("still listening after Close")
 	}
+}
+
+// Between two PCs the listener may dial the instant the user confirms, before the
+// joiner has stored it. A NOT_PAIRED answer right after pairing must be retried.
+func TestNotPairedRightAfterPairingIsRetried(t *testing.T) {
+	win := newNode(t, "win", "windows", true, nil)
+	pix := newNode(t, "pixel", "android", false, nil)
+	win.start() // does not know the phone yet
+	waitUntil(t, "listen", func() bool { return win.e.ListenPort() != 0 })
+	pix.know(win, win.e.ListenPort(), "") // PairedAt = now: inside the grace window
+	pix.start()
+
+	time.Sleep(250 * time.Millisecond) // several refused attempts
+	if st := pix.linkState(win.id.DeviceID); st == StateUnpaired || st == StateConnected {
+		t.Fatalf("state = %s; it must keep retrying while the pairing is fresh", st)
+	}
+	win.know(pix, 0, "") // the other side finishes saving us
+	pix.waitState(win.id.DeviceID, StateConnected)
 }

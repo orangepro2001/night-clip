@@ -19,6 +19,12 @@ import (
 
 var errNotPaired = errors.New("the peer does not know this device any more")
 
+// pairingGrace is how long after pairing a NOT_PAIRED answer is treated as "the
+// other side has not finished saving us yet" and retried, instead of as "we were
+// removed". Between two Windows PCs the listener may start dialing the moment the
+// user confirms, a little before the joiner has stored the new peer.
+const pairingGrace = 2 * time.Minute
+
 // shouldDial applies the direction rules of docs/architecture.md §4.1: Android
 // only dials; between two listening cores the smaller device_id dials; a
 // per-peer role override wins.
@@ -103,7 +109,7 @@ func (l *link) dialLoop(ctx context.Context, gen uint64) {
 		switch {
 		case ctx.Err() != nil:
 			return
-		case errors.Is(err, errNotPaired):
+		case errors.Is(err, errNotPaired) && e.now().Unix()-p.PairedAt >= int64(pairingGrace.Seconds()):
 			l.setState(StateUnpaired)
 			return
 		case errors.Is(err, ErrFingerprint):

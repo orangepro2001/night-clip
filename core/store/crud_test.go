@@ -974,3 +974,89 @@ func TestTouchPeerAndSetPeerState(t *testing.T) {
 		t.Fatal("invalid state accepted")
 	}
 }
+
+func TestInboxKeepsTheSensitiveFlag(t *testing.T) {
+	db := openTestDB(t)
+	for i, sens := range []bool{false, true} {
+		r := sampleInbox(fmt.Sprintf("ev-%d", i), "dev_a", int64(i+1))
+		r.Sensitive = sens
+		if _, err := db.InsertInbox(r); err != nil {
+			t.Fatal(err)
+		}
+		got, _, _ := db.GetInbox(r.EventID)
+		if got.Sensitive != sens {
+			t.Fatalf("GetInbox sensitive = %v, want %v", got.Sensitive, sens)
+		}
+	}
+	rows, _ := db.ListInbox(0)
+	flags := map[string]bool{}
+	for _, r := range rows {
+		flags[r.EventID] = r.Sensitive
+	}
+	if flags["ev-0"] || !flags["ev-1"] {
+		t.Fatalf("ListInbox flags = %v", flags)
+	}
+}
+
+func TestMigrationV2UpgradesAV1Database(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(dir, testKey(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Turn the fresh database back into a v1 one.
+	if _, err := db.sql.Exec(`ALTER TABLE inbox DROP COLUMN sensitive`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`UPDATE schema_version SET version = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`INSERT INTO inbox (event_id, peer_id, sequence, kind, payload_enc, received_at, expires_at, state)
+		VALUES ('old', 'dev_a', 1, 'clipboard', x'00', 1, 2, 'received')`); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+
+	db2 := openAt(t, dir, testKey(1))
+	var sensitive int
+	if err := db2.sql.QueryRow(`SELECT sensitive FROM inbox WHERE event_id = 'old'`).Scan(&sensitive); err != nil || sensitive != 0 {
+		t.Fatalf("existing rows must default to not sensitive: %d, %v", sensitive, err)
+	}
+	var version int
+	_ = db2.sql.QueryRow(`SELECT version FROM schema_version`).Scan(&version)
+	if version != len(migrations) {
+		t.Fatalf("version = %d", version)
+	}
+}
+
+func TestPruneAndClearInbox(t *testing.T) {
+	db := openTestDB(t)
+	for i := 0; i < 6; i++ {
+		r := sampleInbox(fmt.Sprintf("ev-%d", i), "dev_a", int64(i+1))
+		r.ReceivedAt = int64(100 + i)
+		if _, err := db.InsertInbox(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := db.PruneInbox(0); err != nil || n != 0 {
+		t.Fatalf("PruneInbox(0) = %d, %v; must delete nothing", n, err)
+	}
+	n, err := db.PruneInbox(4)
+	if err != nil || n != 2 {
+		t.Fatalf("PruneInbox(4) = %d, %v", n, err)
+	}
+	for _, gone := range []string{"ev-0", "ev-1"} {
+		if ok, _ := db.HasInbox(gone); ok {
+			t.Errorf("%s should have been pruned (oldest)", gone)
+		}
+	}
+	if ok, _ := db.HasInbox("ev-5"); !ok {
+		t.Error("newest row pruned")
+	}
+	if err := db.ClearInbox(); err != nil {
+		t.Fatal(err)
+	}
+	if rows, _ := db.ListInbox(0); len(rows) != 0 {
+		t.Fatalf("%d rows after ClearInbox", len(rows))
+	}
+}

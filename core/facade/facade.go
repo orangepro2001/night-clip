@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"nightclip/core/identity"
+	"nightclip/core/pairing"
+	"nightclip/core/peer"
 	"nightclip/core/proto"
 	"nightclip/core/store"
 	"nightclip/core/update"
@@ -54,17 +56,36 @@ type Core struct {
 	id      *identity.Identity
 	db      *store.DB
 	upd     *update.Manager
+	n       *netState
 	started bool
 	closed  bool
 
 	events  chan []byte
 	dropped atomic.Uint64
 	done    chan struct{}
+
+	// Test-only knobs, set by in-package tests before Init; zero in production.
+	hooks  peer.Hooks
+	timing peer.Timing
+	pairT  pairing.Timings
+}
+
+// testEngine, set only by this package's tests (see network_test.go), makes
+// every Core they create talk over loopback on random ports instead of binding
+// the machine's real tailnet addresses. It is nil in production.
+var testEngine *struct {
+	hooks  peer.Hooks
+	timing peer.Timing
+	pairT  pairing.Timings
 }
 
 // New returns an uninitialised Core.
 func New() *Core {
-	return &Core{events: make(chan []byte, eventQueueSize), done: make(chan struct{})}
+	c := &Core{events: make(chan []byte, eventQueueSize), done: make(chan struct{})}
+	if testEngine != nil {
+		c.hooks, c.timing, c.pairT = testEngine.hooks, testEngine.timing, testEngine.pairT
+	}
+	return c
 }
 
 // Init configures the core. It is an error to call it twice.
@@ -109,7 +130,13 @@ func (c *Core) Init(configJSON string) (err error) {
 		_ = db.Close()
 		return err
 	}
-	c.cfg, c.id, c.db, c.upd, c.started = cfg, id, db, upd, true
+	c.cfg, c.id, c.db = cfg, id, db
+	n, err := c.startNetwork(cfg)
+	if err != nil {
+		_ = db.Close()
+		return err
+	}
+	c.n, c.upd, c.started = n, upd, true
 	upd.Run()
 	c.emit(map[string]any{"type": "core.started", "device_id": id.DeviceID})
 	return nil
@@ -153,6 +180,9 @@ func (c *Core) Shutdown() {
 	close(c.done)
 	if c.upd != nil {
 		c.upd.Close()
+	}
+	if c.n != nil {
+		c.n.close()
 	}
 	if c.db != nil {
 		_ = c.db.Close()
@@ -213,6 +243,9 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 	case "update.status", "update.check", "update.download", "update.config":
 		return c.updateCall(method, paramsJSON)
 	default:
+		if result, handled, err := c.networkCall(method, paramsJSON); handled {
+			return result, err
+		}
 		return nil, proto.Errorf(proto.CodeMethodNotFound, "unknown method %q", method)
 	}
 }
@@ -223,7 +256,7 @@ func (c *Core) status() (any, error) {
 	if !c.started {
 		return nil, proto.Errorf(proto.CodeNotInitialized, "call Init first")
 	}
-	return map[string]any{
+	st := map[string]any{
 		"device_id":      c.id.DeviceID,
 		"device_name":    c.cfg.DeviceName,
 		"platform":       c.cfg.Platform,
@@ -231,7 +264,18 @@ func (c *Core) status() (any, error) {
 		"port":           c.cfg.Port,
 		"peers":          []any{},
 		"events_dropped": c.dropped.Load(),
-	}, nil
+	}
+	if c.n != nil {
+		st["peers"] = c.n.eng.PeerStatuses()
+		st["capture"] = c.n.clip.Setting("capture")
+		addrs := []string{}
+		for _, a := range c.n.eng.ListenAddrs() {
+			addrs = append(addrs, a.String())
+		}
+		st["listening_addrs"] = addrs
+		st["listening_port"] = c.n.eng.ListenPort()
+	}
+	return st, nil
 }
 
 func (c *Core) identity() (any, error) {

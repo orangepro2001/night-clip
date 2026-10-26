@@ -20,6 +20,7 @@ type InboxRow struct {
 	ExpiresAt  int64
 	State      string // received | applied | ignored | expired | error
 	AppliedAt  int64
+	Sensitive  bool
 }
 
 // InsertInbox stores a received event and reports whether it was new. A repeat
@@ -39,11 +40,11 @@ func (db *DB) InsertInbox(r InboxRow) (inserted bool, err error) {
 	}
 	res, err := db.sql.Exec(`
 		INSERT INTO inbox (event_id, peer_id, sequence, kind, payload_enc,
-		                   received_at, expires_at, state, applied_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                   received_at, expires_at, state, applied_at, sensitive)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(event_id) DO NOTHING`,
 		r.EventID, r.PeerID, r.Sequence, r.Kind, sealed,
-		r.ReceivedAt, r.ExpiresAt, r.State, nullableTime(r.AppliedAt))
+		r.ReceivedAt, r.ExpiresAt, r.State, nullableTime(r.AppliedAt), r.Sensitive)
 	if err != nil {
 		return false, dbErr("store inbox event", err)
 	}
@@ -76,10 +77,10 @@ func (db *DB) GetInbox(eventID string) (InboxRow, bool, error) {
 		appliedAt sql.NullInt64
 	)
 	err := db.sql.QueryRow(`
-		SELECT event_id, peer_id, sequence, kind, payload_enc, received_at, expires_at, state, applied_at
+		SELECT event_id, peer_id, sequence, kind, payload_enc, received_at, expires_at, state, applied_at, sensitive
 		FROM inbox WHERE event_id = ?`, eventID).
 		Scan(&r.EventID, &r.PeerID, &r.Sequence, &r.Kind, &sealed,
-			&r.ReceivedAt, &r.ExpiresAt, &r.State, &appliedAt)
+			&r.ReceivedAt, &r.ExpiresAt, &r.State, &appliedAt, &r.Sensitive)
 	if errors.Is(err, sql.ErrNoRows) {
 		return InboxRow{}, false, nil
 	}
@@ -102,7 +103,7 @@ func (db *DB) ListInbox(limit int) ([]InboxRow, error) {
 		limit = -1
 	}
 	rows, err := db.sql.Query(`
-		SELECT event_id, peer_id, sequence, kind, payload_enc, received_at, expires_at, state, applied_at
+		SELECT event_id, peer_id, sequence, kind, payload_enc, received_at, expires_at, state, applied_at, sensitive
 		FROM inbox ORDER BY received_at DESC, event_id LIMIT ?`, limit)
 	if err != nil {
 		return nil, dbErr("list inbox", err)
@@ -117,7 +118,7 @@ func (db *DB) ListInbox(limit int) ([]InboxRow, error) {
 			appliedAt sql.NullInt64
 		)
 		if err := rows.Scan(&r.EventID, &r.PeerID, &r.Sequence, &r.Kind, &sealed,
-			&r.ReceivedAt, &r.ExpiresAt, &r.State, &appliedAt); err != nil {
+			&r.ReceivedAt, &r.ExpiresAt, &r.State, &appliedAt, &r.Sensitive); err != nil {
 			return nil, dbErr("list inbox", err)
 		}
 		r.Payload, err = db.unseal(sealed, rowAAD("inbox", "payload_enc", r.EventID))
@@ -160,4 +161,31 @@ func (db *DB) ExpireInbox(now int64) (int64, error) {
 		return 0, dbErr("expire inbox", err)
 	}
 	return n, nil
+}
+
+// PruneInbox keeps the newest `keep` rows (by received_at) and deletes the
+// rest, returning how many were removed. keep <= 0 deletes nothing.
+func (db *DB) PruneInbox(keep int) (int64, error) {
+	if keep <= 0 {
+		return 0, nil
+	}
+	res, err := db.sql.Exec(`
+		DELETE FROM inbox WHERE event_id IN (
+			SELECT event_id FROM inbox ORDER BY received_at DESC, event_id LIMIT -1 OFFSET ?)`, keep)
+	if err != nil {
+		return 0, dbErr("prune inbox", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, dbErr("prune inbox", err)
+	}
+	return n, nil
+}
+
+// ClearInbox deletes every received event.
+func (db *DB) ClearInbox() error {
+	if _, err := db.sql.Exec(`DELETE FROM inbox`); err != nil {
+		return dbErr("clear inbox", err)
+	}
+	return nil
 }

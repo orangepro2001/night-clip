@@ -9,7 +9,7 @@ import (
 
 // migrations holds one entry per schema version. Entry i upgrades the database
 // from version i to i+1; never edit a published entry, append a new one.
-var migrations = [][]string{migrationV1()}
+var migrations = [][]string{migrationV1(), migrationV2()}
 
 func migrationV1() []string {
 	return []string{
@@ -109,6 +109,14 @@ func migrationV1() []string {
 		`CREATE INDEX idx_outbox_expires ON outbox(expires_at)`,
 		`CREATE INDEX idx_inbox_expires ON inbox(expires_at)`,
 		`CREATE INDEX idx_inbox_received ON inbox(received_at)`,
+	}
+}
+
+// migrationV2 remembers whether the sender flagged an inbox event as sensitive,
+// so a history screen can hide its text without re-guessing.
+func migrationV2() []string {
+	return []string{
+		`ALTER TABLE inbox ADD COLUMN sensitive INTEGER NOT NULL DEFAULT 0`,
 	}
 }
 

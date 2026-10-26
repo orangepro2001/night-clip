@@ -79,7 +79,7 @@ public class CoreInteropTests
         core.Start(new
         {
             data_dir = dataDir, db_key_b64 = key,
-            device_name = DeviceName, platform = "windows", listen = true, port = 47821,
+            device_name = DeviceName, platform = "windows", listen = false, port = 47821,
         });
         Assert.True(File.Exists(Path.Combine(dataDir, "clipbridge.db")), "the core did not create its database");
 

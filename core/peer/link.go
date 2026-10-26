@@ -244,6 +244,7 @@ func (l *link) persistLocked(s *session, ready []*pending) ([]*proto.Envelope, e
 		row := store.InboxRow{
 			EventID: env.EventID, PeerID: l.peerID, Sequence: int64(env.Sequence), Kind: string(env.Kind),
 			Payload: []byte(env.Payload), ReceivedAt: l.e.now().Unix(), ExpiresAt: env.ExpiresAt.Unix(),
+			Sensitive: env.Sensitive,
 		}
 		inserted, err := l.e.db.InsertInbox(row)
 		switch {

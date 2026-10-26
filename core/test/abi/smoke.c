@@ -19,7 +19,7 @@ int main(void) {
     char config[512];
     snprintf(config, sizeof config,
              "{\"data_dir\":\"%s\",\"db_key_b64\":\"" TEST_KEY_B64 "\","
-             "\"device_name\":\"smoke\",\"platform\":\"windows\",\"listen\":true}", dir);
+             "\"device_name\":\"smoke\",\"platform\":\"windows\",\"listen\":false}", dir);
 
     char *before = cb_call("status", "{}");
     CHECK(before && strstr(before, "NOT_INITIALIZED"), "status before init must fail");

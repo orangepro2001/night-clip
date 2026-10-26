@@ -311,44 +311,64 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 
 ### 7.3 方法
 
-| 方法 | 参数 | 说明 |
+参数与结果均为 JSON 对象；失败返回 `{"ok":false,"error":{"code":…}}`（错误码见 §1.4）。
+
+| 方法 | 参数 | 结果 / 说明 |
 | --- | --- | --- |
-| `status` | — | 本机 tailnet 地址、监听状态、对端连接状态、发件箱长度 |
-| `settings.get` / `settings.set` | key/value | 捕获开关、TTL、默认应用策略、文件上限 |
-| `pair.begin` | — | Windows：返回 QR 内容、过期时间 |
-| `pair.join` | `qr` 或 `{host,port,psk?}` | Android：加入配对，返回 `pair_id` |
-| `pair.confirm` | `pair_id`, `accept` | Windows：确认/拒绝 SAS |
-| `peers.list` | — | 对端、状态、策略 |
-| `peers.update` | `device_id`, `name`/`apply_mode`/`enabled` | |
-| `peers.remove` | `device_id` | 撤销并拉黑指纹 |
-| `clip.local_changed` | `text`, `seq?` | 壳报告本地复制；核心决定是否发送 |
-| `clip.send` | `text`, `to[]?` | 用户手动发送 |
-| `clip.mark_applied` | `event_id`, `seq_after?` | 壳已写入剪贴板 |
-| `clip.dismiss` | `event_id` | 用户忽略 |
-| `inbox.list` / `inbox.get` / `inbox.clear` | 分页/ID | 收件箱 |
-| `file.offer` | `to`, `path` 或 `fd`+`name`+`size` | 创建 offer（`fd` 仅 Android） |
-| `file.accept` / `file.reject` / `file.cancel` | `transfer_id`, `save_dir?` | |
-| `transfers.list` | — | 传输状态与进度 |
-| `update.status` | — | 自更新状态（见 [update.md](update.md)） |
-| `update.check` | — | 立即检查；若开启自动下载则随后开始下载 |
-| `update.download` | — | 开始下载已发现的新版本（幂等） |
-| `update.config` | `auto?`, `url?` | 读取/修改自动下载开关与分发地址（`url:""` 恢复默认） |
-| `diagnostics.get` | — | 版本、游标、最近错误（脱敏） |
-| `shutdown` | — | 等同 `cb_shutdown` |
+| `version` | — | `{core, protocol}` |
+| `status` | — | `{device_id, device_name, platform, listen, port, peers[], capture, listening_addrs[], listening_port, events_dropped}`；`peers[]` 见 `peers.list` |
+| `identity.get` | — | `{device_id, fingerprint}` |
+| `diagnostics.get` | — | 版本、监听地址、各对端状态与游标、更新状态；**不含**密钥、psk、数据库密钥 |
+| `settings.get` | `key?` | 有 `key`：`{key, value}`；否则 `{settings:{…}}`（见下表） |
+| `settings.set` | `key`, `value` | 校验后保存；未知键或非法值 → `INVALID` |
+| `pair.begin` | — | 监听方：`{session_id, link, host, port, expires_at, qr:{size, rows[]}}`。`link` 即二维码内容；`qr.rows` 是 `size`×`size` 的 `"0"/"1"` 字符串（含静区），壳自己画，不需要 QR 库。本机没有 tailnet 监听地址 → `NO_TAILNET` |
+| `pair.cancel` | `session_id` | 作废配对码 |
+| `pair.pending` | — | `{pending:[{pair_id, name, platform, device_id, sas, expires_at}]}` |
+| `pair.confirm` | `pair_id`, `accept` | 监听方：接受（保存对端并开始连接）或拒绝；已过期 → `PAIRING_EXPIRED` |
+| `pair.join` | `link`，或 `host`+`port`+`psk`(+`fp`) | 加入方：立即返回 `{join_id}`；过程以事件 `pair.sas`、`pair.result` 报告。同时只能有一个进行中的加入 |
+| `peers.list` | — | `{peers:[{device_id, name, platform, state, tailnet_addrs[], outbox_pending, recv_cursor, next_seq_out, last_seen_at, apply_mode}]}`；`state`：`connected` / `connecting` / `offline` / `unpaired` / `revoked` |
+| `peers.update` | `device_id`, `name?`, `apply_mode?`, `role?` | `apply_mode`：`notify` / `manual` / `auto`；`role`：`auto` / `dialer` / `listener` |
+| `peers.remove` | `device_id`, `forget?` | 撤销配对：通知对端、拉黑指纹、断开；`forget` 同时删除记录（指纹仍被拉黑） |
+| `clip.local_changed` | `text` | 壳报告本地复制。结果 `{sent:[{device_id,name,event_id}], suppressed?}`；`suppressed`：`capture_off` / `empty` / `echo` / `duplicate` / `no_peers` / `too_large` / `sensitive_blocked` |
+| `clip.send` | `text`, `to[]?` | 用户显式发送，忽略捕获开关与回声检查；`{sent:[…]}` |
+| `clip.mark_applied` | `event_id` | 壳已把文本写入剪贴板：记录回声抑制窗口，并向发送方回 `applied` |
+| `clip.dismiss` | `event_id` | 用户忽略：向发送方回 `ignored/user_dismissed` |
+| `inbox.list` | `limit?` | `{items:[{event_id, from, from_name, text, sensitive, state, received_at, expires_at, applied_at?}]}`，新的在前 |
+| `inbox.get` | `event_id` | 一条同上 |
+| `inbox.clear` | — | 清空历史 |
+| `update.status` / `update.check` / `update.download` / `update.config` | 见 [update.md](update.md) | 自更新 |
+| `file.offer` / `file.accept` / `file.reject` / `file.cancel` / `transfers.list` | 见 §5 | 文件传输（开发中） |
+
+设置键（`settings.*`）：
+
+| 键 | 取值 | 默认 | 含义 |
+| --- | --- | --- | --- |
+| `capture` | `on` / `off` | `off` | 是否把本机复制的内容同步出去（首次启动由用户选择） |
+| `clip_ttl_s` | 30–86400 | `900` | 事件在对端离线时最多等待的秒数，过期则丢弃并由 `skip` 越过 |
+| `history_limit` | 10–5000 | `200` | 收件箱保留条数 |
+| `send_sensitive` | `on` / `off` | `on` | 看起来像口令/令牌的内容是否允许发送 |
+| `default_apply_mode` | `notify` / `manual` / `auto` | `notify` | 新配对设备的初始策略 |
+
+策略（`clip.received.decision`）：`notify`（只通知）、`manual`（通知，用户操作后才写剪贴板）、`auto`（壳做完自己的安全检查后写入）。敏感内容永不为 `auto`。
 
 ### 7.4 事件（`NextEvent`）
 
 ```json
-{"type":"peer.state","device_id":"dev_…","state":"connected","path":"direct"}
-{"type":"clip.received","event_id":"…","from":"dev_…","text":"…","sensitive":false,"decision":"notify|manual|auto"}
-{"type":"clip.ack","event_id":"…","result":"applied"}
+{"type":"core.started","device_id":"dev_…"}
+{"type":"core.listening","addrs":["100.101.146.117"],"port":47821}
+{"type":"core.warning","code":"NO_TAILNET"}            // 另有 LISTEN_FAILED、FINGERPRINT_MISMATCH
+{"type":"peer.state","device_id":"dev_…","state":"connected"}
+{"type":"peer.revoked","device_id":"dev_…","name":"Pixel"}   // 对端撤销了与我们的配对
+{"type":"clip.received","event_id":"…","from":"dev_…","from_name":"Tony-PC","text":"…","sensitive":false,"decision":"notify|manual|auto","received_at":1790000000}
+{"type":"clip.ack","event_id":"…","from":"dev_…","result":"received|applied|ignored|expired|error","reason":"user_dismissed"}
+{"type":"outbox.expired","count":2}
+{"type":"pair.request","pair_id":"…","name":"Pixel","platform":"android","device_id":"dev_…","sas":"482913","expires_at":"…"}   // 监听方：等用户确认
+{"type":"pair.sas","join_id":"…","sas":"482913"}                                                                        // 加入方：显示给用户核对
+{"type":"pair.result","state":"accepted|rejected|expired|failed","role":"listener|joiner","pair_id":"…","join_id":"…","code":"PAIRING_FAILED","message":"…"}
 {"type":"file.offered","transfer_id":"tr_…","from":"dev_…","name":"a.pdf","size":123}
 {"type":"file.progress","transfer_id":"tr_…","offset":1048576,"size":123456789,"rate_bps":52428800}
 {"type":"file.done","transfer_id":"tr_…","path":"…","sha256":"…"}
 {"type":"file.failed","transfer_id":"tr_…","code":"HASH_MISMATCH"}
-{"type":"pair.request","pair_id":"…","name":"Pixel","platform":"android","sas":"482913"}
-{"type":"pair.result","pair_id":"…","state":"accepted|rejected|expired"}
-{"type":"core.warning","code":"NO_TAILNET"}
 {"type":"update.available","version_code":12,"version_name":"0.1.12","mandatory":false,"notes":"…"}
 {"type":"update.progress","received":1048576,"total":15000000}
 {"type":"update.ready","version_code":12,"version_name":"0.1.12","path":"…","mandatory":false}
