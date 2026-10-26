@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests the C# side of the DLL boundary (Interop/CoreInterop.cs) without WPF.
+       On Linux it loads core/dist/linux-amd64/libclipbridge_core.so (make dll-smoke);
+       on Windows it loads core\dist\windows-amd64\clipbridge_core.dll (make dll). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <DistDir>$(MSBuildThisFileDirectory)..\..\core\dist\</DistDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\ClipBridge.Windows\Interop\CoreInterop.cs" Link="Interop\CoreInterop.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux')) And Exists('$(DistDir)linux-amd64/libclipbridge_core.so')">
+    <None Include="$(DistDir)linux-amd64/libclipbridge_core.so" Link="libclipbridge_core.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows')) And Exists('$(DistDir)windows-amd64\clipbridge_core.dll')">
+    <None Include="$(DistDir)windows-amd64\clipbridge_core.dll" Link="clipbridge_core.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

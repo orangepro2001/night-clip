@@ -1,0 +1,17 @@
+# build output
+core/dist/
+.gocache/
+android/app/libs/*.aar
+android/**/build/
+android/.gradle/
+android/local.properties
+windows/**/bin/
+windows/**/obj/
+.vs/
+*.user
+
+# editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

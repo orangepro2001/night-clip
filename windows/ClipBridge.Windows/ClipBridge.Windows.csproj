@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AssemblyName>ClipBridge</AssemblyName>
+    <RootNamespace>ClipBridge.Windows</RootNamespace>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- clipbridge_core.dll is produced by `make dll` at the repository root. -->
+  <PropertyGroup>
+    <CoreDll>$(MSBuildThisFileDirectory)..\..\core\dist\windows-amd64\clipbridge_core.dll</CoreDll>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(CoreDll)')">
+    <None Include="$(CoreDll)" Link="clipbridge_core.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="WarnMissingCoreDll" BeforeTargets="Build" Condition="!Exists('$(CoreDll)')">
+    <Warning Text="clipbridge_core.dll not found at $(CoreDll). Run 'make dll' at the repository root; the app will fail to start without it." />
+  </Target>
+
+</Project>

@@ -1,0 +1,74 @@
+# Prepared but not yet pushed anywhere (no git remote is configured).
+# Linux job mirrors `make check` minus Wine; the Windows job is the only place
+# the real WPF app is built and the real clipbridge_core.dll is loaded by .NET
+# on Windows. Action versions and runner images are unverified: bump on first run.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: core/go.mod
+          cache-dependency-path: core/go.sum
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 wine64
+      - run: make vet test dll-smoke dll-wine test-interop build-windows-app cli
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: core/go.mod
+          cache-dependency-path: core/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
+      - run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: gomobile init
+        working-directory: core
+      - run: make apk
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/28.2.13676358
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: core/go.mod
+          cache-dependency-path: core/go.sum
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build clipbridge_core.dll (cgo needs gcc; the runner image ships MinGW)
+        shell: bash
+        run: |
+          mkdir -p core/dist/windows-amd64
+          cd core
+          CGO_ENABLED=1 go build -buildmode=c-shared -trimpath -ldflags="-s -w" \
+            -o dist/windows-amd64/clipbridge_core.dll ./cmd/cbcore-dll
+      - name: Go tests
+        run: go test ./...
+        working-directory: core
+      - name: C# interop tests against the real DLL
+        run: dotnet test windows/ClipBridge.Windows.Tests
+      - name: Build WPF app
+        run: dotnet build windows/ClipBridge.Windows -c Release
