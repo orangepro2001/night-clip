@@ -23,6 +23,7 @@ import (
 const (
 	settingVaultAutoLock  = "vault_autolock_s"   // idle seconds before the vault locks itself
 	settingVaultClipClear = "vault_clip_clear_s" // seconds a copied secret stays on the clipboard (0 = never clear)
+	settingVaultKeyFile   = "vault_keyfile"      // on/off; internal, not a user setting
 	defaultVaultAutoLock  = 300
 	defaultVaultClipClear = 20
 )
@@ -646,6 +647,9 @@ func (c *Core) vaultStatus() (any, error) {
 	if wait > 0 {
 		st["retry_after_s"] = int(wait.Seconds()) + 1
 	}
+	if kf, found, _ := c.db.GetSetting(settingVaultKeyFile); found {
+		st["key_file"] = kf == "on" // absent when this device never saw the credentials (a vault joined from another device)
+	}
 	if bs := vault.ListBackups(dir); len(bs) > 0 {
 		last := int64(0)
 		for _, b := range bs {
@@ -699,6 +703,7 @@ func (c *Core) vaultCreate(params string) (any, error) {
 	}
 	c.vs.v = v
 	c.armIdleLocked()
+	c.noteKeyFile(cr)
 	go c.vaultAfterOpen(v)
 	return map[string]any{"unlocked": true, "create_ms": time.Since(start).Milliseconds()}, nil
 }
@@ -727,6 +732,7 @@ func (c *Core) vaultUnlock(params string) (any, error) {
 		return nil, err
 	}
 	c.vaultAttempt(true)
+	c.noteKeyFile(cr)
 	c.vs.mu.Lock()
 	defer c.vs.mu.Unlock()
 	if already && c.vs.v != nil { // a second unlock: keep the first, drop this copy
@@ -809,7 +815,21 @@ func (c *Core) vaultChangeMaster(params string) (any, error) {
 			return nil, err
 		}
 	}
-	return map[string]any{}, v.ChangeCredentials(nc, kdf)
+	if err := v.ChangeCredentials(nc, kdf); err != nil {
+		return nil, err
+	}
+	c.noteKeyFile(nc)
+	return map[string]any{}, nil
+}
+
+// noteKeyFile remembers (in the settings table, not secret) whether the credentials in use include a
+// key file, so the unlock screen can show or hide the key-file picker. A KDBX file does not say.
+func (c *Core) noteKeyFile(cr vault.Creds) {
+	val := "off"
+	if len(cr.KeyFile) > 0 {
+		val = "on"
+	}
+	_ = c.db.SetSetting(settingVaultKeyFile, val)
 }
 
 func (c *Core) vaultBackupVerify(params string) (any, error) {

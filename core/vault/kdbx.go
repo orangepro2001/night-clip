@@ -70,9 +70,9 @@ func (c *Creds) wipe() {
 
 // KDF is the Argon2d cost used when a database is created or re-keyed.
 type KDF struct {
-	MemoryMiB   uint64
-	Iterations  uint64
-	Parallelism uint32
+	MemoryMiB   uint64 `json:"memory_mib"`
+	Iterations  uint64 `json:"iterations"`
+	Parallelism uint32 `json:"parallelism"`
 }
 
 // Presets. Standard is about 0.2 s on a desktop (docs/vault-v0-poc-report.md); phones are slower.

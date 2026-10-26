@@ -30,6 +30,9 @@ func TestVaultLifecycleThroughTheFacade(t *testing.T) {
 		t.Fatalf("second create: %s", code)
 	}
 	st := n.call("vault.status", nil)
+	if st["key_file"] != false || st["kdf"].(map[string]any)["memory_mib"].(float64) != 32 {
+		t.Fatalf("key_file / kdf in status: %v", st)
+	}
 	if st["exists"] != true || st["unlocked"] != true || st["autolock_s"].(float64) != 300 {
 		t.Fatalf("status = %v", st)
 	}
