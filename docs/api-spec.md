@@ -270,7 +270,18 @@ Content-Type: application/octet-stream
 HEAD /v1/files/{transfer_id}
 ```
 
-返回 `X-Offset`、`X-State`，用于断线后恢复。
+返回 `X-Offset`、`X-State`、`X-Size`，用于断线后恢复（推送方据此从接收方实际收到的字节继续）。
+
+### 5.4 协议细节（实现）
+
+- **谁搬运数据**：`mode` 由拨号关系决定——发送方是监听方 → `pull`（接收方 `GET`，用 `Range` 续传）；发送方是拨号方 → `push`（接收方先发控制事件 `file_accept{transfer_id, offset}`，发送方再 `PUT`）。接收方收到的 `mode` 与自己的拨号关系不符时回 `file_reject{reason:"bad_mode"}`。
+- **控制事件**（`kind: control`，走事件通道，有 sequence，可靠）：`file_accept{transfer_id, offset}`、`file_reject{transfer_id, reason}`、`file_cancel{transfer_id, reason}`。零字节文件没有传输阶段：接收方在 accept 时直接建好空文件，并发 `file_accept{offset:0}`（两种模式都发）告知发送方“已送达”。
+- **访问控制**：`GET/HEAD/PUT` 只接受该传输的对端证书；其它已配对设备得到 `404`（不暴露传输是否存在），未配对证书由服务器统一回 `403 NOT_PAIRED`。
+- **状态码**：`410` 过期/已取消；`409 OFFSET_MISMATCH` 带 `{"offset":N}`；`409 NOT_ACCEPTED/NOT_READY/SOURCE_CHANGED`；`422 HASH_MISMATCH`（并删除已收数据）；`507 NO_SPACE`。
+- **完整性**：接收方把数据写进保存目录里的 `.<transfer_id>.part`，**全部收齐并核对 SHA-256 后**才原子改名为最终文件名（重名自动加 ` (1)`）；失败则删除 `.part`。核对失败时接收方发 `file_cancel{reason:"HASH_MISMATCH"}`——即使发送方已把传输记为“完成”（`pull` 下它写完最后一个字节就算送达），这条结论也会覆盖它。
+- **文件名**：对端给的名字只取最后一段，替换控制字符/双向覆盖字符/Windows 禁用字符，避开 `CON`、`NUL`、`COM1`…等保留名，去掉末尾的点和空格，限长 200 字节并保留扩展名。
+- **磁盘空间**：accept 时检查目标卷剩余空间（文件大小 + 16 MiB），不足则拒绝并回 `NO_SPACE`，不删除其它文件。
+- **重试**：下载/上传遇到网络错误按 1 s、2 s … 30 s 退避重试，直到完成、被取消或 offer 过期（24 h）；核心重启后自动恢复（Android 的 fd 来源无法恢复，标记 `SOURCE_LOST`）。
 
 ## 6. 健康
 
@@ -337,7 +348,11 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | `inbox.get` | `event_id` | 一条同上 |
 | `inbox.clear` | — | 清空历史 |
 | `update.status` / `update.check` / `update.download` / `update.config` | 见 [update.md](update.md) | 自更新 |
-| `file.offer` / `file.accept` / `file.reject` / `file.cancel` / `transfers.list` | 见 §5 | 文件传输（开发中） |
+| `file.offer` | `to`，以及 `path`（Windows）或 `fd`+`name`(+`size`)（Android，`detachFd()` 的整数，所有权交给核心） | `{transfer_id}`；立即返回，先在后台算 SHA-256（状态 `hashing`）再发出 offer。不可 seek 的 fd 会先落盘到 `data_dir/outgoing/` |
+| `file.accept` | `transfer_id`, `save_dir?` | 接收方同意；默认保存到设置 `download_dir`（Windows：`下载\ClipBridge`；Android：`data_dir/received`，由壳搬进 MediaStore 后调用 `file.release`） |
+| `file.reject` / `file.cancel` | `transfer_id` | 拒绝一个 offer / 取消进行中的传输（任一方） |
+| `file.release` | `transfer_id` | 壳已把完成的文件移走：删除私有副本 |
+| `transfers.list` | `limit?` | `{transfers:[{transfer_id, peer_id, peer_name, direction, name, size, sha256, state, offset, rate_bps, error?, path?, mime_type?, created_at, expires_at}]}` |
 
 设置键（`settings.*`）：
 
@@ -348,6 +363,8 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | `history_limit` | 10–5000 | `200` | 收件箱保留条数 |
 | `send_sensitive` | `on` / `off` | `on` | 看起来像口令/令牌的内容是否允许发送 |
 | `default_apply_mode` | `notify` / `manual` / `auto` | `notify` | 新配对设备的初始策略 |
+| `download_dir` | 绝对路径 | Windows `%USERPROFILE%\Downloads\ClipBridge`；Android `data_dir/received` | 接收文件的默认目录 |
+| `max_file_bytes` | 1 MiB – 1 TiB | `4294967296` | 超过则自动拒绝 |
 
 策略（`clip.received.decision`）：`notify`（只通知）、`manual`（通知，用户操作后才写剪贴板）、`auto`（壳做完自己的安全检查后写入）。敏感内容永不为 `auto`。
 

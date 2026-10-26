@@ -1,7 +1,10 @@
 package facade
 
 import (
+	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -446,4 +449,80 @@ func TestPairedDevicesReconnectAfterARestart(t *testing.T) {
 		t.Fatalf("local_changed = %v", got)
 	}
 	pix2.waitEvent("clip.received", map[string]any{"text": "after the restart"})
+}
+
+func TestFileTransferThroughTheFacade(t *testing.T) {
+	win := startNode(t, "Desk", "windows", true)
+	pix := startNode(t, "Phone", "android", false)
+	pairNodes(t, win, pix)
+	pixID, winID := pix.deviceID(), win.deviceID()
+
+	data := make([]byte, 1<<20+17)
+	for i := range data {
+		data[i] = byte(i * 31)
+	}
+	src := filepath.Join(t.TempDir(), "notes.bin")
+	if err := os.WriteFile(src, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// PC -> phone (the phone pulls)
+	off := win.call("file.offer", map[string]any{"to": pixID, "path": src})
+	id := off["transfer_id"].(string)
+	offered := pix.waitEvent("file.offered", map[string]any{"transfer_id": id})
+	if offered["name"] != "notes.bin" || offered["from_name"] != "Desk" {
+		t.Fatalf("file.offered = %v", offered)
+	}
+	saveDir := t.TempDir()
+	pix.call("file.accept", map[string]any{"transfer_id": id, "save_dir": saveDir})
+	done := pix.waitEvent("file.done", map[string]any{"transfer_id": id})
+	got, err := os.ReadFile(done["path"].(string))
+	if err != nil || !bytes.Equal(got, data) {
+		t.Fatalf("received file differs (%v)", err)
+	}
+	win.waitEvent("file.done", map[string]any{"transfer_id": id, "direction": "out"})
+
+	// phone -> PC (the phone pushes), declined this time
+	off2 := pix.call("file.offer", map[string]any{"to": winID, "path": src})
+	id2 := off2["transfer_id"].(string)
+	win.waitEvent("file.offered", map[string]any{"transfer_id": id2})
+	win.call("file.reject", map[string]any{"transfer_id": id2})
+	pix.waitEvent("file.failed", map[string]any{"transfer_id": id2, "code": "REJECTED"})
+
+	// and accepted
+	id3 := pix.call("file.offer", map[string]any{"to": winID, "path": src})["transfer_id"].(string)
+	win.waitEvent("file.offered", map[string]any{"transfer_id": id3})
+	win.call("file.accept", map[string]any{"transfer_id": id3, "save_dir": saveDir})
+	win.waitEvent("file.done", map[string]any{"transfer_id": id3})
+
+	list := pix.call("transfers.list", nil)["transfers"].([]any)
+	if len(list) != 3 {
+		t.Fatalf("transfers.list = %d entries", len(list))
+	}
+	states := map[string]string{}
+	for _, e := range list {
+		m := e.(map[string]any)
+		states[m["transfer_id"].(string)] = m["state"].(string)
+	}
+	if states[id] != "done" || states[id2] != "rejected" || states[id3] != "done" {
+		t.Fatalf("states = %v", states)
+	}
+
+	// errors and settings
+	if code := pix.errorCode("file.accept", map[string]any{"transfer_id": "tr_0000000000000000"}); code != "INVALID" {
+		t.Fatalf("accept unknown = %s", code)
+	}
+	if code := pix.errorCode("file.offer", map[string]any{"to": winID}); code != "INVALID" {
+		t.Fatalf("offer without a source = %s", code)
+	}
+	win.call("settings.set", map[string]any{"key": "download_dir", "value": saveDir})
+	if got := win.call("settings.get", map[string]any{"key": "download_dir"}); got["value"] != saveDir {
+		t.Fatalf("download_dir = %v", got)
+	}
+	if code := win.errorCode("settings.set", map[string]any{"key": "download_dir", "value": "relative"}); code != "INVALID" {
+		t.Fatalf("relative download_dir = %s", code)
+	}
+	if v := win.call("settings.get", map[string]any{"key": "max_file_bytes"})["value"]; v != "4294967296" {
+		t.Fatalf("max_file_bytes default = %v", v)
+	}
 }

@@ -9,7 +9,7 @@ import (
 
 // migrations holds one entry per schema version. Entry i upgrades the database
 // from version i to i+1; never edit a published entry, append a new one.
-var migrations = [][]string{migrationV1(), migrationV2()}
+var migrations = [][]string{migrationV1(), migrationV2(), migrationV3()}
 
 func migrationV1() []string {
 	return []string{
@@ -117,6 +117,18 @@ func migrationV1() []string {
 func migrationV2() []string {
 	return []string{
 		`ALTER TABLE inbox ADD COLUMN sensitive INTEGER NOT NULL DEFAULT 0`,
+	}
+}
+
+// migrationV3 gives file transfers the columns the transfer protocol needs: who
+// moves the bytes (mode), what the file is (mime_type) and where the receiver
+// wants it (save_dir).
+func migrationV3() []string {
+	return []string{
+		`ALTER TABLE transfers ADD COLUMN mode TEXT NOT NULL DEFAULT 'pull'`,
+		`ALTER TABLE transfers ADD COLUMN mime_type TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE transfers ADD COLUMN save_dir TEXT NOT NULL DEFAULT ''`,
+		`CREATE INDEX idx_transfers_state ON transfers(state)`,
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -1004,9 +1005,15 @@ func TestMigrationV2UpgradesAV1Database(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Turn the fresh database back into a v1 one.
-	if _, err := db.sql.Exec(`ALTER TABLE inbox DROP COLUMN sensitive`); err != nil {
-		t.Fatal(err)
+	// Turn the fresh database back into a v1 one (undo v3 as well as v2).
+	for _, stmt := range []string{
+		`DROP INDEX idx_transfers_state`, `ALTER TABLE transfers DROP COLUMN mode`,
+		`ALTER TABLE transfers DROP COLUMN mime_type`, `ALTER TABLE transfers DROP COLUMN save_dir`,
+		`ALTER TABLE inbox DROP COLUMN sensitive`,
+	} {
+		if _, err := db.sql.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
 	}
 	if _, err := db.sql.Exec(`UPDATE schema_version SET version = 1`); err != nil {
 		t.Fatal(err)
@@ -1058,5 +1065,124 @@ func TestPruneAndClearInbox(t *testing.T) {
 	}
 	if rows, _ := db.ListInbox(0); len(rows) != 0 {
 		t.Fatalf("%d rows after ClearInbox", len(rows))
+	}
+}
+
+func sampleTransfer(id string) Transfer {
+	return Transfer{
+		ID: id, PeerID: "dev_a", Direction: "out", Name: "report.pdf", Size: 123456, SHA256: strings.Repeat("ab", 32),
+		State: "offered", CreatedAt: 100, ExpiresAt: 1000, Mode: "pull", MimeType: "application/pdf",
+	}
+}
+
+func TestTransferRoundTripAndUpdates(t *testing.T) {
+	db := openTestDB(t)
+	want := sampleTransfer("tr_1")
+	if err := db.PutTransfer(want); err != nil {
+		t.Fatal(err)
+	}
+	got, found, err := db.GetTransfer("tr_1")
+	if err != nil || !found || !reflect.DeepEqual(got, want) {
+		t.Fatalf("GetTransfer = %+v, %v, %v\nwant %+v", got, found, err, want)
+	}
+	if _, found, _ := db.GetTransfer("nope"); found {
+		t.Fatal("unknown transfer found")
+	}
+	if err := db.SetTransferOffset("tr_1", 4096); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetTransferState("tr_1", "failed", "HASH_MISMATCH"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetTransferPath("tr_1", "/tmp/x"); err != nil {
+		t.Fatal(err)
+	}
+	got, _, _ = db.GetTransfer("tr_1")
+	if got.Offset != 4096 || got.State != "failed" || got.Error != "HASH_MISMATCH" || got.Path != "/tmp/x" {
+		t.Fatalf("after updates = %+v", got)
+	}
+	// "offset" is an SQL keyword: a quoting bug would break the very first update
+	want.State = "transferring"
+	if err := db.PutTransfer(want); err != nil {
+		t.Fatal(err)
+	}
+	if got, _, _ = db.GetTransfer("tr_1"); got.State != "transferring" || got.Offset != 0 {
+		t.Fatalf("upsert = %+v", got)
+	}
+	if err := db.DeleteTransfer("tr_1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := db.GetTransfer("tr_1"); found {
+		t.Fatal("transfer survived DeleteTransfer")
+	}
+}
+
+func TestTransferListsAndExpiry(t *testing.T) {
+	db := openTestDB(t)
+	for i, st := range []string{"offered", "transferring", "done", "failed", "accepted"} {
+		tr := sampleTransfer(fmt.Sprintf("tr_%d", i))
+		tr.State = st
+		tr.CreatedAt = int64(100 + i)
+		tr.ExpiresAt = int64(500 + i*100)
+		if err := db.PutTransfer(tr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	all, err := db.ListTransfers(0)
+	if err != nil || len(all) != 5 || all[0].ID != "tr_4" || all[4].ID != "tr_0" {
+		t.Fatalf("ListTransfers newest first = %v, %v", ids(all), err)
+	}
+	if two, _ := db.ListTransfers(2); len(two) != 2 {
+		t.Fatalf("limit ignored: %d", len(two))
+	}
+	active, err := db.ListTransfersInStates("accepted", "transferring")
+	if err != nil || !reflect.DeepEqual(ids(active), []string{"tr_1", "tr_4"}) {
+		t.Fatalf("ListTransfersInStates = %v, %v", ids(active), err)
+	}
+	if none, err := db.ListTransfersInStates(); err != nil || len(none) != 0 {
+		t.Fatalf("no states = %v, %v", none, err)
+	}
+	// expiry only touches transfers still in flight
+	expired, err := db.ExpireTransfers(750)
+	if err != nil || !reflect.DeepEqual(ids(expired), []string{"tr_0", "tr_1"}) {
+		t.Fatalf("ExpireTransfers = %v, %v", ids(expired), err)
+	}
+	for id, want := range map[string]string{"tr_0": "expired", "tr_1": "expired", "tr_2": "done", "tr_3": "failed", "tr_4": "accepted"} {
+		if got, _, _ := db.GetTransfer(id); got.State != want {
+			t.Errorf("%s state = %s, want %s", id, got.State, want)
+		}
+	}
+}
+
+func ids(ts []Transfer) []string {
+	var out []string
+	for _, t := range ts {
+		out = append(out, t.ID)
+	}
+	return out
+}
+
+func TestMigrationV3AddsTransferColumns(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(dir, testKey(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`DROP INDEX idx_transfers_state`,
+		`ALTER TABLE transfers DROP COLUMN mode`, `ALTER TABLE transfers DROP COLUMN mime_type`, `ALTER TABLE transfers DROP COLUMN save_dir`,
+		`UPDATE schema_version SET version = 2`,
+		`INSERT INTO transfers (transfer_id, peer_id, direction, name, size, sha256, path, "offset", state, error, created_at, expires_at)
+		 VALUES ('old', 'dev_a', 'in', 'f', 1, '', '', 0, 'offered', '', 1, 2)`,
+	} {
+		if _, err := db.sql.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	_ = db.Close()
+	db2 := openAt(t, dir, testKey(1))
+	got, found, err := db2.GetTransfer("old")
+	if err != nil || !found || got.Mode != "pull" || got.MimeType != "" || got.SaveDir != "" {
+		t.Fatalf("old row after v3 = %+v, %v, %v", got, found, err)
 	}
 }

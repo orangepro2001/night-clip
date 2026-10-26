@@ -24,6 +24,7 @@ import (
 	"nightclip/core/proto"
 	"nightclip/core/store"
 	"nightclip/core/update"
+	"nightclip/core/xfer"
 )
 
 // Version is the core version reported by the "version" method.
@@ -64,10 +65,17 @@ type Core struct {
 	dropped atomic.Uint64
 	done    chan struct{}
 
+	// Events from the network layer that happen while Init is still running are held
+	// until core.started has been emitted, so a shell always sees core.started first.
+	gateMu   sync.Mutex
+	gateOpen bool
+	held     []map[string]any
+
 	// Test-only knobs, set by in-package tests before Init; zero in production.
 	hooks  peer.Hooks
 	timing peer.Timing
 	pairT  pairing.Timings
+	xferT  xfer.Timing
 }
 
 // testEngine, set only by this package's tests (see network_test.go), makes
@@ -77,13 +85,14 @@ var testEngine *struct {
 	hooks  peer.Hooks
 	timing peer.Timing
 	pairT  pairing.Timings
+	xferT  xfer.Timing
 }
 
 // New returns an uninitialised Core.
 func New() *Core {
 	c := &Core{events: make(chan []byte, eventQueueSize), done: make(chan struct{})}
 	if testEngine != nil {
-		c.hooks, c.timing, c.pairT = testEngine.hooks, testEngine.timing, testEngine.pairT
+		c.hooks, c.timing, c.pairT, c.xferT = testEngine.hooks, testEngine.timing, testEngine.pairT, testEngine.xferT
 	}
 	return c
 }
@@ -139,6 +148,7 @@ func (c *Core) Init(configJSON string) (err error) {
 	c.n, c.upd, c.started = n, upd, true
 	upd.Run()
 	c.emit(map[string]any{"type": "core.started", "device_id": id.DeviceID})
+	c.openGate()
 	return nil
 }
 
@@ -288,6 +298,30 @@ func (c *Core) identity() (any, error) {
 		"device_id":   c.id.DeviceID,
 		"fingerprint": c.id.Fingerprint(),
 	}, nil
+}
+
+// emitNet is what the engine and the services emit through: it waits for
+// core.started when Init has not finished yet.
+func (c *Core) emitNet(ev map[string]any) {
+	c.gateMu.Lock()
+	if !c.gateOpen {
+		c.held = append(c.held, ev)
+		c.gateMu.Unlock()
+		return
+	}
+	c.gateMu.Unlock()
+	c.emit(ev)
+}
+
+// openGate releases the held events in order and lets later ones through directly.
+func (c *Core) openGate() {
+	c.gateMu.Lock()
+	held := c.held
+	c.held, c.gateOpen = nil, true
+	c.gateMu.Unlock()
+	for _, ev := range held {
+		c.emit(ev)
+	}
 }
 
 // emit queues an event for NextEvent; if the queue is full the event is

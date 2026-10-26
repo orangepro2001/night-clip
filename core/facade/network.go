@@ -16,6 +16,7 @@ import (
 	"nightclip/core/pairing"
 	"nightclip/core/peer"
 	"nightclip/core/proto"
+	"nightclip/core/xfer"
 )
 
 // netState is everything the networked features add to a Core.
@@ -23,6 +24,7 @@ type netState struct {
 	eng  *peer.Engine
 	pair *pairing.Manager
 	clip *clip.Service
+	xfer *xfer.Service
 
 	joinMu sync.Mutex
 	joins  map[string]context.CancelFunc
@@ -31,14 +33,24 @@ type netState struct {
 	hooks  peer.Hooks
 	timing peer.Timing
 	pairT  pairing.Timings
+	xferT  xfer.Timing
 }
 
 // handler adapts the peer layer's callbacks to the services.
 type handler struct{ c *Core }
 
 func (h handler) OnEvent(peerID string, env *proto.Envelope) {
-	if n := h.c.net(); n != nil && env.Kind == proto.KindClipboard {
+	n := h.c.net()
+	if n == nil {
+		return
+	}
+	switch env.Kind {
+	case proto.KindClipboard:
 		n.clip.OnEvent(peerID, env)
+	case proto.KindFile:
+		n.xfer.OnOffer(peerID, env)
+	case proto.KindControl:
+		n.xfer.OnControl(peerID, env)
 	}
 }
 
@@ -58,16 +70,20 @@ func (c *Core) net() *netState {
 
 // startNetwork builds and starts the engine and the services. c.mu is held by Init.
 func (c *Core) startNetwork(cfg Config) (*netState, error) {
-	n := &netState{joins: map[string]context.CancelFunc{}, hooks: c.hooks, timing: c.timing, pairT: c.pairT}
+	n := &netState{joins: map[string]context.CancelFunc{}, hooks: c.hooks, timing: c.timing, pairT: c.pairT, xferT: c.xferT}
 	n.eng = peer.New(peer.Config{
 		Identity: c.id, Store: c.db, Listen: cfg.Listen, Port: cfg.Port, Platform: cfg.Platform,
-		Handler: handler{c}, Emit: c.emit, Hooks: n.hooks, Timing: n.timing,
+		Handler: handler{c}, Emit: c.emitNet, Hooks: n.hooks, Timing: n.timing,
 	})
-	n.pair = pairing.NewManager(n.eng, c.db, c.id, c.emit, nil, n.pairT)
-	n.clip = clip.New(n.eng, c.db, c.emit, nil)
+	n.pair = pairing.NewManager(n.eng, c.db, c.id, c.emitNet, nil, n.pairT)
+	n.clip = clip.New(n.eng, c.db, c.emitNet, nil)
+	n.xfer = xfer.New(xfer.Config{
+		Engine: n.eng, DB: c.db, DataDir: cfg.DataDir, Platform: cfg.Platform, Emit: c.emitNet, Timing: n.xferT,
+	})
 	if err := n.eng.Start(); err != nil {
 		return nil, err
 	}
+	n.xfer.Start()
 	return n, nil
 }
 
@@ -77,6 +93,7 @@ func (n *netState) close() {
 		cancel()
 	}
 	n.joinMu.Unlock()
+	n.xfer.Close() // before the engine: transfers use its endpoints
 	n.eng.Close()
 }
 
@@ -96,7 +113,8 @@ func parseParams(paramsJSON string, out any) error {
 func (c *Core) networkCall(method, params string) (result any, handled bool, err error) {
 	switch {
 	case strings.HasPrefix(method, "pair."), strings.HasPrefix(method, "peers."), strings.HasPrefix(method, "clip."),
-		strings.HasPrefix(method, "inbox."), strings.HasPrefix(method, "settings."), method == "diagnostics.get":
+		strings.HasPrefix(method, "inbox."), strings.HasPrefix(method, "settings."), strings.HasPrefix(method, "file."),
+		method == "transfers.list", method == "diagnostics.get":
 	default:
 		return nil, false, nil
 	}
@@ -192,6 +210,57 @@ func (c *Core) networkCall(method, params string) (result any, handled bool, err
 		if err = n.clip.ClearInbox(); err == nil {
 			result = map[string]any{}
 		}
+	case "file.offer":
+		var p struct {
+			To   string `json:"to"`
+			Path string `json:"path"`
+			FD   int    `json:"fd"`
+			Name string `json:"name"`
+			Size int64  `json:"size"`
+		}
+		if err = parseParams(params, &p); err == nil {
+			var id string
+			if id, err = n.xfer.Offer(p.To, xfer.OfferSource{Path: p.Path, FD: p.FD, Name: p.Name, Size: p.Size}); err == nil {
+				result = map[string]any{"transfer_id": id}
+			}
+		}
+	case "file.accept":
+		var p struct {
+			TransferID string `json:"transfer_id"`
+			SaveDir    string `json:"save_dir"`
+		}
+		if err = parseParams(params, &p); err == nil {
+			if err = n.xfer.Accept(p.TransferID, p.SaveDir); err == nil {
+				result = map[string]any{}
+			}
+		}
+	case "file.reject", "file.cancel", "file.release":
+		var p struct {
+			TransferID string `json:"transfer_id"`
+		}
+		if err = parseParams(params, &p); err == nil {
+			switch method {
+			case "file.reject":
+				err = n.xfer.Reject(p.TransferID)
+			case "file.cancel":
+				err = n.xfer.Cancel(p.TransferID)
+			default:
+				err = n.xfer.Release(p.TransferID)
+			}
+			if err == nil {
+				result = map[string]any{}
+			}
+		}
+	case "transfers.list":
+		var p struct {
+			Limit int `json:"limit"`
+		}
+		if err = parseParams(params, &p); err == nil {
+			var list []xfer.Info
+			if list, err = n.xfer.List(p.Limit); err == nil {
+				result = map[string]any{"transfers": orEmpty(list)}
+			}
+		}
 	case "diagnostics.get":
 		result = c.diagnostics(n)
 	default:
@@ -209,7 +278,30 @@ func orEmpty[T any](in []T) []T {
 
 // ---- settings ------------------------------------------------------------------
 
-var settingKeys = []string{clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingApplyMode}
+var settingKeys = []string{clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingApplyMode,
+	xfer.SettingDownloadDir, xfer.SettingMaxFileBytes}
+
+func isFileSetting(key string) bool {
+	return key == xfer.SettingDownloadDir || key == xfer.SettingMaxFileBytes
+}
+
+// settingValue returns a setting with its default applied.
+func settingValue(n *netState, key string) string {
+	switch key {
+	case xfer.SettingDownloadDir:
+		return n.xfer.DownloadDir()
+	case xfer.SettingMaxFileBytes:
+		return strconv.FormatInt(n.xfer.MaxFileBytes(), 10)
+	}
+	return n.clip.Setting(key)
+}
+
+func validateSetting(key, value string) error {
+	if isFileSetting(key) {
+		return xfer.ValidateSetting(key, value)
+	}
+	return clip.ValidateSetting(key, value)
+}
 
 func (c *Core) settingsGet(n *netState, params string) (any, error) {
 	var p struct {
@@ -219,14 +311,18 @@ func (c *Core) settingsGet(n *netState, params string) (any, error) {
 		return nil, err
 	}
 	if p.Key != "" {
-		if err := clip.ValidateSetting(p.Key, n.clip.Setting(p.Key)); err != nil {
+		known := false
+		for _, k := range settingKeys {
+			known = known || k == p.Key
+		}
+		if !known {
 			return nil, proto.Errorf(proto.CodeInvalid, "unknown setting %q", p.Key)
 		}
-		return map[string]any{"key": p.Key, "value": n.clip.Setting(p.Key)}, nil
+		return map[string]any{"key": p.Key, "value": settingValue(n, p.Key)}, nil
 	}
 	all := map[string]string{}
 	for _, k := range settingKeys {
-		all[k] = n.clip.Setting(k)
+		all[k] = settingValue(n, k)
 	}
 	return map[string]any{"settings": all}, nil
 }
@@ -239,7 +335,7 @@ func (c *Core) settingsSet(n *netState, params string) (any, error) {
 	if err := parseParams(params, &p); err != nil {
 		return nil, err
 	}
-	if err := clip.ValidateSetting(p.Key, p.Value); err != nil {
+	if err := validateSetting(p.Key, p.Value); err != nil {
 		return nil, err
 	}
 	if err := c.db.SetSetting(p.Key, p.Value); err != nil {

@@ -6,6 +6,7 @@ import (
 
 	"nightclip/core/pairing"
 	"nightclip/core/peer"
+	"nightclip/core/xfer"
 )
 
 // Every Core built by these tests uses loopback and random ports: the tests must
@@ -15,6 +16,7 @@ func init() {
 		hooks  peer.Hooks
 		timing peer.Timing
 		pairT  pairing.Timings
+		xferT  xfer.Timing
 	}{
 		hooks: peer.Hooks{
 			AllowLoopback: true, RandomPort: true,
@@ -26,5 +28,6 @@ func init() {
 			StableAfter: 200 * time.Millisecond, Rebind: 30 * time.Millisecond,
 		},
 		pairT: pairing.Timings{RateBurst: 1000},
+		xferT: xfer.Timing{ProgressEvery: time.Millisecond, RetryBase: 20 * time.Millisecond, RetryMax: 100 * time.Millisecond},
 	}
 }

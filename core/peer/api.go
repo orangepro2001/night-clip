@@ -5,6 +5,9 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"net"
+	"net/http"
+	"strconv"
 	"time"
 
 	"nightclip/core/proto"
@@ -259,4 +262,30 @@ func (e *Engine) handleControl(l *link, env *proto.Envelope) bool {
 		l.closeSession("revoked", 1000)
 	}()
 	return true
+}
+
+// WeDial reports whether this device is the dialing side of the link to p (it
+// opens the connection), which decides who serves file bytes: the listener
+// serves pulls, the dialer pushes.
+func (e *Engine) WeDial(p store.Peer) bool { return e.shouldDial(p) }
+
+// PeerEndpoint is a way to reach a peer's HTTPS server.
+type PeerEndpoint struct {
+	Client *http.Client
+	Bases  []string // https://host:port, best address first
+}
+
+// Endpoint returns an mTLS client pinned to the peer's certificate and the base
+// URLs of its server (tailnet addresses only). It is how file transfers reach the
+// peer outside the WebSocket.
+func (e *Engine) Endpoint(p store.Peer) (PeerEndpoint, error) {
+	addrs := e.tailnetStrings(p.TailnetAddrs)
+	if len(addrs) == 0 || p.Port == 0 {
+		return PeerEndpoint{}, proto.Errorf(proto.CodePeerOffline, "no address known for %s", p.Name)
+	}
+	ep := PeerEndpoint{Client: HTTPClient(ClientTLS(e.id, p.CertFP), e.timing.DialTimeout)}
+	for _, a := range addrs {
+		ep.Bases = append(ep.Bases, "https://"+net.JoinHostPort(a, strconv.Itoa(p.Port)))
+	}
+	return ep, nil
 }
