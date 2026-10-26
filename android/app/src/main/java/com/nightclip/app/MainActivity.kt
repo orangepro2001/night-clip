@@ -2,9 +2,9 @@ package com.nightclip.app
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.fragment.app.FragmentActivity
 import com.nightclip.app.platform.Actions
 import com.nightclip.app.platform.BackgroundReadController
 import com.nightclip.app.platform.FocusAutoSend
@@ -14,7 +14,7 @@ import com.nightclip.app.ui.ClipBridgeTheme
 import com.nightclip.app.ui.LaunchRequests
 
 /** The single visible screen: onboarding, error page or the three tabs (devices, inbox, settings). */
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private val requests = LaunchRequests()
 
     override fun onCreate(savedInstanceState: Bundle?) {

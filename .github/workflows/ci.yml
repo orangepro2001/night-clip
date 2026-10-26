@@ -24,7 +24,7 @@ jobs:
       # Non-interactive: wine's postinst can otherwise wait for input forever.
       - run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 wine wine64
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 wine wine64 keepassxc
         env:
           DEBIAN_FRONTEND: noninteractive
       - run: make vet test dll-smoke dll-wine test-interop build-windows-app cli

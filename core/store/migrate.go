@@ -9,7 +9,7 @@ import (
 
 // migrations holds one entry per schema version. Entry i upgrades the database
 // from version i to i+1; never edit a published entry, append a new one.
-var migrations = [][]string{migrationV1(), migrationV2(), migrationV3(), migrationV4()}
+var migrations = [][]string{migrationV1(), migrationV2(), migrationV3(), migrationV4(), migrationV5()}
 
 func migrationV1() []string {
 	return []string{
@@ -137,6 +137,23 @@ func migrationV3() []string {
 func migrationV4() []string {
 	return []string{
 		`ALTER TABLE peers ADD COLUMN send_disabled INTEGER NOT NULL DEFAULT 0`,
+	}
+}
+
+// migrationV5 prepares the password vault's device-to-device sync: a per-peer switch (off for every
+// existing peer: the vault is shared only with devices the user names) and the bookkeeping that
+// keeps two devices from pulling the same file over and over.
+func migrationV5() []string {
+	return []string{
+		`ALTER TABLE peers ADD COLUMN vault_sync INTEGER NOT NULL DEFAULT 0`,
+		`CREATE TABLE vault_sync (
+		peer_id    TEXT PRIMARY KEY REFERENCES peers(device_id) ON DELETE CASCADE,
+		seen_hash  TEXT NOT NULL DEFAULT '',
+		sent_hash  TEXT NOT NULL DEFAULT '',
+		last_ok_at INTEGER NOT NULL DEFAULT 0,
+		state      TEXT NOT NULL DEFAULT 'idle',
+		detail     TEXT NOT NULL DEFAULT ''
+	)`,
 	}
 }
 

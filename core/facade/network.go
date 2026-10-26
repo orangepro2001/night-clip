@@ -16,6 +16,7 @@ import (
 	"nightclip/core/pairing"
 	"nightclip/core/peer"
 	"nightclip/core/proto"
+	"nightclip/core/vsync"
 	"nightclip/core/xfer"
 )
 
@@ -25,6 +26,7 @@ type netState struct {
 	pair *pairing.Manager
 	clip *clip.Service
 	xfer *xfer.Service
+	sync *vsync.Service
 
 	joinMu sync.Mutex
 	joins  map[string]context.CancelFunc
@@ -63,11 +65,18 @@ func (h handler) OnAck(peerID, eventID, result, reason string) {
 // OnPeerState: the engine already emits peer.state; here an unpaired peer also loses its
 // unfinished transfers (in flight uploads and downloads stop at once).
 func (h handler) OnPeerState(peerID, state string) {
-	if state != peer.StateRevoked {
+	n := h.c.net()
+	if n == nil {
 		return
 	}
-	if n := h.c.net(); n != nil {
+	if n.sync != nil {
+		n.sync.OnPeerState(peerID, state)
+	}
+	if state == peer.StateRevoked {
 		n.xfer.CancelPeer(peerID)
+		if n.sync != nil {
+			n.sync.Forget(peerID)
+		}
 	}
 }
 
@@ -89,10 +98,12 @@ func (c *Core) startNetwork(cfg Config) (*netState, error) {
 	n.xfer = xfer.New(xfer.Config{
 		Engine: n.eng, DB: c.db, DataDir: cfg.DataDir, Platform: cfg.Platform, Emit: c.emitNet, Timing: n.xferT,
 	})
+	n.sync = vsync.New(vsync.Config{Engine: n.eng, DB: c.db, Provider: vaultProvider{c}, Emit: c.emitNet, Timing: c.syncT})
 	if err := n.eng.Start(); err != nil {
 		return nil, err
 	}
 	n.xfer.Start()
+	n.sync.Start()
 	return n, nil
 }
 
@@ -102,6 +113,7 @@ func (n *netState) close() {
 		cancel()
 	}
 	n.joinMu.Unlock()
+	n.sync.Close()
 	n.xfer.Close() // before the engine: transfers use its endpoints
 	n.eng.Close()
 }
@@ -296,7 +308,7 @@ func orEmpty[T any](in []T) []T {
 
 // ---- settings ------------------------------------------------------------------
 
-var settingKeys = []string{clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingApplyMode, clip.SettingPausedUntil,
+var settingKeys = []string{settingVaultAutoLock, settingVaultClipClear, clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingApplyMode, clip.SettingPausedUntil,
 	xfer.SettingDownloadDir, xfer.SettingMaxFileBytes}
 
 func isFileSetting(key string) bool {
@@ -304,8 +316,12 @@ func isFileSetting(key string) bool {
 }
 
 // settingValue returns a setting with its default applied.
-func settingValue(n *netState, key string) string {
+func (c *Core) settingValue(n *netState, key string) string {
 	switch key {
+	case settingVaultAutoLock:
+		return strconv.Itoa(c.vaultIntSetting(key, defaultVaultAutoLock))
+	case settingVaultClipClear:
+		return strconv.Itoa(c.vaultIntSetting(key, defaultVaultClipClear))
 	case xfer.SettingDownloadDir:
 		return n.xfer.DownloadDir()
 	case xfer.SettingMaxFileBytes:
@@ -315,6 +331,9 @@ func settingValue(n *netState, key string) string {
 }
 
 func validateSetting(key, value string) error {
+	if isVaultSetting(key) {
+		return validateVaultSetting(key, value)
+	}
 	if isFileSetting(key) {
 		return xfer.ValidateSetting(key, value)
 	}
@@ -336,11 +355,11 @@ func (c *Core) settingsGet(n *netState, params string) (any, error) {
 		if !known {
 			return nil, proto.Errorf(proto.CodeInvalid, "unknown setting %q", p.Key)
 		}
-		return map[string]any{"key": p.Key, "value": settingValue(n, p.Key)}, nil
+		return map[string]any{"key": p.Key, "value": c.settingValue(n, p.Key)}, nil
 	}
 	all := map[string]string{}
 	for _, k := range settingKeys {
-		all[k] = settingValue(n, k)
+		all[k] = c.settingValue(n, k)
 	}
 	return map[string]any{"settings": all}, nil
 }

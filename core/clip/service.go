@@ -47,6 +47,47 @@ type Service struct {
 	// matter how late it arrives (slow phones, wake from sleep); without this a text
 	// could bounce between three devices. It is emptied by the next genuine local copy.
 	echoRing []string
+	// secretRing holds hashes of texts the shell copied out of the password vault. They are never
+	// sent anywhere by the automatic path, however often the clipboard is read. Unlike echoRing it
+	// survives genuine copies of other things; entries expire after secretTTL.
+	secretRing map[string]time.Time
+}
+
+const secretTTL = 2 * time.Minute // a copy from the vault is cleared after 20 s; this covers copies made by hand
+
+// MarkSecret registers text that the shell is about to put on the clipboard from the password
+// vault, so the clipboard notification that follows is not broadcast to the paired devices.
+func (s *Service) MarkSecret(text string) {
+	h := Hash(Normalize(text))
+	now := s.now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.secretRing == nil {
+		s.secretRing = map[string]time.Time{}
+	}
+	for k, t := range s.secretRing { // forget what has expired
+		if now.Sub(t) > secretTTL {
+			delete(s.secretRing, k)
+		}
+	}
+	for len(s.secretRing) >= 64 { // full of live marks: drop the oldest, never all of them
+		var oldest string
+		var ot time.Time
+		for k, t := range s.secretRing {
+			if oldest == "" || t.Before(ot) {
+				oldest, ot = k, t
+			}
+		}
+		delete(s.secretRing, oldest)
+	}
+	s.secretRing[h] = now
+}
+
+func (s *Service) isSecret(hash string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.secretRing[hash]
+	return ok && s.now().Sub(t) <= secretTTL
 }
 
 func (s *Service) ringAdd(hash string) {
@@ -193,6 +234,7 @@ const (
 	SuppressTooLarge   = "too_large"
 	SuppressSensitive  = "sensitive_blocked"
 	SuppressPaused     = "paused"
+	SuppressVault      = "vault_origin" // the text came out of the password vault: never broadcast
 )
 
 func (s *Service) pairedPeers() []store.Peer {
@@ -243,6 +285,10 @@ func (s *Service) LocalChanged(text string) (LocalResult, error) {
 	}
 	hash := Hash(norm)
 	now := s.now()
+	if s.isSecret(hash) {
+		res.Suppressed = SuppressVault
+		return res, nil
+	}
 	st, err := s.db.GetClipState()
 	if err != nil {
 		return res, err

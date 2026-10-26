@@ -110,6 +110,18 @@ sealed interface CoreEvent {
 
     data class UpdateError(val code: String, val message: String) : CoreEvent { override val type = "update.error" }
 
+    /** The password vault locked itself or was locked ([reason]: idle, user …). Carries no secrets. */
+    data class VaultLocked(val reason: String) : CoreEvent { override val type = "vault.locked" }
+
+    /** Vault sync state of one device changed (idle, pending_unlock, needs_password, review, peer_off, error). */
+    data class VaultSync(val deviceId: String, val name: String, val state: String) : CoreEvent { override val type = "vault.sync" }
+
+    /** A sync merge changed the open vault: lists and details must be re-read. Carries no entry data. */
+    data class VaultChanged(val reason: String, val deviceId: String) : CoreEvent { override val type = "vault.changed" }
+
+    /** This device received the vault file of another device and has no master password for it yet. */
+    data class VaultJoined(val deviceId: String, val name: String) : CoreEvent { override val type = "vault.joined" }
+
     data class Unknown(override val type: String) : CoreEvent
 
     companion object {
@@ -181,6 +193,10 @@ sealed interface CoreEvent {
             "update.progress" -> UpdateProgress(o.optLong("received"), o.optLong("total"))
             "update.ready" -> UpdateReady(o.optLong("version_code"), o.optString("version_name"), o.optString("path"), o.optBoolean("mandatory"))
             "update.error" -> UpdateError(o.optString("code"), o.optString("message"))
+            "vault.locked" -> VaultLocked(o.optString("reason"))
+            "vault.sync" -> VaultSync(o.optString("device_id"), o.optString("name"), o.optString("state"))
+            "vault.changed" -> VaultChanged(o.optString("reason"), o.optString("device_id"))
+            "vault.joined" -> VaultJoined(o.optString("device_id"), o.optString("name"))
             else -> Unknown(type)
         }
     }

@@ -10,6 +10,8 @@ data class Reply(
     val result: JSONObject = JSONObject(),
     val errorCode: String = "",
     val errorMessage: String = "",
+    /** `error.details.retry_after_s` of a RATE_LIMITED reply (vault unlock), 0 when absent. */
+    val retryAfterS: Int = 0,
 ) {
     /** User-facing message for a failed reply. */
     val userMessage: String get() = ErrorMessages.forCode(errorCode, errorMessage)
@@ -21,7 +23,12 @@ data class Reply(
                 Reply(true, o.optJSONObject("result") ?: JSONObject())
             } else {
                 val e = o.optJSONObject("error")
-                Reply(false, errorCode = e?.optString("code", "") ?: "", errorMessage = e?.optString("message", "") ?: "")
+                Reply(
+                    false,
+                    errorCode = e?.optString("code", "") ?: "",
+                    errorMessage = e?.optString("message", "") ?: "",
+                    retryAfterS = e?.optJSONObject("details")?.optInt("retry_after_s", 0) ?: 0,
+                )
             }
         } catch (e: JSONException) {
             Reply(false, errorCode = "INTERNAL", errorMessage = "bad reply")

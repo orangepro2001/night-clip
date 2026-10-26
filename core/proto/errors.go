@@ -28,10 +28,19 @@ const (
 	CodeUpdateDisabled Code = "UPDATE_DISABLED" // no update URL or app version configured
 	CodeUpdateFailed   Code = "UPDATE_FAILED"   // network / HTTP failure; retryable
 	CodeUpdateRejected Code = "UPDATE_REJECTED" // manifest malformed or signature not trusted
-	CodeInvalid        Code = "INVALID"
-	CodeMethodNotFound Code = "METHOD_NOT_FOUND"
-	CodeNotInitialized Code = "NOT_INITIALIZED"
-	CodeInternal       Code = "INTERNAL"
+	// Password vault (docs/plan-vault.md).
+	CodeVaultLocked      Code = "VAULT_LOCKED"
+	CodeVaultCredentials Code = "VAULT_WRONG_CREDENTIALS" // wrong master password / key file, or a damaged file
+	CodeVaultNotFound    Code = "VAULT_NOT_FOUND"
+	CodeVaultExists      Code = "VAULT_EXISTS"
+	CodeVaultUnsupported Code = "VAULT_UNSUPPORTED"
+	CodeVaultBroken      Code = "VAULT_BROKEN"
+	CodeVaultNotEmpty    Code = "VAULT_NOT_EMPTY"
+	CodeVaultReview      Code = "VAULT_REVIEW" // a sync or merge needs the user's approval (see vault.sync_status)
+	CodeInvalid          Code = "INVALID"
+	CodeMethodNotFound   Code = "METHOD_NOT_FOUND"
+	CodeNotInitialized   Code = "NOT_INITIALIZED"
+	CodeInternal         Code = "INTERNAL"
 )
 
 // Error carries a Code plus a human-readable message. Clients must depend on

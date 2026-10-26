@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Password vault screens (ui/vault). Logic-level labels live in logic/VaultTexts.kt. -->
+<resources>
+    <string name="nav_vault">密码库</string>
+
+    <!-- Locked -->
+    <string name="vault_locked_title">密码库已锁定</string>
+    <string name="vault_locked_hint">输入主密码解锁。主密码和密钥文件只在这台手机上使用，不会发送给任何设备。</string>
+    <string name="vault_master_password">主密码</string>
+    <string name="vault_master_confirm">再输入一次主密码</string>
+    <string name="vault_unlock">解锁</string>
+    <string name="vault_unlocking">正在解锁…</string>
+    <string name="vault_quick_unlock">用指纹或面容快速解锁</string>
+    <string name="vault_rate_limited">输错次数太多，请 %1$s后再试。</string>
+    <string name="vault_forgot_hint">忘记主密码无法找回。请保管好主密码，并留一份加密备份。</string>
+    <string name="vault_key_file_pick">选择密钥文件（可选）</string>
+    <string name="vault_key_file_chosen">密钥文件：%1$s</string>
+    <string name="vault_key_file_remove">移除</string>
+    <string name="vault_key_file_hint">密钥文件是额外的一层保护：之后每次解锁都必须同时提供它，丢了它就打不开密码库。不确定就不要选。</string>
+    <string name="vault_strength">强度：%1$s</string>
+    <string name="vault_mismatch">两次输入的主密码不一致</string>
+
+    <!-- Create -->
+    <string name="vault_create_title">新建密码库</string>
+    <string name="vault_forgot_warning_title">忘记主密码就永远打不开密码库</string>
+    <string name="vault_forgot_warning">没有任何找回方式，开发者和 ClipBridge 都帮不上忙，也不存在“重置密码”。请把主密码记在安全的地方；建档后请立刻导出一份加密备份。</string>
+    <string name="vault_understood">我明白：忘记主密码后，里面的内容无法找回。</string>
+    <string name="vault_create">创建密码库</string>
+    <string name="vault_creating">正在创建…</string>
+    <string name="vault_advanced_show">高级选项</string>
+    <string name="vault_advanced_hide">收起高级选项</string>
+    <string name="vault_kdf_title">密钥强度（Argon2 开销）</string>
+    <string name="vault_kdf_hint">档位越高越抗暴力破解，解锁也越慢、越占内存。手机默认用“标准”；如果上次创建或解锁超过 3 秒，会自动改用“低”。</string>
+    <string name="vault_export_nudge_title">现在做一份加密备份吗？</string>
+    <string name="vault_export_nudge_text">手机丢了、损坏或重置后，只有备份能让你找回密码库。备份文件用你另设的密码加密，可以放在任何地方。</string>
+    <string name="vault_export_nudge_yes">现在备份</string>
+    <string name="vault_export_nudge_later">以后再说</string>
+
+    <!-- Quick unlock -->
+    <string name="vault_quick_offer_title">启用快速解锁？</string>
+    <string name="vault_quick_offer_text">用指纹或面容代替输入主密码。主密码会被手机的安全芯片保护起来，每 72 小时、重启手机后或连续失败 5 次后仍需要输入主密码；指纹有变动时自动失效。</string>
+    <string name="vault_quick_offer_yes">启用</string>
+    <string name="vault_quick_offer_no">暂不</string>
+
+    <!-- List -->
+    <string name="vault_lock_now">立即锁定</string>
+    <string name="vault_search">搜索标题、用户名、网址、备注</string>
+    <string name="vault_add_entry">添加条目</string>
+    <string name="vault_add_title">添加什么？</string>
+    <string name="vault_group_label">分组：%1$s</string>
+    <string name="vault_group_all">全部</string>
+    <string name="vault_group_new">新建分组</string>
+    <string name="vault_group_name">分组名称</string>
+    <string name="vault_group_root">顶层</string>
+    <string name="vault_empty_trash">清空回收站</string>
+    <string name="vault_empty_trash_text">回收站里的条目会被永久删除，无法恢复（只能从更早的备份里找回）。</string>
+    <string name="vault_empty_search">没有找到匹配的条目</string>
+    <string name="vault_empty_trash_list">回收站是空的</string>
+    <string name="vault_empty_filter">这一类还没有条目</string>
+    <string name="vault_empty_all">密码库是空的。点右下角的“＋”添加第一个条目，或从“更多”里导入。</string>
+    <string name="vault_menu_health">健康报告</string>
+    <string name="vault_menu_backups">备份与恢复</string>
+    <string name="vault_menu_import">导入</string>
+    <string name="vault_menu_export">导出</string>
+    <string name="vault_menu_change_master">更换主密码</string>
+    <string name="vault_menu_settings">密码库设置</string>
+
+    <!-- Detail -->
+    <string name="vault_entry">条目</string>
+    <string name="vault_edit">编辑</string>
+    <string name="vault_copy">复制</string>
+    <string name="vault_open_url">打开</string>
+    <string name="vault_move">移动到分组</string>
+    <string name="vault_delete">移入回收站</string>
+    <string name="vault_delete_text">“%1$s”会被移入回收站，之后还可以恢复。</string>
+    <string name="vault_delete_forever">永久删除</string>
+    <string name="vault_delete_forever_text">“%1$s”会被永久删除，无法恢复。</string>
+    <string name="vault_restore_entry">从回收站恢复</string>
+    <string name="vault_in_trash">这个条目在回收站里</string>
+    <string name="vault_field_title">标题</string>
+    <string name="vault_field_username">用户名</string>
+    <string name="vault_field_password">密码</string>
+    <string name="vault_field_url">网址</string>
+    <string name="vault_field_notes">备注</string>
+    <string name="vault_field_tags">标签</string>
+    <string name="vault_field_totp">一次性验证码</string>
+    <string name="vault_field_totp_secret">验证码密钥（TOTP）</string>
+    <string name="vault_field_expires">到期日</string>
+    <string name="vault_field_group">分组</string>
+    <string name="vault_empty_value">（空）</string>
+    <string name="vault_totp_left">%1$d 秒后更新</string>
+    <string name="vault_totp_failed">无法生成验证码，请检查密钥格式</string>
+    <string name="vault_attachments">附件</string>
+    <string name="vault_attachments_none">没有附件</string>
+    <string name="vault_attachment_add">添加附件（最大 5 MiB）</string>
+    <string name="vault_attachment_save">保存到…</string>
+    <string name="vault_attachment_remove">删除附件</string>
+    <string name="vault_attachment_remove_text">确定删除附件“%1$s”吗？</string>
+    <string name="vault_history">历史版本（%1$d）</string>
+    <string name="vault_history_show">查看历史版本</string>
+    <string name="vault_history_hide">收起历史版本</string>
+    <string name="vault_history_restore">恢复此版本</string>
+    <string name="vault_created_modified">创建于 %1$s，修改于 %2$s</string>
+
+    <!-- Editor -->
+    <string name="vault_new_entry">新建条目</string>
+    <string name="vault_edit_entry">编辑条目</string>
+    <string name="vault_totp_hint">otpauth:// 链接或 base32 密钥，可留空</string>
+    <string name="vault_custom_fields">自定义字段</string>
+    <string name="vault_field_name">字段名</string>
+    <string name="vault_field_value">内容</string>
+    <string name="vault_field_protected">受保护（默认遮盖）</string>
+    <string name="vault_field_remove">删除字段</string>
+    <string name="vault_field_add">添加字段</string>
+    <string name="vault_tags_hint">用逗号或空格分隔</string>
+    <string name="vault_expires_hint">年-月-日，可留空；到期前会在“即将到期”里提醒</string>
+    <string name="vault_expires_30">30 天后</string>
+    <string name="vault_expires_90">90 天后</string>
+    <string name="vault_expires_365">1 年后</string>
+    <string name="vault_expires_none">不设到期</string>
+    <string name="vault_discard_title">放弃修改？</string>
+    <string name="vault_discard_text">有尚未保存的修改，离开后会丢失。</string>
+    <string name="vault_discard">放弃</string>
+
+    <!-- Generator -->
+    <string name="vault_generate">生成密码</string>
+    <string name="vault_gen_password">随机密码</string>
+    <string name="vault_gen_passphrase">口令短语</string>
+    <string name="vault_gen_length">长度：%1$d</string>
+    <string name="vault_gen_lower">小写字母</string>
+    <string name="vault_gen_upper">大写字母</string>
+    <string name="vault_gen_digits">数字</string>
+    <string name="vault_gen_symbols">符号</string>
+    <string name="vault_gen_ambiguous">排除容易混淆的字符（0 O 1 l I）</string>
+    <string name="vault_gen_words">单词数：%1$d</string>
+    <string name="vault_gen_separator">分隔符</string>
+    <string name="vault_gen_capitalize">单词首字母大写</string>
+    <string name="vault_gen_number">加一个数字</string>
+    <string name="vault_gen_again">重新生成</string>
+    <string name="vault_gen_use">使用</string>
+
+    <!-- Health -->
+    <string name="vault_health_summary">共 %1$d 个条目，%2$d 个问题</string>
+    <string name="vault_health_local">检查只在手机本地进行，不联网，也不查询泄露库。</string>
+    <string name="vault_health_ok">没有发现弱密码、重复密码、过期或太旧的密码。</string>
+    <string name="vault_health_reused_info">有 %1$s 个条目使用相同的密码</string>
+    <string name="vault_health_without_totp">%1$d 个账号还没有设置一次性验证码。</string>
+
+    <!-- Backups -->
+    <string name="vault_backup_now">立即备份</string>
+    <string name="vault_backup_last">上次手动备份或导出：%1$s</string>
+    <string name="vault_backup_never">还没有做过手动备份或导出。</string>
+    <string name="vault_backup_stale">已经超过 30 天没有手动备份了，建议现在做一份并导出到手机之外的地方。</string>
+    <string name="vault_backup_auto_note">每次修改、删除、导入、恢复之前，密码库都会自动留一份快照。</string>
+    <string name="vault_backup_empty">还没有备份。</string>
+    <string name="vault_backup_old_password_hint">这份备份可能是更换主密码之前的，需要用旧主密码打开。</string>
+    <string name="vault_backup_verify">验证</string>
+    <string name="vault_backup_verify_text">用主密码真的把这份备份打开一遍，确认它可以恢复。</string>
+    <string name="vault_backup_verified_title">这份备份可以恢复</string>
+    <string name="vault_backup_verified_text">条目 %1$d 个，分组 %2$d 个，回收站 %3$d 个，最近修改 %4$s。\n（%5$s）</string>
+    <string name="vault_backup_restore">恢复…</string>
+    <string name="vault_backup_preview">查看差异</string>
+    <string name="vault_backup_preview_text">先对比这份备份和当前密码库有什么不同，不会修改任何东西。</string>
+    <string name="vault_backup_use_old">这份备份是更换主密码之前的</string>
+    <string name="vault_backup_use_old_text">请输入这份备份当时使用的主密码（旧主密码）。</string>
+    <string name="vault_password_maybe_old">主密码（旧备份用旧主密码）</string>
+    <string name="vault_restore_mode_entries">把选中的条目恢复成备份里的样子，当前版本进入历史；已经不存在的会重建。</string>
+    <string name="vault_restore_mode_merge">按合并规则并入：较新的修改留在当前，另一个版本进入历史。</string>
+    <string name="vault_restore_mode_replace">整个库换成备份的内容。只在当前库里的条目会消失（但仍在恢复前的快照里）。</string>
+    <string name="vault_restore_go_entries">恢复选中的 %1$d 条</string>
+    <string name="vault_restore_replace_title">整库替换？</string>
+    <string name="vault_restore_replace_text">当前密码库会整个换成这份备份。当前有、备份没有的 %1$d 个条目会消失。\n\n恢复前会先自动备份，所以之后还能撤销。</string>
+    <string name="vault_restore_replace_confirm">整库替换</string>
+    <string name="vault_result_title">完成</string>
+
+    <!-- Import / export -->
+    <string name="vault_import_note">导入前会先自动备份当前密码库。导入的内容并入当前库，不会覆盖已有条目。</string>
+    <string name="vault_import_kdbx">导入 KeePass 文件（.kdbx）</string>
+    <string name="vault_import_kdbx_hint">KeePassXC、KeePassDX 等导出的 KDBX 文件，包括旧的 3.x 版本。</string>
+    <string name="vault_import_kdbx_password">输入这个文件的密码（和密钥文件）。</string>
+    <string name="vault_import_csv">导入 CSV</string>
+    <string name="vault_import_csv_hint">支持 Chrome / Edge、Bitwarden、1Password、LastPass、KeePassXC 等常见表头。CSV 文件里的密码是明文，导入后请删除原文件。</string>
+    <string name="vault_import_pick">选择文件</string>
+    <string name="vault_import_go">导入</string>
+    <string name="vault_export_kdbx">导出加密副本（.kdbx）</string>
+    <string name="vault_export_kdbx_hint">得到一个标准的 KDBX 文件，用你在这里设的新密码加密，KeePassXC 可以直接打开。建议和主密码不同。</string>
+    <string name="vault_export_new_password">导出文件的密码</string>
+    <string name="vault_export_key_file">给导出文件加密钥文件（可选）</string>
+    <string name="vault_export_confirm_master">再次确认：输入当前主密码</string>
+    <string name="vault_export_choose">选择位置并导出</string>
+    <string name="vault_export_kdbx_confirm">接下来选择保存位置。请记住导出文件的密码，忘了就打不开这份备份。</string>
+    <string name="vault_export_csv">导出明文 CSV</string>
+    <string name="vault_export_csv_warning_title">明文导出，没有任何加密</string>
+    <string name="vault_export_csv_warning">CSV 文件里所有密码都是明文：任何能拿到这个文件的人、云盘同步、其他应用都能直接读到。只在要迁移到别的工具时使用，用完立即安全删除。</string>
+    <string name="vault_export_csv_understood">我明白文件里的密码没有加密。</string>
+    <string name="vault_export_csv_go">导出明文 CSV</string>
+    <string name="vault_export_csv_confirm">确定要把所有密码以明文导出吗？这个文件没有任何保护。</string>
+
+    <!-- Change master password -->
+    <string name="vault_change_warning">更换主密码会用新的随机值重新加密整个密码库。旧的备份仍然需要旧主密码才能打开，请保留旧主密码直到这些备份不再需要。忘记新的主密码同样无法找回。</string>
+    <string name="vault_change_current">当前主密码</string>
+    <string name="vault_change_new">新主密码</string>
+    <string name="vault_change_new_password">新主密码</string>
+    <string name="vault_change_new_key_file">新的密钥文件（可选）</string>
+    <string name="vault_change_key_file_hint">不选密钥文件，更换后就不再需要密钥文件。</string>
+    <string name="vault_change_go">更换主密码</string>
+    <string name="vault_change_confirm">确定更换主密码吗？更换后快速解锁会失效，需要用新主密码重新启用。</string>
+
+    <!-- Settings -->
+    <string name="vault_settings_lock">锁定</string>
+    <string name="vault_settings_autolock">空闲自动锁定</string>
+    <string name="vault_settings_autolock_hint">久未操作后自动锁定。另外，应用在后台超过 30 秒、屏幕熄灭时也会立即锁定。</string>
+    <string name="vault_settings_clip_clear">复制后清除剪贴板</string>
+    <string name="vault_settings_clip_hint">复制的密码会在这段时间后从剪贴板清除（只清除密码库自己复制的那一份）。应用不在前台时，系统可能不让读取剪贴板，这时会直接清空。</string>
+    <string name="vault_settings_quick">快速解锁</string>
+    <string name="vault_settings_quick_switch">用指纹或面容解锁</string>
+    <string name="vault_settings_quick_hint">每 72 小时、重启手机后、连续失败 5 次后需要重新输入主密码；指纹有变动时自动失效。关闭后会删除保存的密钥。</string>
+    <string name="vault_settings_quick_unavailable">这台手机没有可用的强生物识别（指纹或面容），或还没有录入。</string>
+    <string name="vault_settings_quick_password">启用前请先输入主密码确认。</string>
+    <string name="vault_settings_quick_enable">确认并启用</string>
+    <string name="vault_settings_info">密码库信息</string>
+    <string name="vault_settings_kdf">加密参数：Argon2d，%1$d MiB × %2$d 次</string>
+    <string name="vault_settings_entries">条目：%1$d 个</string>
+    <string name="vault_settings_backups">备份：%1$d 份</string>
+
+    <!-- Device sync -->
+    <string name="vault_menu_sync">设备同步</string>
+    <string name="vault_sync_title">设备同步</string>
+    <string name="vault_sync_unknown_device">其他设备</string>
+    <string name="vault_sync_no_vault">这台设备上还没有密码库。两边都开启同步后，对方的库会直接传过来，到时用那个库的主密码解锁即可。</string>
+    <string name="vault_sync_no_devices">还没有配对设备。请先在“设备”页配对，再回到这里开启。</string>
+    <string name="vault_sync_now">立即同步</string>
+    <string name="vault_sync_remove_hint">关掉某台设备的开关，只会停止之后的同步，不会清除它已经拿到的内容。</string>
+    <string name="vault_sync_enter_password">输入对方的主密码</string>
+    <string name="vault_sync_review">查看并处理</string>
+    <string name="vault_sync_password_title">合并 %1$s 的密码库</string>
+    <string name="vault_sync_password_text">对方更换过主密码。请输入对方设备上那个库现在的主密码（和密钥文件），用来读取它的修改并合并到本机。密码只用于这一次合并，不会保存。</string>
+    <string name="vault_sync_password_label">对方库的主密码</string>
+    <string name="vault_sync_merge">合并</string>
+    <string name="vault_sync_review_title">%1$s 的修改需要你确认</string>
+    <string name="vault_sync_approve">批准并合并</string>
+    <string name="vault_sync_ignore">忽略</string>
+    <string name="vault_joined_title">已加入另一台设备的密码库</string>
+    <string name="vault_key_file_pick_expected">选择密钥文件（这个库需要）</string>
+    <string name="vault_key_file_show">我的主密码还搭配了密钥文件…</string>
+    <string name="vault_settings_sync_hint">在多台设备之间同步同一个密码库（只传加密文件）。</string>
+</resources>

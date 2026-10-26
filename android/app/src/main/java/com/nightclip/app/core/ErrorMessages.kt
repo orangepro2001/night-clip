@@ -29,6 +29,13 @@ object ErrorMessages {
         "INTERNAL" to "内部错误",
         "KEY_CORRUPT" to Strings.ERR_KEY_CORRUPT,
         "KEYSTORE_UNAVAILABLE" to Strings.ERR_KEY_STORE,
+        // Password vault (docs/vault-api.md §2); logic/VaultErrors adds context and the rate-limit countdown.
+        "VAULT_LOCKED" to "密码库已锁定，请先解锁",
+        "VAULT_WRONG_CREDENTIALS" to "主密码或密钥文件不对，或文件已损坏。可以从备份恢复。",
+        "VAULT_NOT_FOUND" to "找不到该条目、分组或备份",
+        "VAULT_EXISTS" to "密码库或目标文件已存在",
+        "VAULT_UNSUPPORTED" to "这个库的加密参数不受支持或不安全。",
+        "VAULT_BROKEN" to "密码库状态不一致，请先锁定再重新解锁。",
     )
 
     /** Known code -> its message; unknown code -> generic text plus the code; no code -> generic text. */

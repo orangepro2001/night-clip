@@ -6,6 +6,7 @@ import (
 
 	"nightclip/core/pairing"
 	"nightclip/core/peer"
+	"nightclip/core/vsync"
 	"nightclip/core/xfer"
 )
 
@@ -17,6 +18,7 @@ func init() {
 		timing peer.Timing
 		pairT  pairing.Timings
 		xferT  xfer.Timing
+		syncT  vsync.Timing
 	}{
 		hooks: peer.Hooks{
 			AllowLoopback: true, RandomPort: true,
@@ -29,5 +31,6 @@ func init() {
 		},
 		pairT: pairing.Timings{RateBurst: 1000},
 		xferT: xfer.Timing{ProgressEvery: time.Millisecond, RetryBase: 20 * time.Millisecond, RetryMax: 100 * time.Millisecond},
+		syncT: vsync.Timing{Poll: 150 * time.Millisecond, HTTP: 5 * time.Second, MinPutGap: 20 * time.Millisecond},
 	}
 }

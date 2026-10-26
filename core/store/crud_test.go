@@ -1009,7 +1009,7 @@ func TestMigrationV2UpgradesAV1Database(t *testing.T) {
 	for _, stmt := range []string{
 		`DROP INDEX idx_transfers_state`, `ALTER TABLE transfers DROP COLUMN mode`,
 		`ALTER TABLE transfers DROP COLUMN mime_type`, `ALTER TABLE transfers DROP COLUMN save_dir`,
-		`ALTER TABLE inbox DROP COLUMN sensitive`, `ALTER TABLE peers DROP COLUMN send_disabled`,
+		`ALTER TABLE inbox DROP COLUMN sensitive`, `ALTER TABLE peers DROP COLUMN send_disabled`, `DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`,
 	} {
 		if _, err := db.sql.Exec(stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -1171,7 +1171,7 @@ func TestMigrationV3AddsTransferColumns(t *testing.T) {
 	for _, stmt := range []string{
 		`DROP INDEX idx_transfers_state`,
 		`ALTER TABLE transfers DROP COLUMN mode`, `ALTER TABLE transfers DROP COLUMN mime_type`, `ALTER TABLE transfers DROP COLUMN save_dir`,
-		`ALTER TABLE peers DROP COLUMN send_disabled`,
+		`ALTER TABLE peers DROP COLUMN send_disabled`, `DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`,
 		`UPDATE schema_version SET version = 2`,
 		`INSERT INTO transfers (transfer_id, peer_id, direction, name, size, sha256, path, "offset", state, error, created_at, expires_at)
 		 VALUES ('old', 'dev_a', 'in', 'f', 1, '', '', 0, 'offered', '', 1, 2)`,
@@ -1195,7 +1195,7 @@ func TestMigrationV4KeepsExistingPeersReceivingBroadcasts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
-		`ALTER TABLE peers DROP COLUMN send_disabled`,
+		`DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`, `ALTER TABLE peers DROP COLUMN send_disabled`,
 		`UPDATE schema_version SET version = 3`,
 		`INSERT INTO peers (device_id, name, platform, cert_fp, state, apply_mode, paired_at)
 		 VALUES ('dev_old', 'Old', 'android', 'fp_old', 'paired', 'notify', 1)`,
@@ -1216,5 +1216,50 @@ func TestMigrationV4KeepsExistingPeersReceivingBroadcasts(t *testing.T) {
 	}
 	if again, _, _ := db2.GetPeer("dev_old"); !again.SendDisabled {
 		t.Fatal("SendDisabled was not stored")
+	}
+}
+
+func TestMigrationV5AddsVaultSyncOff(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(dir, testKey(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`,
+		`UPDATE schema_version SET version = 4`,
+		`INSERT INTO peers (device_id, name, platform, cert_fp, state, apply_mode, paired_at)
+		 VALUES ('dev_old', 'Old', 'android', 'fp_old', 'paired', 'auto', 1)`,
+	} {
+		if _, err := db.sql.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	_ = db.Close()
+	db2 := openAt(t, dir, testKey(1))
+	p, found, err := db2.GetPeer("dev_old")
+	if err != nil || !found || p.VaultSync {
+		t.Fatalf("an existing peer must not get the vault: %+v %v %v", p, found, err)
+	}
+	if r, found, _ := db2.GetVaultSync("dev_old"); found || r.State != "idle" {
+		t.Fatalf("fresh row = %+v", r)
+	}
+	p.VaultSync = true
+	if err := db2.PutPeer(p); err != nil {
+		t.Fatal(err)
+	}
+	if err := db2.PutVaultSync(VaultSyncRow{PeerID: "dev_old", SeenHash: "a", SentHash: "b", LastOKAt: 5, State: "review", Detail: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	got, found, _ := db2.GetVaultSync("dev_old")
+	if !found || got.SeenHash != "a" || got.SentHash != "b" || got.State != "review" {
+		t.Fatalf("row = %+v", got)
+	}
+	// forgetting the peer removes the bookkeeping
+	if err := db2.DeletePeer("dev_old"); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, _ := db2.GetVaultSync("dev_old"); found {
+		t.Fatal("vault sync row survived its peer")
 	}
 }
