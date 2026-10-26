@@ -295,7 +295,7 @@ android/app/src/main/{AndroidManifest.xml,java/com/nightclip/app/{CoreHost,DevKe
 - **仍待用户批准**：`tailscale serve --set-path /clipbridge http://127.0.0.1:18780`（全局规则：只添加用户指定的路径）。在此之前设备访问不到本机分发地址。
 - **GitHub `nightly` Release**：全部功能完成后再做（docs/update.md §9：CI 需要同一把 Android 密钥与 Ed25519 密钥作为仓库密钥）。
 - **未在真机验证**：Android 系统安装器与「安装未知应用」跳转；Windows 上真实的文件占用/杀毒干扰与 `--apply-update` 重启；`tailscale serve` 的路径前缀行为（若保留前缀，给 `cbdist serve` 加 `-prefix /clipbridge`）。
-- **CI（已读到日志）**：windows 任务已通过（之前失败是测试里的 POSIX 权限断言，已修）。linux 任务失败是 `wine64: not found`（ubuntu-latest 只有 `wine`）且 apt 安装 wine 时可能卡在交互提示；android 任务失败是 `setup-android` 在 runner 预装 SDK 上装 `tools` 包失败。已改：Makefile 自动选 `wine64`/`wine`，CI 非交互安装并设超时，Android 改用预装 SDK。
+- **CI：linux / windows / android 三个任务全部通过**（2026-10-26）。之前的失败原因：测试里的 POSIX 权限断言在 Windows 上不成立；`ubuntu-latest` 没有 `wine64` 且 apt 安装 wine 会卡在交互提示；`setup-android` 在预装 SDK 上失败；workflow 里取不到 `ANDROID_HOME` 导致 NDK 路径为空。现在 Makefile 自动选 `wine64`/`wine`，CI 非交互安装并设 30 分钟超时，Android 用 runner 预装 SDK。读日志用 `gh run view <id> --log-failed`。
 
 ## 11. 与 `development-plan.md` Phase 0 清单的对照
 
