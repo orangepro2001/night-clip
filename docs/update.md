@@ -126,7 +126,9 @@ scripts/release-local.sh --notes "更新说明"      # 构建两个平台并发�
 tailscale serve --bg --set-path /clipbridge http://127.0.0.1:18780
 ```
 
-`/clipbridge` 前缀由 tailscale 去掉后再转发。验证：`curl https://<本机>.ts.net/clipbridge/healthz`。若你的 tailscale 版本保留了前缀，给 `cbdist serve` 加 `-prefix /clipbridge`。
+`/clipbridge` 前缀由 tailscale 去掉后再转发（已在本机验证，`cbdist serve` 不需要 `-prefix`）。验证：`curl https://<本机>.ts.net/clipbridge/healthz`。
+
+给人用的下载入口：`/clipbridge/`（页面）、`/clipbridge/v1/android/download`、`/clipbridge/v1/windows/download`（固定地址，永远指向当前版本）。
 
 ## 7. 开发构建
 

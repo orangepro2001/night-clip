@@ -292,7 +292,7 @@ android/app/src/main/{AndroidManifest.xml,java/com/nightclip/app/{CoreHost,DevKe
   2. `gh` 已用用户提供的 token 登录（存于 `~/.config/gh/hosts.yml`，600），原 token 文件已 `shred`；
   3. 密钥备份：`scripts/backup-keys.sh` → `~/backups/clipbridge-keys/`（700，含校验和与 RESTORE.txt，已逐字节验证）。**同盘备份只防误删，请再复制一份到本机之外**；
   4. 本机 SSH 登录不再自动进入 tmux（删除了 `~/.zshrc` 里的 auto-tmux 段，备份为 `~/.zshrc.bak-*`）；`~/.tmux.conf` 加了 OSC 52 复制（`set-clipboard on`）、vi 复制模式和 `prefix + m` 切换鼠标。
-- **仍待用户批准**：`tailscale serve --set-path /clipbridge http://127.0.0.1:18780`（全局规则：只添加用户指定的路径）。在此之前设备访问不到本机分发地址。
+- **已批准并完成（2026-10-26）**：`tailscale serve --bg --set-path /clipbridge http://127.0.0.1:18780`（用户明确指定该路径；其余 serve 路径未变）。已验证 `https://tony-ai-pc-1.tail9f7f1f.ts.net/clipbridge/` 的下载页、`/v1/android/download`、`/v1/windows/download`、Range、清单；下载内容 SHA-256 与发布值一致。前缀由 tailscale 去掉，`cbdist serve` 不需要 `-prefix`。
 - **GitHub `nightly` Release**：全部功能完成后再做（docs/update.md §9：CI 需要同一把 Android 密钥与 Ed25519 密钥作为仓库密钥）。
 - **未在真机验证**：Android 系统安装器与「安装未知应用」跳转；Windows 上真实的文件占用/杀毒干扰与 `--apply-update` 重启；`tailscale serve` 的路径前缀行为（若保留前缀，给 `cbdist serve` 加 `-prefix /clipbridge`）。
 - **CI：linux / windows / android 三个任务全部通过**（2026-10-26）。之前的失败原因：测试里的 POSIX 权限断言在 Windows 上不成立；`ubuntu-latest` 没有 `wine64` 且 apt 安装 wine 会卡在交互提示；`setup-android` 在预装 SDK 上失败；workflow 里取不到 `ANDROID_HOME` 导致 NDK 路径为空。现在 Makefile 自动选 `wine64`/`wine`，CI 非交互安装并设 30 分钟超时，Android 用 runner 预装 SDK。读日志用 `gh run view <id> --log-failed`。
