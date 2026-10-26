@@ -30,7 +30,7 @@ import (
 // Version is the core version reported by the "version" method.
 const Version = "0.0.1"
 
-const eventQueueSize = 256
+const eventQueueSize = 1024
 
 // Config is the JSON passed to Init (docs/api-spec.md §7.2).
 type Config struct {

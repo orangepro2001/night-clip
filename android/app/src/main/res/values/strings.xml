@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ClipBridge</string>
+
+    <!-- Common -->
+    <string name="cancel">取消</string>
+    <string name="close">关闭</string>
+    <string name="save">保存</string>
+    <string name="back">返回</string>
+    <string name="retry">重试</string>
+    <string name="done">完成</string>
+    <string name="more">更多</string>
+    <string name="send">发送</string>
+    <string name="clear">清空</string>
+    <string name="remove">解除配对</string>
+    <string name="rename">重命名</string>
+    <string name="show">显示</string>
+    <string name="hide">隐藏</string>
+
+    <!-- Navigation -->
+    <string name="nav_devices">设备</string>
+    <string name="nav_inbox">收件箱</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- Notification channels -->
+    <string name="channel_clip_name">收到的剪贴板</string>
+    <string name="channel_clip_desc">其他设备发来的剪贴板内容</string>
+    <string name="channel_files_name">文件与提示</string>
+    <string name="channel_files_desc">收到文件请求、传输结果和提示</string>
+    <string name="channel_progress_name">文件传输进度</string>
+    <string name="channel_progress_desc">正在发送或接收的文件</string>
+    <string name="channel_connection_name">连接状态</string>
+    <string name="channel_connection_desc">实时模式开启时的常驻通知</string>
+    <string name="channel_update_name">应用更新</string>
+    <string name="channel_update_desc">新版本可用或已下载完成</string>
+
+    <!-- Notification actions -->
+    <string name="action_copy">复制</string>
+    <string name="action_dismiss">忽略</string>
+    <string name="action_accept">接收</string>
+    <string name="action_reject">拒绝</string>
+    <string name="action_cancel">取消传输</string>
+    <string name="action_disconnect">断开</string>
+    <string name="action_send_clipboard">发送剪贴板</string>
+
+    <!-- Notifications and toasts -->
+    <string name="notif_peer_revoked_title">配对已解除</string>
+    <string name="notif_peer_revoked_text">%1$s 已解除与本机的配对</string>
+    <string name="notif_update_ready_title">ClipBridge 更新已就绪</string>
+    <string name="notif_update_ready_text">版本 %1$s 已下载，点按安装。</string>
+    <string name="notif_update_available_title">ClipBridge 有新版本</string>
+    <string name="notif_update_available_text">版本 %1$s 可用，点按下载。</string>
+    <string name="notif_file_rejected_title">对方拒绝了文件</string>
+    <string name="notif_file_sent_title">文件已发送</string>
+    <string name="notif_file_saved_title">文件已保存</string>
+    <string name="notif_accept_failed">无法接收文件</string>
+    <string name="notif_realtime_restore">无法在后台恢复实时模式，请打开 ClipBridge。</string>
+    <string name="toast_copied">已复制</string>
+    <string name="toast_copy_failed">无法写入剪贴板，请打开应用后重试</string>
+    <string name="toast_auto_copied">已自动复制来自 %1$s 的内容</string>
+    <string name="msg_files_offered">已向对方发出 %1$d 个文件请求，等待对方确认</string>
+    <string name="tile_label">发送剪贴板</string>
+
+    <!-- Devices -->
+    <string name="send_clipboard">发送剪贴板</string>
+    <string name="pair_new_device">配对新设备</string>
+    <string name="send_text_label">输入要发送的文字</string>
+    <string name="paired_devices">已配对的设备</string>
+    <string name="no_devices_hint">还没有配对设备。请先在电脑上的 ClipBridge 里点“配对新设备”，再在这里扫码。</string>
+    <string name="send_file">发送文件</string>
+    <string name="repair">重新配对</string>
+    <string name="last_seen">最后在线：%1$s</string>
+    <string name="rename_device">重命名设备</string>
+    <string name="apply_mode_menu">收到内容时：%1$s</string>
+    <string name="apply_mode_title">%1$s 的内容如何处理</string>
+    <string name="apply_mode_note">自动复制仅在应用位于前台时生效，敏感内容永远不会自动复制。</string>
+    <string name="remove_device_title">解除配对</string>
+    <string name="remove_device_text">确定要解除与 %1$s 的配对吗？对方也会收到通知，之后需要重新配对才能再次同步。</string>
+    <string name="transfers">传输</string>
+    <string name="no_transfers">暂无文件传输</string>
+
+    <!-- Pairing -->
+    <string name="pair_title">配对新设备</string>
+    <string name="pair_intro">先在电脑端点“配对新设备”，会显示二维码和配对链接。</string>
+    <string name="pair_tab_scan">扫码</string>
+    <string name="pair_tab_paste">粘贴链接</string>
+    <string name="pair_tab_manual">手动输入</string>
+    <string name="pair_scan_button">扫描二维码</string>
+    <string name="pair_scan_prompt">将取景框对准电脑上的二维码</string>
+    <string name="pair_scan_note">扫码需要相机权限；如果拒绝，可以改用粘贴链接或手动输入。</string>
+    <string name="pair_camera_denied">没有相机权限，请改用“粘贴链接”或“手动输入”。</string>
+    <string name="pair_link_label">配对链接（clipbridge://pair?…）</string>
+    <string name="pair_paste_button">从剪贴板粘贴</string>
+    <string name="pair_start">开始配对</string>
+    <string name="pair_host">电脑的地址（Tailscale IP）</string>
+    <string name="pair_port">端口</string>
+    <string name="pair_psk">配对密钥</string>
+    <string name="pair_fp">证书指纹（可选）</string>
+    <string name="pair_manual_note">不填指纹时无法预先确认电脑身份，请务必核对随后显示的 6 位数字。</string>
+    <string name="pair_connecting">正在连接电脑…</string>
+    <string name="pair_connecting_hint">请确认两台设备都已登录并连接 Tailscale。</string>
+    <string name="pair_check_sas">请核对电脑上显示的数字是否一致</string>
+    <string name="pair_sas_hint">一致后，请在电脑上点“允许”。不一致请拒绝，不要继续。</string>
+    <string name="pair_success">配对成功</string>
+    <string name="pair_failed">配对失败</string>
+
+    <!-- Inbox -->
+    <string name="inbox_empty">还没有收到过剪贴板内容</string>
+    <string name="clear_inbox_title">清空收件箱</string>
+    <string name="clear_inbox_text">将删除本机保存的全部已收到内容，无法恢复。</string>
+
+    <!-- Settings -->
+    <string name="settings_realtime">实时模式</string>
+    <string name="settings_realtime_switch">保持后台连接</string>
+    <string name="settings_realtime_hint">开启后会显示一条常驻通知，让 ClipBridge 在后台保持与设备的连接；重启手机后自动恢复。关闭时只在应用运行期间同步。</string>
+    <string name="settings_battery">电池优化设置</string>
+    <string name="settings_sync">同步</string>
+    <string name="settings_default_mode">新设备的默认处理方式</string>
+    <string name="settings_ttl">离线时保留</string>
+    <string name="settings_history">收件箱保留</string>
+    <string name="settings_history_value">%1$d 条</string>
+    <string name="settings_send_sensitive">允许发送看起来像口令的内容</string>
+    <string name="settings_update">更新</string>
+    <string name="update_auto">自动下载更新</string>
+    <string name="update_need_permission">请在刚打开的设置页允许 ClipBridge 安装应用，然后回来再点“安装更新”。</string>
+    <string name="update_missing_file">下载的更新文件不见了，请重新检查更新。</string>
+    <string name="settings_about">关于</string>
+    <string name="about_version">版本</string>
+    <string name="about_device_id">设备 ID</string>
+    <string name="about_fingerprint">指纹（前 8 位）</string>
+    <string name="settings_diagnostics">诊断</string>
+    <string name="settings_diagnostics_hint">查看核心状态、监听地址和各设备的同步游标。内容不含密钥。</string>
+    <string name="settings_diagnostics_show">查看诊断信息</string>
+    <string name="diagnostics_copy">复制诊断信息</string>
+    <string name="diagnostics_copied">诊断信息已复制</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_title">欢迎使用 ClipBridge</string>
+    <string name="onboarding_intro">在你自己的电脑和手机之间同步剪贴板、传文件。设备之间直连，不经过任何第三方服务器。</string>
+    <string name="onboarding_tailscale_title">1. 需要 Tailscale</string>
+    <string name="onboarding_tailscale_text">所有要同步的设备必须登录同一个 Tailscale 网络并保持连接。请先在手机上打开 Tailscale 并确认已连接。</string>
+    <string name="onboarding_open_tailscale">打开 Tailscale</string>
+    <string name="onboarding_notif_title">2. 通知权限</string>
+    <string name="onboarding_notif_text">收到电脑发来的内容、文件请求和传输进度都通过通知提醒你。Android 13 及以上需要你允许通知。</string>
+    <string name="onboarding_notif_button">允许通知</string>
+    <string name="onboarding_granted">已允许</string>
+    <string name="onboarding_battery_title">3. 电池优化（可选）</string>
+    <string name="onboarding_battery_text">系统可能在后台停掉 ClipBridge。想随时收到内容，可以在设置里开启“实时模式”，并把本应用从电池优化中排除。不强制。</string>
+    <string name="onboarding_battery_button">打开电池优化设置</string>
+    <string name="onboarding_start">开始使用</string>
+
+    <!-- Error page -->
+    <string name="error_title">ClipBridge 无法启动</string>
+    <string name="error_code">错误代码：%1$s</string>
+    <string name="error_reset_hint">如果无法恢复，可以重置本机数据：这会删除本机的设备身份、配对关系和收件箱，之后需要重新配对。</string>
+    <string name="error_reset">重置本机数据</string>
+    <string name="error_reset_confirm_title">确认重置本机数据？</string>
+    <string name="error_reset_confirm_text">本机的设备身份、所有配对关系和收件箱将被永久删除，且无法恢复。重置后需要在每台设备上重新配对。</string>
+    <string name="error_reset_confirm">永久删除并重置</string>
+
+    <!-- Share sheet -->
+    <string name="share_title">发送到…</string>
+    <string name="share_all">发送给所有设备</string>
+    <string name="share_nothing">没有可发送的内容</string>
+    <string name="share_no_devices">还没有可发送的已配对设备。</string>
+    <string name="share_open_app">打开 ClipBridge</string>
+</resources>

@@ -1,110 +1,86 @@
 package com.nightclip.app
 
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.ServiceCompat
+import com.nightclip.app.core.ApiResult
+import com.nightclip.app.core.CoreApi
+import com.nightclip.app.core.CoreEvent
+import com.nightclip.app.core.CoreHost
+import com.nightclip.app.platform.Actions
+import com.nightclip.app.platform.Notifications
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 
 /**
- * Optional "real-time mode" service (docs/architecture.md §9). Keeps the Go
- * core running and drains its event queue on a worker thread. Event handling
- * (notifications, inbox) is added in Phase 0/1.
+ * Real-time mode (docs/architecture.md §9): a `specialUse` foreground service whose only job is to
+ * keep the process, and with it the Go core and its outbound connections, alive. It does not
+ * consume core events for any purpose except refreshing the "connected N devices" count; the
+ * [EventRouter] in the Application handles everything else. It never shuts the core down.
  */
 class SyncForegroundService : Service() {
-    @Volatile private var running = false
-    private var worker: Thread? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var watching = false
+    @Volatile private var shownCount = -1
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (running) return START_STICKY
-        startInForeground()
-        CoreHost.start(applicationContext, Build.MODEL)
-        running = true
-        worker = Thread({
-            while (running) {
-                val ev = CoreHost.nextEvent(1000) ?: continue
-                Log.d(TAG, "event type=${ev.optString("type")}")
-                when (ev.optString("type")) {
-                    "update.ready" -> notifyUpdate(
-                        "ClipBridge update ready",
-                        "Version ${ev.optString("version_name")} is downloaded. Tap to install.",
-                    )
-                    // With automatic download on, "ready" follows by itself; otherwise ask the user.
-                    "update.available" -> if (!autoUpdateOn()) notifyUpdate(
-                        "ClipBridge update available",
-                        "Version ${ev.optString("version_name")} is available. Tap to download.",
-                    )
-                }
+        if (intent?.action == Actions.ACTION_STOP_REALTIME) {
+            // "Disconnect": the choice is persisted, so the boot receiver will not bring it back.
+            app.prefs.setRealtime(false)
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        try {
+            val notification = Notifications.connection(this, 0)
+            if (Build.VERSION.SDK_INT >= 34) {
+                startForeground(Notifications.ID_CONNECTION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            } else {
+                startForeground(Notifications.ID_CONNECTION, notification)
             }
-        }, "clipbridge-events").also { it.start() }
+        } catch (e: Exception) {
+            Log.w("ClipBridge", "foreground start refused: ${e.javaClass.simpleName}")
+            Notifications.postInfo(this, "realtime-restore", getString(R.string.app_name), getString(R.string.notif_realtime_restore))
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (!watching) {
+            watching = true
+            scope.launch { watchConnections() }
+        }
         return START_STICKY
     }
 
-    override fun onDestroy() {
-        running = false
-        CoreHost.shutdown() // wakes the blocked nextEvent
-        worker?.join(3000)
-        super.onDestroy()
+    /** Keeps the "已连接 N 台设备" text current. */
+    private suspend fun watchConnections() {
+        CoreHost.awaitReady()
+        refreshCount()
+        CoreHost.events
+            .filter { it is CoreEvent.PeerState || it is CoreEvent.PeerRevoked || it is CoreEvent.PairResult }
+            .collect { refreshCount() }
     }
 
-    private fun autoUpdateOn(): Boolean = try {
-        CoreHost.call("update.status").optJSONObject("result")?.optBoolean("auto", true) ?: true
-    } catch (e: IllegalStateException) {
-        true
-    }
-
-    /** An update needs the user's tap (to download, or to install once the core verified it). */
-    private fun notifyUpdate(title: String, text: String) {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel(UPDATE_CHANNEL_ID, "Updates", NotificationManager.IMPORTANCE_DEFAULT)
-        )
-        val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        nm.notify(
-            UPDATE_NOTIFICATION_ID,
-            Notification.Builder(this, UPDATE_CHANNEL_ID)
-                .setContentTitle(title)
-                .setContentText(text)
-                .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                .setContentIntent(open)
-                .setAutoCancel(true)
-                .build(),
-        )
-    }
-
-    private fun startInForeground() {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Connection", NotificationManager.IMPORTANCE_LOW)
-        )
-        val notification: Notification = Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("ClipBridge")
-            .setContentText("Connected mode is on")
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setOngoing(true)
-            .build()
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+    private suspend fun refreshCount() {
+        val peers = (CoreApi.peers() as? ApiResult.Ok)?.value ?: return
+        val n = peers.count { it.isConnected }
+        if (n != shownCount) {
+            shownCount = n
+            Notifications.updateConnection(this, n)
         }
     }
 
-    private companion object {
-        const val TAG = "ClipBridge"
-        const val CHANNEL_ID = "connection"
-        const val NOTIFICATION_ID = 1
-        const val UPDATE_CHANNEL_ID = "updates"
-        const val UPDATE_NOTIFICATION_ID = 2
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
     }
 }

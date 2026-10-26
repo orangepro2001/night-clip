@@ -154,7 +154,7 @@ func (s *Service) Reject(id string) error {
 	}
 	s.control(t.PeerID, map[string]any{"action": "file_reject", "transfer_id": t.ID, "reason": "declined"})
 	_ = s.db.SetTransferState(t.ID, StateRejected, "")
-	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "state": StateRejected})
+	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": StateRejected})
 	return nil
 }
 
@@ -422,7 +422,7 @@ func (s *Service) finalize(t store.Transfer) (string, error) {
 	s.forgetMeter(t.ID)
 	s.emit(map[string]any{"type": "file.done", "transfer_id": t.ID, "direction": DirIn, "path": final, "name": filepath.Base(final),
 		"size": t.Size, "sha256": t.SHA256})
-	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "state": StateDone})
+	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": StateDone})
 	return final, nil
 }
 
@@ -454,6 +454,6 @@ func (s *Service) sweep() {
 			s.removePart(t)
 		}
 		s.emit(map[string]any{"type": "file.failed", "transfer_id": t.ID, "code": string(proto.CodeExpired), "message": "the offer expired", "direction": t.Direction})
-		s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "state": StateExpired})
+		s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": StateExpired})
 	}
 }

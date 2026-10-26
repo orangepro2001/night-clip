@@ -315,10 +315,18 @@ func (s *Service) get(id string) (store.Transfer, error) {
 	return t, nil
 }
 
+// directionOf returns "in" or "out" for a transfer ("" when unknown).
+func (s *Service) directionOf(id string) string {
+	if t, found, _ := s.db.GetTransfer(id); found {
+		return t.Direction
+	}
+	return ""
+}
+
 func (s *Service) setState(t store.Transfer, state string) store.Transfer {
 	_ = s.db.SetTransferState(t.ID, state, "")
 	t.State, t.Error = state, ""
-	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "state": state})
+	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": state})
 	return t
 }
 
@@ -330,7 +338,7 @@ func (s *Service) fail(t store.Transfer, code, msg string) {
 	_ = s.db.SetTransferState(t.ID, StateFailed, code)
 	s.dropSource(t.ID)
 	s.emit(map[string]any{"type": "file.failed", "transfer_id": t.ID, "code": code, "message": msg, "direction": t.Direction})
-	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "state": StateFailed})
+	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": StateFailed})
 }
 
 func (s *Service) control(peerID string, payload map[string]any) {

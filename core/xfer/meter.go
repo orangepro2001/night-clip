@@ -69,6 +69,6 @@ func (s *Service) progress(id string, offset, size int64) {
 	m.mu.Unlock()
 	if emit {
 		_ = s.db.SetTransferOffset(id, offset)
-		s.emit(map[string]any{"type": "file.progress", "transfer_id": id, "offset": offset, "size": size, "rate_bps": rate})
+		s.emit(map[string]any{"type": "file.progress", "transfer_id": id, "direction": s.directionOf(id), "offset": offset, "size": size, "rate_bps": rate})
 	}
 }

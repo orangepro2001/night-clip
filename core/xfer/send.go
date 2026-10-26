@@ -69,8 +69,9 @@ func (s *Service) Offer(peerID string, src OfferSource) (string, error) {
 	default:
 		return "", proto.Errorf(proto.CodeInvalid, "give either path or fd")
 	}
+	stored := false
 	defer func() {
-		if !keep && f != nil {
+		if f != nil && (!keep || !stored) {
 			f.Close()
 		}
 	}()
@@ -117,14 +118,15 @@ func (s *Service) Offer(peerID string, src OfferSource) (string, error) {
 		Path: path, CreatedAt: now.Unix(), ExpiresAt: now.Add(offerTTL).Unix(), Mode: mode, MimeType: mimeFor(name),
 	}
 	if err := s.db.PutTransfer(t); err != nil {
-		return "", err
+		return "", err // keep is still true here, but the descriptor is not stored: close it
 	}
 	if keep {
 		s.mu.Lock()
 		s.sources[id] = f
 		s.mu.Unlock()
+		stored = true
 	}
-	s.emit(map[string]any{"type": "file.state", "transfer_id": id, "state": StateHashing})
+	s.emit(map[string]any{"type": "file.state", "transfer_id": id, "direction": DirOut, "state": StateHashing})
 	s.startHash(t)
 	return id, nil
 }
@@ -188,7 +190,7 @@ func (s *Service) startHash(t store.Transfer) {
 			s.fail(cur, "OFFER_FAILED", err.Error())
 			return
 		}
-		s.emit(map[string]any{"type": "file.state", "transfer_id": cur.ID, "state": StateOffered})
+		s.emit(map[string]any{"type": "file.state", "transfer_id": cur.ID, "direction": DirOut, "state": StateOffered})
 	})
 }
 
@@ -299,7 +301,7 @@ func (s *Service) OnControl(peerID string, env *proto.Envelope) {
 		_ = s.db.SetTransferState(t.ID, StateFailed, c.Reason)
 		s.emit(map[string]any{"type": "file.failed", "transfer_id": t.ID, "code": c.Reason, "direction": DirOut,
 			"message": "the other device could not verify the file"})
-		s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "state": StateFailed})
+		s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": StateFailed})
 		return
 	}
 	if terminal(t.State) {
@@ -347,7 +349,7 @@ func (s *Service) end(t store.Transfer, state, code, msg string) {
 	}
 	s.forgetMeter(t.ID)
 	s.emit(map[string]any{"type": "file.failed", "transfer_id": t.ID, "code": code, "message": msg, "direction": t.Direction})
-	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "state": state})
+	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": state})
 }
 
 // finishSent marks an outgoing transfer delivered.
@@ -358,7 +360,7 @@ func (s *Service) finishSent(t store.Transfer) {
 	s.emit(map[string]any{"type": "file.progress", "transfer_id": t.ID, "offset": t.Size, "size": t.Size, "rate_bps": s.rate(t.ID)})
 	s.forgetMeter(t.ID)
 	s.emit(map[string]any{"type": "file.done", "transfer_id": t.ID, "direction": DirOut, "name": t.Name, "size": t.Size, "sha256": t.SHA256})
-	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "state": StateDone})
+	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": StateDone})
 }
 
 // ---- push upload (we are the dialer; the receiver is the listener) ----------------
