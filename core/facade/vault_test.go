@@ -304,3 +304,22 @@ func TestVaultResponsesNeverEchoSecretsOrParams(t *testing.T) {
 		}
 	}
 }
+
+func TestVaultMatchForAutofill(t *testing.T) {
+	n := startNode(t, "Desk", "windows", false)
+	vcreate(t, n)
+	n.call("vault.add", map[string]any{"entry": map[string]any{"title": "GitHub", "url": "https://github.com/login", "username": "me", "password": "gh-secret"}})
+	n.call("vault.add", map[string]any{"entry": map[string]any{"title": "Phish bait", "url": "https://github.com.evil.example", "password": "x"}})
+	raw := n.c.Call("vault.match", `{"url":"https://gist.github.com/x"}`)
+	if strings.Contains(raw, "gh-secret") {
+		t.Fatalf("a secret leaked through match: %s", raw)
+	}
+	m := n.call("vault.match", map[string]any{"url": "https://gist.github.com/x"})["matches"].([]any)
+	if len(m) != 1 || m[0].(map[string]any)["title"] != "GitHub" || m[0].(map[string]any)["score"].(float64) != 2 {
+		t.Fatalf("matches = %v", m)
+	}
+	n.call("vault.lock", nil)
+	if code := n.errorCode("vault.match", map[string]any{"url": "https://github.com"}); code != "VAULT_LOCKED" {
+		t.Fatalf("match while locked: %s", code)
+	}
+}

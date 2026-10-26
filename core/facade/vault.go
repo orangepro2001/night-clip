@@ -342,6 +342,16 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 			return nil, err
 		}
 		return entryView(e), nil
+	case "vault.match":
+		var p struct {
+			URL     string `json:"url"`
+			Package string `json:"package"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		m, err := v.FindMatches(p.URL, p.Package)
+		return map[string]any{"matches": m}, err
 	case "vault.reveal", "vault.copy":
 		return c.vaultReveal(v, method == "vault.copy", params)
 	case "vault.totp":

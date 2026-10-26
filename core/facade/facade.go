@@ -279,7 +279,7 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		"vault.group_delete", "vault.history", "vault.history_restore", "vault.attach_add", "vault.attach_get",
 		"vault.attach_remove", "vault.health", "vault.restore_preview", "vault.restore", "vault.import_file",
 		"vault.import_csv", "vault.export_file", "vault.export_csv",
-		"vault.sync_status", "vault.sync_enable", "vault.sync_resolve", "vault.sync_now":
+		"vault.sync_status", "vault.sync_enable", "vault.sync_resolve", "vault.sync_now", "vault.match":
 		return c.vaultCall(method, paramsJSON)
 	default:
 		if result, handled, err := c.networkCall(method, paramsJSON); handled {

@@ -70,6 +70,14 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `vault.history` | `id` | `{versions:[{index, modified_at, title, username, url}]}`（旧→新，无机密） |
 | `vault.history_restore` | `id`, `index` | `{}`：把旧版本恢复为当前（当前版本进入历史） |
 
+### 3.2b 自动填充匹配
+
+| 方法 | 参数 | 结果 |
+| --- | --- | --- |
+| `vault.match` | `url?`（网页地址或主机名）, `package?`（Android 应用包名） | `{matches:[{…列表摘要字段, score}]}`，最好的在前。**不含机密**；要填入时再对选中的条目调用 `vault.reveal`（用户确认/生物识别之后） |
+
+匹配**严格**：只在“可注册域名”（公共后缀 + 一个标签）相同时才命中（`score` 3 = 主机完全相同，2 = 同一可注册域名），绝不因为一个名字包含另一个就命中（`example.com.evil.net`、`evil-example.com` 都不会匹配 `example.com`）；IP 与单标签主机名要完全相同。应用匹配（`score` 4）：条目的自定义字段 `AndroidApp` 等于包名，或条目 URL 为 `androidapp://<包名>`（Keepass2Android/KeePassDroid 的约定）。回收站与笔记不参与。条目可以用以 `URL`/`KP2A_URL` 开头的自定义字段登记更多网址。
+
 ### 3.3 分组与附件
 
 | 方法 | 参数 | 结果 |
