@@ -142,7 +142,13 @@ func TestOnlyWhitelistedMethodsAreReachable(t *testing.T) {
 		}
 	}
 	// the list itself: nothing that changes trust or configuration of updates
-	for _, banned := range []string{"pair.begin", "pair.join", "pair.confirm", "pair.cancel", "peers.remove", "peers.update", "update.config", "shutdown"} {
+	// the password vault is never reachable from other processes of the same user
+	for m := range Allowed {
+		if strings.HasPrefix(m, "vault.") {
+			t.Errorf("%s must never be allowed over the pipe", m)
+		}
+	}
+	for _, banned := range []string{"vault.status", "vault.unlock", "vault.list", "vault.reveal", "vault.copy", "vault.export_csv", "settings.set", "pair.begin", "pair.join", "pair.confirm", "pair.cancel", "peers.remove", "peers.update", "update.config", "shutdown"} {
 		if Allowed[banned] {
 			t.Errorf("%s must never be allowed over the pipe", banned)
 		}

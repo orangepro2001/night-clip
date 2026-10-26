@@ -296,7 +296,7 @@ func orEmpty[T any](in []T) []T {
 
 // ---- settings ------------------------------------------------------------------
 
-var settingKeys = []string{clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingApplyMode, clip.SettingPausedUntil,
+var settingKeys = []string{settingVaultAutoLock, settingVaultClipClear, clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingApplyMode, clip.SettingPausedUntil,
 	xfer.SettingDownloadDir, xfer.SettingMaxFileBytes}
 
 func isFileSetting(key string) bool {
@@ -304,8 +304,12 @@ func isFileSetting(key string) bool {
 }
 
 // settingValue returns a setting with its default applied.
-func settingValue(n *netState, key string) string {
+func (c *Core) settingValue(n *netState, key string) string {
 	switch key {
+	case settingVaultAutoLock:
+		return strconv.Itoa(c.vaultIntSetting(key, defaultVaultAutoLock))
+	case settingVaultClipClear:
+		return strconv.Itoa(c.vaultIntSetting(key, defaultVaultClipClear))
 	case xfer.SettingDownloadDir:
 		return n.xfer.DownloadDir()
 	case xfer.SettingMaxFileBytes:
@@ -315,6 +319,9 @@ func settingValue(n *netState, key string) string {
 }
 
 func validateSetting(key, value string) error {
+	if isVaultSetting(key) {
+		return validateVaultSetting(key, value)
+	}
 	if isFileSetting(key) {
 		return xfer.ValidateSetting(key, value)
 	}
@@ -336,11 +343,11 @@ func (c *Core) settingsGet(n *netState, params string) (any, error) {
 		if !known {
 			return nil, proto.Errorf(proto.CodeInvalid, "unknown setting %q", p.Key)
 		}
-		return map[string]any{"key": p.Key, "value": settingValue(n, p.Key)}, nil
+		return map[string]any{"key": p.Key, "value": c.settingValue(n, p.Key)}, nil
 	}
 	all := map[string]string{}
 	for _, k := range settingKeys {
-		all[k] = settingValue(n, k)
+		all[k] = c.settingValue(n, k)
 	}
 	return map[string]any{"settings": all}, nil
 }

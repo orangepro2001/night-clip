@@ -63,6 +63,7 @@ type Core struct {
 	upd     *update.Manager
 	n       *netState
 	ctl     *controlChannel
+	vs      vaultState
 	started bool
 	closed  bool
 
@@ -203,6 +204,7 @@ func (c *Core) Shutdown() {
 	if ctl != nil { // first: no new outside requests
 		ctl.close()
 	}
+	c.closeVault()
 	if upd != nil {
 		upd.Close()
 	}
@@ -267,6 +269,14 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		return c.identity()
 	case "update.status", "update.check", "update.download", "update.config":
 		return c.updateCall(method, paramsJSON)
+	case "vault.status", "vault.create", "vault.unlock", "vault.lock", "vault.verify_master", "vault.change_master",
+		"vault.generate", "vault.strength", "vault.backup_list", "vault.backup_verify", "vault.backup_now",
+		"vault.list", "vault.get", "vault.reveal", "vault.copy", "vault.totp", "vault.add", "vault.update", "vault.delete",
+		"vault.restore_entry", "vault.empty_trash", "vault.move", "vault.groups", "vault.group_add", "vault.group_rename",
+		"vault.group_delete", "vault.history", "vault.history_restore", "vault.attach_add", "vault.attach_get",
+		"vault.attach_remove", "vault.health", "vault.restore_preview", "vault.restore", "vault.import_file",
+		"vault.import_csv", "vault.export_file", "vault.export_csv":
+		return c.vaultCall(method, paramsJSON)
 	default:
 		if result, handled, err := c.networkCall(method, paramsJSON); handled {
 			return result, err
