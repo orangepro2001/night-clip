@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Registered in AndroidManifest.xml (meta-data android.autofill). No <compatibility-package> entries on purpose:
+     Chrome 135+ and Firefox talk to third-party services natively; the compatibility mode of older Chrome is
+     described in docs/user-guide.md. -->
+<autofill-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:settingsActivity="com.nightclip.app.autofill.AutofillSettingsActivity" />
