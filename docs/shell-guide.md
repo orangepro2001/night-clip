@@ -119,6 +119,7 @@
 - **设备同步**（`ui/vault/VaultSyncScreen.kt`，入口：列表右上角“更多”、密码库设置、解锁页和新建页的“设备同步”按钮；库不存在或已锁定时也能进，`vault.sync_status` / `sync_enable` / `sync_now` 不需要解锁）：每台已配对设备一张卡片；开关 = `vault.sync_enable`，**默认开**（schema v6 会把已配对设备置开；单台关闭是高级退出），显示连接状态、上次同步时间和该状态的中文说明（`idle` / `pending_unlock` / `needs_password` / `review` / `peer_off` / `error`，文案在 `logic/VaultSyncLogic.kt`，核心的英文 `detail` 只用来区分 `review` 的原因：不是同一个库 / 一次删除 5 个以上条目）。`needs_password` 弹窗向用户要**对方设备**当前的主密码（可带密钥文件），走 `vault.sync_resolve`，密码错误时弹窗保持打开并显示错误，`RATE_LIMITED` 显示倒计时；`review` 弹窗给出原因，“批准并合并”= `sync_resolve{approve:true}`，“忽略”什么都不做（请求保留）。处理这两种状态需要库已解锁，锁定时只提示“先解锁”。事件由 `VaultSession` 统一接收：`vault.sync` 更新“需要处理”的小红点（更多菜单、设置页、同步入口）并让同步页刷新；`vault.changed`（仅在已解锁时）让列表、详情和状态重新读取；`vault.joined` 弹出提示和 Toast“已加入 <设备> 的密码库，请用那个库的主密码解锁”。同步页可见时每 8 秒再读一次状态（连接与最近同步时间不产生事件）。
 - **解锁页与密钥文件**：`vault.status.key_file` 为 `true` 时强调“这个库需要密钥文件”；缺省（经同步加入、尚未在本机解锁过）时作为可选项显示；为 `false` 时折叠在“我的主密码还搭配了密钥文件…”后面（`KeyFileHint`）。
 - **Activity 基类**：`MainActivity` 改为继承 `FragmentActivity`（`BiometricPrompt` 的要求，`ComponentActivity` 的子类，其余不变）。新增依赖 `androidx.biometric:biometric:1.1.0`（官方 AndroidX 库）。
+- **依赖锁（重要）**：`activity 1.9.3` 的 `ActivityResultRegistry` 生成 32 位 requestCode，而 `biometric 1.1.0` 会拉入 `fragment 1.2.5`；旧 `FragmentActivity` 的 `checkForValidRequestCode` 会抛 `IllegalArgumentException: Can only use lower 16 bits for requestCode`，导致所有 `rememberLauncherForActivityResult`（发送文件、导入、密钥文件…）启动即崩。`android/app/build.gradle.kts` 显式锁 `androidx.fragment:fragment:1.8.5`，不要降级；升级 activity 时同步检查 fragment。
 
 ## 5. 验收
 
