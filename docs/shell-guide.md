@@ -125,3 +125,38 @@
 - `make check` 通过（含新增的 C# / Kotlin 单元测试）；后台读取的纯逻辑（日志匹配、去抖、状态机、claim、退避）必须有 JVM 单测。
 - 报告里单独列出：**无法在这台机器上验证的行为**（真实剪贴板、托盘、通知、相机、MediaStore、前台服务）和你对其正确性的依据（文档/API 的哪一条）。
 - 不要宣称“已验证”未被测试或编译覆盖的东西。
+
+## 6. Autofill (Android)
+
+密码库的 Android 自动填充服务（`AutofillService`，API 26+）。**只编译、跑过 JVM 单测，没有在真机上运行过。** 通行密钥（Credential Manager）不在这一阶段。依据：[vault-api.md](vault-api.md) §3.2b（`vault.match`）、§4（壳层规则）、[plan-vault.md](plan-vault.md) §7.1。
+
+代码分布（全部新增文件，没有改 `core/` 和 `core/CoreApi.kt`）：
+
+| 位置 | 内容 |
+| --- | --- |
+| `logic/autofill/` | 所有决定，纯 Kotlin、无 `android.*`：`FieldClassifier`（字段分类）、`FormAnalyzer`（分组成登录表单）、`TargetResolver`/`SchemePolicy`（网页域名或应用包名、协议规则）、`DatasetPlanner`/`AuthPolicy`（候选数据集与验证策略）、`SaveDecider`/`SaveExtractor`/`PendingSaveStore`（保存决定与内存中的待保存值）、`QuickUnlockProvider`（生物识别钩子，默认空实现）、`AutofillSetupLogic`、`VaultModels` |
+| `autofill/` | Android 胶水：`VaultAutofillService`、`AssistParser`（`AssistStructure` → `NodeInfo`）、`ResponseFactory`、`FillPipeline`、`FillValues`、`AutofillVault`（`vault.*` 调用）、`AutofillAuthActivity`（解锁/确认）、`AutofillSaveActivity`、`AutofillSettingsSection`（设置卡片）、`AutofillSettingsActivity` |
+| `platform/` | `AutofillPrefs`（自己的偏好文件 `clipbridge_autofill`，只有 `autofill_require_auth`）、`AutofillSetup`（`isDefaultService` / `intentToEnable` / `open`） |
+
+**请求流程。** `onFillRequest` → 解析结构 → 分类并取焦点所在的表单 → 解析目标 → `vault.status`：没有库则什么都不给；库已锁定则返回带 `setAuthentication` 的响应（“解锁以填充”，进 `AutofillAuthActivity`）；已解锁则 `vault.match` + `SchemePolicy` 过滤，最多 5 个数据集，每个数据集的密码在构建那一刻用 `vault.reveal` 取（只取页面要的字段、只取匹配到的条目）；没有匹配时只给一行“打开 ClipBridge 密码库”。登记页（新密码字段）从不填旧密码，只声明 `SaveInfo`。
+
+**安全规则（代码里都有对应测试）：**
+
+- 网页只用平台报告的 `webDomain`/`webScheme`，从不读页面文字里的网址；原样传给 `vault.match`（相似域名的区分由核心负责，壳层有测试保证没有改写）。
+- 原生应用用 `activityComponent` 的包名（系统给的，不是窗口标题或视图内容）。同一结构里不同的域名/协议/包名**不会合并成一个表单**，只用焦点字段自己的上下文。
+- 浏览器包名且没有 `webDomain`：什么都不给（浏览器没有按包名匹配）。包名里含 `browser` 的也按浏览器处理。本应用自己的界面永远忽略。
+- 协议：`https` 页面可用任意匹配条目；`http` 页面只对 `localhost`/IP 字面量，或条目自己的 URL 就是 `http://` 时填充；平台没给协议按 `http` 处理（**严格，真机上 Chrome/Firefox 是否报告 `webScheme` 要验证**）。
+- 非浏览器应用里的 WebView 页面（`webDomain` 可被应用用 `loadDataWithBaseURL` 声称）：**每次**要求输入主密码。
+- `autofill_require_auth`（“每次填充前验证主密码”，默认关）：开启后数据集不带值，点选后进 `AutofillAuthActivity` 验证主密码（`vault.verify_master`）再返回值。
+- TOTP：数据集为空，点选时才 `vault.totp`（快过期时等下一个周期）。
+- 两个界面都 `FLAG_SECURE`、`filterTouchesWhenObscured`、对自己关闭自动填充；不碰剪贴板、不用无障碍服务；日志里没有任何结构内容或值。
+- 保存：`onSaveRequest` 把表单值放进 `PendingSaveStore`（只在内存、一次性、2 分钟过期），API 28+ 通过 `SaveCallback.onSuccess(IntentSender)` 打开 `AutofillSaveActivity`；界面里先解锁，再对比 `vault.match`：相同账号相同密码→忽略；相同账号不同密码→“更新现有条目”（`vault.update` 要整条回写，所以先 `vault.get` + 逐个 `reveal` 受保护字段和 TOTP 密钥，缺任何一个就拒绝，避免抹掉数据）；否则新建 `login`，网址为域名或 `androidapp://<包名>`（核心按此约定匹配应用）。
+
+**给密码库界面的接入点：**
+
+1. 设置页放 `AutofillSettingsSection()`（`autofill/AutofillSettingsSection.kt`，自包含：状态、“启用自动填充”按钮、验证开关），或自己调用 `AutofillSetup.isDefaultService(context)` / `AutofillSetup.open(context)`。
+2. `AutofillAuthActivity.EXTRA_TAB_VAULT`（`"vault"`）作为 `Actions.EXTRA_TAB` 传给 `MainActivity`，用来从“打开 ClipBridge 密码库”回到密码库标签。
+3. 生物识别快速解锁：实现 `QuickUnlockProvider`（`logic/autofill/QuickUnlock.kt`）并赋给 `QuickUnlockRegistry.provider`；`BiometricPrompt` 需要 `FragmentActivity`，届时把 `AutofillAuthActivity` 的基类改成 `FragmentActivity`。策略见 `AutofillQuickUnlockPolicy`（72 小时、重启、5 次失败）。
+4. 后台自动锁：用户在自动填充里解锁后应用并不在前台，注意别让“进入后台即锁”的逻辑把刚解锁的库立刻锁掉（遵守 vault-api.md §4 第 4 条的宽限时间）。
+
+不做：内联建议（API 30+ 键盘栏，只用系统下拉）、无障碍填充、兼容模式（见用户文档）、通行密钥。

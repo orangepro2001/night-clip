@@ -109,6 +109,46 @@
             android:theme="@style/zxing_CaptureTheme"
             android:windowSoftInputMode="stateAlwaysHidden" />
 
+        <!-- Autofill service (docs/plan-vault.md §7.1): the system binds it once the user picks ClipBridge as autofill service. -->
+        <service
+            android:name=".autofill.VaultAutofillService"
+            android:exported="true"
+            android:label="@string/autofill_service_label"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/autofill_service_config" />
+        </service>
+
+        <!-- Opened by the system settings (gear next to the autofill service). Must be exported: the Settings app starts it. -->
+        <activity
+            android:name=".autofill.AutofillSettingsActivity"
+            android:exported="true"
+            android:label="@string/autofill_settings_title" />
+
+        <!-- Transparent unlock / confirm screen the system launches from our own authentication IntentSender. -->
+        <activity
+            android:name=".autofill.AutofillAuthActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.ClipBridge.AutofillSheet"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- "Save to vault" screen, started by the system (API 28+: from the save prompt) or by our service. -->
+        <activity
+            android:name=".autofill.AutofillSaveActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.ClipBridge.AutofillSheet"
+            android:windowSoftInputMode="adjustResize" />
+
         <receiver
             android:name=".NotificationActionReceiver"
             android:exported="false" />

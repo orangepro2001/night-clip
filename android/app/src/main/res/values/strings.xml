@@ -229,4 +229,53 @@
     <string name="share_nothing">没有可发送的内容</string>
     <string name="share_no_devices">还没有可发送的已配对设备。</string>
     <string name="share_open_app">打开 ClipBridge</string>
+    <!-- Autofill service (密码库自动填充) -->
+    <string name="autofill_service_label">ClipBridge 密码库</string>
+    <string name="autofill_settings_title">自动填充</string>
+    <string name="autofill_status_enabled">已启用：在应用和浏览器里可以用 ClipBridge 密码库填充账号密码。</string>
+    <string name="autofill_status_disabled">未启用。启用后，在登录页面点输入框就能选择要填充的条目。</string>
+    <string name="autofill_status_unsupported">这台设备不支持第三方自动填充服务。</string>
+    <string name="autofill_enable">启用自动填充</string>
+    <string name="autofill_open_system_settings">打开系统设置</string>
+    <string name="autofill_require_auth">每次填充前验证主密码</string>
+    <string name="autofill_require_auth_hint">开启后，每次填充都要重新输入主密码；在应用内嵌网页里填充时无论如何都会要求输入。</string>
+    <string name="autofill_browser_hint">Chrome 135 及以上、Firefox 等浏览器可直接使用；更老的 Chrome 需要在 Chrome 设置里启用“第三方自动填充”。</string>
+    <string name="autofill_untested_hint">自动填充只做过单元测试，尚未在真机上验证。</string>
+
+    <string name="autofill_unlock_title">解锁 ClipBridge 密码库</string>
+    <string name="autofill_unlock_item">解锁以填充</string>
+    <string name="autofill_unlock_item_sub">ClipBridge 密码库已锁定</string>
+    <string name="autofill_verify_title">确认主密码</string>
+    <string name="autofill_verify_text">输入主密码以填充所选条目。</string>
+    <string name="autofill_master_password">主密码</string>
+    <string name="autofill_unlock">解锁</string>
+    <string name="autofill_confirm">确认</string>
+    <string name="autofill_cancel">取消</string>
+    <string name="autofill_working">请稍候…</string>
+    <string name="autofill_open_vault_item">打开 ClipBridge 密码库</string>
+    <string name="autofill_open_vault_item_sub">没有找到匹配的条目</string>
+    <string name="autofill_no_vault">还没有密码库。请先打开 ClipBridge 创建。</string>
+    <string name="autofill_no_match">没有找到适用于这个网站或应用的条目。</string>
+    <string name="autofill_open_app">打开 ClipBridge</string>
+    <string name="autofill_kind_apikey">API 密钥</string>
+    <string name="autofill_kind_secret">机密</string>
+    <string name="autofill_kind_login">登录</string>
+    <string name="autofill_totp_sub">验证码 · %1$s</string>
+    <string name="autofill_error_not_ready">ClipBridge 还没有准备好，请稍后再试。</string>
+
+    <string name="autofill_save_title">保存到密码库</string>
+    <string name="autofill_save_field_title">标题</string>
+    <string name="autofill_save_field_username">用户名</string>
+    <string name="autofill_save_field_url">网址或应用</string>
+    <string name="autofill_save_field_password">密码</string>
+    <string name="autofill_save_button">保存</string>
+    <string name="autofill_save_saved">已保存到密码库</string>
+    <string name="autofill_save_updated">已更新密码</string>
+    <string name="autofill_save_expired">要保存的内容已过期，请重新登录一次。</string>
+    <string name="autofill_save_same">这个账号和密码已经在密码库里。</string>
+    <string name="autofill_save_update_title">更新现有条目？</string>
+    <string name="autofill_save_update_text">密码库里已有“%1$s”（%2$s），密码不同。更新它的密码？旧密码会保留在历史里。</string>
+    <string name="autofill_save_update_button">更新密码</string>
+    <string name="autofill_save_as_new">另存为新条目</string>
+    <string name="autofill_save_new_hint">用户名和网址不会离开本机。</string>
 </resources>
