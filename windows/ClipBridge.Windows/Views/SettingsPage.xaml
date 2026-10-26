@@ -26,6 +26,9 @@
             <TextBlock Text="{x:Static local:Strings.SettingsHistory}" Margin="0,12,0,4" />
             <TextBox x:Name="HistoryBox" Width="100" HorizontalAlignment="Left" />
 
+            <CheckBox x:Name="SensitiveDetectionBox" Content="{x:Static local:Strings.SettingsSensitiveDetection}" Margin="0,12,0,0" />
+            <TextBlock Text="{x:Static local:Strings.SettingsSensitiveDetectionHint}" Foreground="#FF777777" FontSize="12" Margin="20,2,0,0"
+                       TextWrapping="Wrap" />
             <CheckBox x:Name="SensitiveBox" Content="{x:Static local:Strings.SettingsSendSensitive}" Margin="0,12,0,0" />
             <CheckBox x:Name="AutoStartBox" Content="{x:Static local:Strings.SettingsAutoStart}" Margin="0,8,0,0"
                       Click="AutoStartBox_Click" />

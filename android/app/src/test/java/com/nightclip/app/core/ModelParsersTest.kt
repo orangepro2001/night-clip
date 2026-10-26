@@ -109,13 +109,14 @@ class ModelParsersTest {
     @Test
     fun parsesSettingsFromStringValues() {
         val r = JSONObject(
-            """{"settings":{"capture":"off","clip_ttl_s":"300","history_limit":"1000","send_sensitive":"off","default_apply_mode":"manual"}}""",
+            """{"settings":{"capture":"off","clip_ttl_s":"300","history_limit":"1000","send_sensitive":"off","sensitive_detection":"off","default_apply_mode":"manual"}}""",
         )
         val s = ModelParsers.settings(r)
         assertFalse(s.capture)
         assertEquals(300, s.clipTtlS)
         assertEquals(1000, s.historyLimit)
         assertFalse(s.sendSensitive)
+        assertFalse(s.sensitiveDetection)
         assertEquals("manual", s.defaultApplyMode)
         assertEquals(CoreSettings(), ModelParsers.settings(JSONObject("{}")))
         // an explicit "off" is honoured, anything else (including unset) means on

@@ -10,7 +10,7 @@
 - **调用核心**：只通过 `Call(method, paramsJSON)` 和 `NextEvent(timeoutMs)`。`NextEvent` **只能有一个消费者**：每个进程一个事件泵线程，把事件分发给界面（Windows：`CoreHost.EventReceived` 已是如此；Android：Application 级一个线程 + `SharedFlow`）。界面**不得**自己轮询事件。
 - **线程**：`Call` 可能阻塞（例如 `update.check` 最长 30 s、`pair.join` 立即返回但 `peers.remove` 会等对端确认至多 1.5 s）。**不要在 UI 线程里调用**。
 - **错误**：核心错误只依赖 `error.code`（api-spec §1.4）。每个 code 要有一条人话提示（如 `NO_TAILNET` →“没有检测到 Tailscale 网络，请确认 Tailscale 已登录并连接”）。未知 code 显示通用提示 + code。
-- **敏感内容**：`clip.received.sensitive == true` 时，通知和列表默认不显示正文（显示“敏感内容（已隐藏）”，点击后才展开）；永不自动写入剪贴板（核心已保证 `decision != auto`，壳也要再检查一次）。
+- **敏感内容**：`clip.received.sensitive == true` 时，通知和列表默认不显示正文（显示“敏感内容（已隐藏）”，点击后才展开）；永不自动写入剪贴板（核心已保证 `decision != auto`，壳也要再检查一次）。核心的启发式可由设置 `sensitive_detection`（默认 `on`）关闭；关闭后本机不隐藏、不因启发式降级自动写入，但密码库复制仍永不自动发送。
 - **日志**：不得记录剪贴板文本、psk、数据库密钥、私钥。事件日志只记 `type` 和 `event_id`。
 - **不新增不必要的依赖**。Windows 不引入 NuGet 包（用 `UseWindowsForms` 的 `NotifyIcon`、P/Invoke 实现 DPAPI 与剪贴板）。Android 允许的新增依赖：`com.journeyapps:zxing-android-embedded`（扫码）、AndroidX 官方库；其余先问。
 - **测试**：纯逻辑（解析、状态映射、策略判断、文本处理、文件名清洗）写单元测试并放进 `make check`；UI 本身无法在这台机器上运行，所以把逻辑从界面里分出来，界面只做绑定。

@@ -36,6 +36,7 @@ public partial class SettingsPage : UserControl
         ModeBox.SelectedValue = s.DefaultApplyMode;
         TtlBox.Text = s.ClipTtlSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
         HistoryBox.Text = s.HistoryLimit.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        SensitiveDetectionBox.IsChecked = s.SensitiveDetection;
         SensitiveBox.IsChecked = s.SendSensitive;
         DirBox.Text = s.DownloadDir;
         AutoStartBox.IsChecked = _shell.AutoStartEnabled; // registry read: only when the fields are (re)loaded
@@ -88,7 +89,8 @@ public partial class SettingsPage : UserControl
             Capture: SyncBox.IsChecked == true,
             DefaultApplyMode: ModeBox.SelectedValue as string ?? "notify",
             TtlText: TtlBox.Text, HistoryText: HistoryBox.Text,
-            SendSensitive: SensitiveBox.IsChecked == true, DownloadDir: DirBox.Text);
+            SendSensitive: SensitiveBox.IsChecked == true, DownloadDir: DirBox.Text,
+            SensitiveDetection: SensitiveDetectionBox.IsChecked == true);
         var validation = SettingsModel.Validate(input);
         if (!validation.Ok)
         {

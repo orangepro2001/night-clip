@@ -308,7 +308,7 @@ func orEmpty[T any](in []T) []T {
 
 // ---- settings ------------------------------------------------------------------
 
-var settingKeys = []string{settingVaultAutoLock, settingVaultClipClear, clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingApplyMode, clip.SettingPausedUntil,
+var settingKeys = []string{settingVaultAutoLock, settingVaultClipClear, clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingSensitiveDetection, clip.SettingApplyMode, clip.SettingPausedUntil,
 	xfer.SettingDownloadDir, xfer.SettingMaxFileBytes}
 
 func isFileSetting(key string) bool {

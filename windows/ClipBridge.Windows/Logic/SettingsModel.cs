@@ -7,7 +7,7 @@ namespace ClipBridge.Windows.Logic;
 /// <summary>The values behind the settings page (api-spec §7.3 keys plus the file keys of shell-guide §2).</summary>
 public sealed record SettingsValues(
     bool Capture, string DefaultApplyMode, int ClipTtlSeconds, int HistoryLimit, bool SendSensitive,
-    string DownloadDir, long MaxFileBytes, long PausedUntil = 0)
+    string DownloadDir, long MaxFileBytes, long PausedUntil = 0, bool SensitiveDetection = true)
 {
     public const int DefaultTtl = 900;
     public const int DefaultHistory = 200;
@@ -26,13 +26,15 @@ public sealed record SettingsValues(
             SendSensitive: Get("send_sensitive") != "off",
             DownloadDir: Get("download_dir") is { Length: > 0 } d && SettingsModel.IsAbsoluteWindowsPath(d) ? d : defaultDownloadDir,
             MaxFileBytes: long.TryParse(Get("max_file_bytes"), NumberStyles.None, CultureInfo.InvariantCulture, out var m) && m > 0 ? m : DefaultMaxFileBytes,
-            PausedUntil: long.TryParse(Get("paused_until"), NumberStyles.None, CultureInfo.InvariantCulture, out var pu) ? pu : 0);
+            PausedUntil: long.TryParse(Get("paused_until"), NumberStyles.None, CultureInfo.InvariantCulture, out var pu) ? pu : 0,
+            SensitiveDetection: Get("sensitive_detection") != "off");
     }
 }
 
 /// <summary>What the user typed on the settings page (text boxes stay strings until validated).</summary>
 public sealed record SettingsInput(
-    bool Capture, string DefaultApplyMode, string TtlText, string HistoryText, bool SendSensitive, string DownloadDir);
+    bool Capture, string DefaultApplyMode, string TtlText, string HistoryText, bool SendSensitive, string DownloadDir,
+    bool SensitiveDetection = true);
 
 public sealed record SettingsValidation(SettingsValues? Values, IReadOnlyList<string> Errors)
 {
@@ -80,7 +82,7 @@ public static class SettingsModel
 
         if (errors.Count > 0) return new SettingsValidation(null, errors);
         return new SettingsValidation(new SettingsValues(input.Capture, input.DefaultApplyMode, ttl, history,
-            input.SendSensitive, dir, SettingsValues.DefaultMaxFileBytes), errors);
+            input.SendSensitive, dir, SettingsValues.DefaultMaxFileBytes, SensitiveDetection: input.SensitiveDetection), errors);
     }
 
     /// <summary>The <c>settings.set</c> calls needed to go from <paramref name="old"/> to <paramref name="updated"/>.</summary>
@@ -93,6 +95,7 @@ public static class SettingsModel
         if (old.ClipTtlSeconds != updated.ClipTtlSeconds) Add("clip_ttl_s", updated.ClipTtlSeconds.ToString(CultureInfo.InvariantCulture));
         if (old.HistoryLimit != updated.HistoryLimit) Add("history_limit", updated.HistoryLimit.ToString(CultureInfo.InvariantCulture));
         if (old.SendSensitive != updated.SendSensitive) Add("send_sensitive", updated.SendSensitive ? "on" : "off");
+        if (old.SensitiveDetection != updated.SensitiveDetection) Add("sensitive_detection", updated.SensitiveDetection ? "on" : "off");
         if (!string.Equals(old.DownloadDir, updated.DownloadDir, StringComparison.Ordinal)) Add("download_dir", updated.DownloadDir);
         return changes;
     }

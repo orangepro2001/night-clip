@@ -212,6 +212,35 @@ func TestSensitiveFlagTravelsAndSendCanBeBlocked(t *testing.T) {
 	}
 }
 
+func TestSensitiveDetectionCanBeDisabled(t *testing.T) {
+	r := newRig(t, "notify", "auto")
+	r.captureOn(t, r.win)
+	for _, d := range []*testnet.Device{r.win, r.pix} {
+		if err := d.DB.SetSetting(SettingSensitiveDetection, "off"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if res, err := r.winSvc.LocalChanged("P@ssw0rd!2024"); err != nil || len(res.Sent) != 1 {
+		t.Fatalf("detection off: %+v, %v", res, err)
+	}
+	testnet.WaitUntil(t, "received with detection off", func() bool { return len(received(r.pix)) == 1 })
+	if ev := received(r.pix)[0]; ev["sensitive"] != false || ev["decision"] != DecisionAuto {
+		t.Fatalf("detection off event = %v", ev)
+	}
+
+	// The receiver's switch decides for its own display: a peer that still guesses does not
+	// force the hidden label here.
+	_ = r.win.DB.SetSetting(SettingSensitiveDetection, "on")
+	r.clock.Advance(10 * time.Second)
+	if _, err := r.winSvc.Send("P@ssw0rd!2024", nil); err != nil {
+		t.Fatal(err)
+	}
+	testnet.WaitUntil(t, "second event", func() bool { return len(received(r.pix)) == 2 })
+	if ev := received(r.pix)[1]; ev["sensitive"] != false || ev["decision"] != DecisionAuto {
+		t.Fatalf("receiver detection off = %v", ev)
+	}
+}
+
 func TestExplicitSendIgnoresCaptureAndEchoChecks(t *testing.T) {
 	r := newRig(t, "notify", "notify")
 	// capture is off, yet an explicit send goes out
@@ -344,7 +373,7 @@ func TestSettingsDefaultsAndOverrides(t *testing.T) {
 	r := newRig(t, "notify", "notify")
 	s := r.winSvc
 	if s.Setting(SettingCapture) != "on" || s.Setting(SettingTTL) != "900" || s.Setting(SettingHistoryLimit) != "200" ||
-		s.Setting(SettingSendSensitive) != "on" || s.Setting(SettingApplyMode) != "auto" || s.Setting(SettingPausedUntil) != "0" || s.Setting("nope") != "" {
+		s.Setting(SettingSendSensitive) != "on" || s.Setting(SettingSensitiveDetection) != "on" || s.Setting(SettingApplyMode) != "auto" || s.Setting(SettingPausedUntil) != "0" || s.Setting("nope") != "" {
 		t.Fatal("defaults changed")
 	}
 	_ = r.win.DB.SetSetting(SettingTTL, "120")

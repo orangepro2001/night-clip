@@ -138,7 +138,7 @@ public class SettingsModelTests
 
     private static SettingsInput Good(Func<SettingsInput, SettingsInput>? edit = null)
     {
-        var i = new SettingsInput(true, "manual", "900", "200", true, @"D:\Recv");
+        var i = new SettingsInput(true, "manual", "900", "200", true, @"D:\Recv", SensitiveDetection: true);
         return edit is null ? i : edit(i);
     }
 
@@ -153,6 +153,7 @@ public class SettingsModelTests
         Assert.Equal("auto", s.DefaultApplyMode);   // the core's default for newly paired devices
         Assert.Equal(0, s.PausedUntil);
         Assert.True(s.SendSensitive);
+        Assert.True(s.SensitiveDetection);
         Assert.Equal(DefaultDir, s.DownloadDir);
         Assert.Equal(4294967296, s.MaxFileBytes);
     }
@@ -173,11 +174,12 @@ public class SettingsModelTests
     [Fact]
     public void FromJson_TakesTheCoresFileSettings_ButIgnoresARelativeDir()
     {
-        using var d = JsonDocument.Parse("{\"settings\":{\"download_dir\":\"E:\\\\In\",\"max_file_bytes\":\"1000\",\"send_sensitive\":\"off\",\"default_apply_mode\":\"auto\"}}");
+        using var d = JsonDocument.Parse("{\"settings\":{\"download_dir\":\"E:\\\\In\",\"max_file_bytes\":\"1000\",\"send_sensitive\":\"off\",\"sensitive_detection\":\"off\",\"default_apply_mode\":\"auto\"}}");
         var s = SettingsValues.FromJson(d.RootElement, DefaultDir);
         Assert.Equal(@"E:\In", s.DownloadDir);
         Assert.Equal(1000, s.MaxFileBytes);
         Assert.False(s.SendSensitive);
+        Assert.False(s.SensitiveDetection);
         Assert.Equal("auto", s.DefaultApplyMode);
 
         using var rel = JsonDocument.Parse("{\"settings\":{\"download_dir\":\"下载\\\\ClipBridge\"}}");
@@ -252,9 +254,10 @@ public class SettingsModelTests
     {
         var old = new SettingsValues(false, "notify", 900, 200, true, DefaultDir, 4294967296);
         Assert.Empty(SettingsModel.Diff(old, old));
-        var changed = old with { Capture = true, ClipTtlSeconds = 60, SendSensitive = false, DownloadDir = @"D:\x", DefaultApplyMode = "auto", HistoryLimit = 50 };
+        var changed = old with { Capture = true, ClipTtlSeconds = 60, SendSensitive = false, SensitiveDetection = false, DownloadDir = @"D:\x", DefaultApplyMode = "auto", HistoryLimit = 50 };
         var d = SettingsModel.Diff(old, changed).ToDictionary(k => k.Key, k => k.Value);
-        Assert.Equal(6, d.Count);
+        Assert.Equal(7, d.Count);
+        Assert.Equal("off", d["sensitive_detection"]);
         Assert.Equal("on", d["capture"]);
         Assert.Equal("60", d["clip_ttl_s"]);
         Assert.Equal("off", d["send_sensitive"]);

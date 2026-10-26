@@ -229,6 +229,14 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
                 stringResource(R.string.settings_history_value, settings.historyLimit),
                 HISTORY_OPTIONS.map { it.toString() to context.getString(R.string.settings_history_value, it) },
             ) { vm.set("history_limit", it) }
+            SwitchRow(stringResource(R.string.settings_sensitive_detection), settings.sensitiveDetection) {
+                vm.set("sensitive_detection", if (it) "on" else "off")
+            }
+            Text(
+                stringResource(R.string.settings_sensitive_detection_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             SwitchRow(stringResource(R.string.settings_send_sensitive), settings.sendSensitive) { vm.set("send_sensitive", if (it) "on" else "off") }
         }
 

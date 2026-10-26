@@ -372,6 +372,7 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | `clip_ttl_s` | 30–86400 | `900` | 事件在对端离线时最多等待的秒数，过期则丢弃并由 `skip` 越过 |
 | `history_limit` | 10–5000 | `200` | 收件箱保留条数 |
 | `send_sensitive` | `on` / `off` | `on` | 看起来像口令/令牌的内容是否允许发送 |
+| `sensitive_detection` | `on` / `off` | `on` | 是否用 `LooksSensitive` 启发式判断敏感内容；关闭后本机不再隐藏、也不再因此阻止自动写入（密码库复制仍永不自动发送） |
 | `default_apply_mode` | `notify` / `manual` / `auto` | `auto` | 新配对设备的初始策略（已有设备保持原策略） |
 | `download_dir` | 绝对路径 | Windows `%USERPROFILE%\Downloads\ClipBridge`；Android `data_dir/received` | 接收文件的默认目录 |
 | `max_file_bytes` | 1 MiB – 1 TiB | `4294967296` | 超过则自动拒绝 |

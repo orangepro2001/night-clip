@@ -18,8 +18,11 @@ const (
 	SettingTTL           = "clip_ttl_s"     // seconds an event may wait for an offline peer
 	SettingHistoryLimit  = "history_limit"  // inbox rows kept
 	SettingSendSensitive = "send_sensitive" // "on" (default) | "off"
-	SettingApplyMode     = store.DefaultApplyModeKey
-	SettingPausedUntil   = "paused_until" // unix seconds; while now < value nothing is sent or applied automatically
+	// SettingSensitiveDetection turns off the LooksSensitive heuristic. Explicitly marked
+	// secrets (the password vault) are never sent by the automatic path regardless.
+	SettingSensitiveDetection = "sensitive_detection" // "on" (default) | "off"
+	SettingApplyMode          = store.DefaultApplyModeKey
+	SettingPausedUntil        = "paused_until" // unix seconds; while now < value nothing is sent or applied automatically
 )
 
 const (
@@ -151,12 +154,24 @@ func (s *Service) Setting(key string) string {
 		return strconv.Itoa(defaultHistory)
 	case SettingSendSensitive:
 		return "on"
+	case SettingSensitiveDetection:
+		return "on"
 	case SettingApplyMode:
 		return store.DefaultApplyMode // for devices paired from now on; existing peers keep their own choice
 	case SettingPausedUntil:
 		return "0"
 	}
 	return ""
+}
+
+// detectsSensitive reports whether this device applies the LooksSensitive heuristic.
+// It is per device: the peer's flag is still honored only when this switch is on.
+func (s *Service) detectsSensitive() bool { return s.Setting(SettingSensitiveDetection) != "off" }
+
+// looksSensitive is LooksSensitive gated by the user's switch. Explicitly marked secrets
+// (vault copies) never reach the send path; the switch only stops guessing.
+func (s *Service) looksSensitive(text string) bool {
+	return s.detectsSensitive() && LooksSensitive(text)
 }
 
 // Paused reports whether the user paused sync and the pause has not ended yet.
@@ -183,7 +198,7 @@ func (s *Service) historyLimit() int {
 func ValidateSetting(key, value string) error {
 	bad := func() error { return proto.Errorf(proto.CodeInvalid, "invalid value for %s", key) }
 	switch key {
-	case SettingCapture, SettingSendSensitive:
+	case SettingCapture, SettingSendSensitive, SettingSensitiveDetection:
 		if value != "on" && value != "off" {
 			return bad()
 		}
@@ -309,7 +324,7 @@ func (s *Service) LocalChanged(text string) (LocalResult, error) {
 		res.Suppressed = SuppressNoPeers
 		return res, nil
 	}
-	sensitive := LooksSensitive(norm)
+	sensitive := s.looksSensitive(norm)
 	if sensitive && s.Setting(SettingSendSensitive) == "off" {
 		res.Suppressed = SuppressSensitive
 		return res, nil
@@ -349,7 +364,7 @@ func (s *Service) Send(text string, to []string) ([]Sent, error) {
 	if len(targets) == 0 {
 		return nil, proto.Errorf(proto.CodeNotPaired, "no paired device to send to")
 	}
-	return s.sendTo(targets, norm, LooksSensitive(norm))
+	return s.sendTo(targets, norm, s.looksSensitive(norm))
 }
 
 // sendTo queues the text for every target. Each link gets its own event_id: ids are
@@ -398,7 +413,7 @@ func (s *Service) OnEvent(peerID string, env *proto.Envelope) {
 		return
 	}
 	text := Normalize(p.Content)
-	sensitive := env.Sensitive || LooksSensitive(text)
+	sensitive := s.detectsSensitive() && (env.Sensitive || LooksSensitive(text))
 	pr, _, _ := s.db.GetPeer(peerID)
 	decision := Decide(pr.ApplyMode, sensitive)
 	// Only text that arrives right after it was copied may overwrite the clipboard on its
@@ -490,7 +505,7 @@ func (s *Service) item(r store.InboxRow, names map[string]string) (Item, bool) {
 	}
 	return Item{
 		EventID: r.EventID, From: r.PeerID, FromName: names[r.PeerID], Text: Normalize(p.Content),
-		Sensitive: r.Sensitive || LooksSensitive(p.Content), State: r.State,
+		Sensitive: s.detectsSensitive() && (r.Sensitive || LooksSensitive(p.Content)), State: r.State,
 		ReceivedAt: r.ReceivedAt, ExpiresAt: r.ExpiresAt, AppliedAt: r.AppliedAt,
 	}, true
 }

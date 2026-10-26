@@ -1,7 +1,7 @@
 # night-clip 交接文档
 
-> 更新于 2026-10-27（密码库同步默认自动、每台完整副本、Android 文件选择器加固、0.1.61 发布、待真机验证阶段）。读完这一份就能接着干活。
-> **最新一轮的交接快照：[HANDOFF-20261027-0115.md](HANDOFF-20261027-0115.md)**（密码库默认全量副本、文件选择器加固、0.1.61 发布）。
+> 更新于 2026-10-27（敏感内容识别可关闭、密码库同步默认自动、0.1.62 发布、待真机验证阶段）。读完这一份就能接着干活。
+> **最新一轮的交接快照：[HANDOFF-20261027-0130.md](HANDOFF-20261027-0130.md)**（敏感内容开关、0.1.62 发布）。
 > 用户文档：[docs/user-guide.md](docs/user-guide.md)。设计：[docs/README.md](docs/README.md) → `architecture.md` → `api-spec.md`。更新/发布：[docs/update.md](docs/update.md)。壳层开发指南：[docs/shell-guide.md](docs/shell-guide.md)。
 
 ## 0. 一页摘要
@@ -10,7 +10,7 @@
 - **架构**：一个 Go 核心承载全部业务；Windows 用 C# WPF 壳 + Go 编译的 DLL；Android 用 Kotlin Compose 壳 + gomobile AAR。壳只通过 `Call(method, json)` / `NextEvent(timeoutMs)` 访问核心。
 - **现状：功能完整但未真机验收**。已按 [docs/plan-auto-broadcast.md](docs/plan-auto-broadcast.md) 把“复制即自动广播”做成默认；密码库 V1–V3（KDBX 4、备份/恢复、Android 设备同步、Android 自动填充）已合并，实验性；Android 后台自动发送（悬浮窗 + `READ_LOGS`）默认关闭。配对、文本同步、文件传输、离线补发、撤销、命名管道与命令行、自动更新与本机分发、两端界面都已实现，核心有测试。**两端壳的系统相关行为（托盘、剪贴板、通知、相机、前台服务、MediaStore、密码库、自动填充…）只编译、没在真机上跑过**——这是现在最大的未知，见 §6。
 - **验证**：`make check` 全绿（核心 `-race`、KeePassXC 互操作、541 个 C# 测试、443 个 Android JVM 测试、Wine 下 DLL）；GitHub CI（linux / windows / android）此前全绿。
-- **本机分发**：`clipbridge-dist` 用户服务（`127.0.0.1:18780`，`Linger=yes`）经 `tailscale serve --set-path /clipbridge` 暴露；下载页 `https://tony-ai-pc-1.tail9f7f1f.ts.net/clipbridge/`。**0.1.61 已发布**（Android + Windows，minVersionCode=0），远端下载哈希已复核。密码库同步现在默认自动、每台已配对设备保存完整副本；Android 文件选择器已加固。
+- **本机分发**：`clipbridge-dist` 用户服务（`127.0.0.1:18780`，`Linger=yes`）经 `tailscale serve --set-path /clipbridge` 暴露；下载页 `https://tony-ai-pc-1.tail9f7f1f.ts.net/clipbridge/`。**0.1.62 已发布**（Android + Windows，minVersionCode=0），远端下载哈希已复核。敏感内容启发式可在设置里关闭；密码库同步默认自动、每台已配对设备保存完整副本。
 - **下一步**：真机验证清单（§6）→ 修问题 → 全部满意后配置 GitHub `nightly` 滚动发布（§7）。
 
 ## 1. 接手：5 分钟上手

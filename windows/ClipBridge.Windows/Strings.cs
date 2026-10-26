@@ -221,6 +221,8 @@ public static partial class Strings
     public const string SettingsTtl = "离线时内容的有效期（秒，30–86400）";
     public const string SettingsHistory = "收件箱保留条数（10–5000）";
     public const string SettingsSendSensitive = "允许发送看起来像口令/令牌的内容";
+    public const string SettingsSensitiveDetection = "自动识别敏感内容（口令/令牌）";
+    public const string SettingsSensitiveDetectionHint = "只对单个词做启发式判断：像密码、令牌、一次性验证码的内容会被隐藏且不会自动写入。Hello123 这类普通词也会被误判；关闭后不再隐藏，也不会因此阻止自动写入。密码库复制的内容仍然永远不会被自动发送。";
     public const string SettingsAutoStart = "开机自启（最小化到托盘）";
     public const string SettingsDownloadDir = "接收文件的保存位置";
     public const string SettingsSave = "保存设置";

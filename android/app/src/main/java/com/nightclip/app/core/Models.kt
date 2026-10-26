@@ -72,6 +72,7 @@ data class CoreSettings(
     val clipTtlS: Int = 900,
     val historyLimit: Int = 200,
     val sendSensitive: Boolean = true,
+    val sensitiveDetection: Boolean = true,
     val defaultApplyMode: String = "auto",
     /** Unix seconds; sending and automatic writing are paused until then (0 = not paused). */
     val pausedUntil: Long = 0,
@@ -159,6 +160,7 @@ object ModelParsers {
             clipTtlS = s.optString("clip_ttl_s", "").toIntOrNull() ?: d.clipTtlS,
             historyLimit = s.optString("history_limit", "").toIntOrNull() ?: d.historyLimit,
             sendSensitive = s.optString("send_sensitive", "on") != "off",
+            sensitiveDetection = s.optString("sensitive_detection", "on") != "off",
             defaultApplyMode = s.optString("default_apply_mode", d.defaultApplyMode),
             pausedUntil = s.optString("paused_until", "").toLongOrNull() ?: 0L,
         )

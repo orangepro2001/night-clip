@@ -193,6 +193,8 @@
     <string name="settings_ttl">离线时保留</string>
     <string name="settings_history">收件箱保留</string>
     <string name="settings_history_value">%1$d 条</string>
+    <string name="settings_sensitive_detection">自动识别敏感内容（口令/令牌）</string>
+    <string name="settings_sensitive_detection_hint">只对单个词做启发式判断：像密码、令牌、一次性验证码的内容会被隐藏且不会自动写入。Hello123 这类普通词也会被误判；关闭后不再隐藏，也不会因此阻止自动写入。密码库复制的内容仍然永远不会被自动发送。</string>
     <string name="settings_send_sensitive">允许发送看起来像口令的内容</string>
     <string name="settings_update">更新</string>
     <string name="update_auto">自动下载更新</string>
