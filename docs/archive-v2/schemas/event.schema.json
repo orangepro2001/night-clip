@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipbridge.local/schemas/event.schema.json",
+  "title": "ClipBridge event envelope v1",
+  "description": "Canonical clipbridge/v1 event envelope after payload decryption. content_hash is sha256 over canonical_json(payload).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "event_id",
+    "kind",
+    "channel_id",
+    "source_device_id",
+    "target_device_ids",
+    "sequence",
+    "created_at",
+    "expires_at",
+    "content_hash",
+    "sensitive",
+    "payload"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "kind": {
+      "enum": [
+        "clipboard",
+        "file",
+        "control"
+      ]
+    },
+    "channel_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "source_device_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "target_device_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      }
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "sensitive": {
+      "type": "boolean"
+    },
+    "payload": {
+      "type": "object"
+    },
+    "auth": {
+      "$ref": "#/$defs/auth"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "clipboard"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/clipboardPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "file"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/filePayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "control"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/controlPayload"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alg",
+        "key_id",
+        "signature"
+      ],
+      "properties": {
+        "alg": {
+          "const": "Ed25519"
+        },
+        "key_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "signature": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "clipboardPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mime_type",
+        "content",
+        "size"
+      ],
+      "properties": {
+        "mime_type": {
+          "const": "text/plain; charset=utf-8"
+        },
+        "content": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "preview": {
+          "type": "string"
+        }
+      }
+    },
+    "filePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transfer_id",
+        "mode",
+        "token",
+        "manifest"
+      ],
+      "properties": {
+        "transfer_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "mode": {
+          "const": "store"
+        },
+        "token": {
+          "type": "string",
+          "pattern": "^croc-store-v1\\."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "manifest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "file_count",
+            "total_bytes"
+          ],
+          "properties": {
+            "file_count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "total_bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "display_name": {
+          "type": "string",
+          "maxLength": 255
+        }
+      }
+    },
+    "controlPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "resync",
+            "ping",
+            "pause"
+          ]
+        },
+        "requested_after": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    }
+  },
+  "$comment": "Semantic constraints not expressible here: source_device_id must not appear in target_device_ids; expires_at must be later than created_at."
+}

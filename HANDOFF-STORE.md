@@ -1,7 +1,7 @@
 # store 数据层交接（S1–S5 完成）
 
 > 写于 2026-10-26，同日更新。最初范围限定在 S1；随后用户指示继续推进（按推荐方案 A 保留已写代码），又完成了 S3（CRUD 测试）、S4（门面接线）、S5（验收与文档）。
-> 项目级交接仍是 [HANDOFF.md](HANDOFF.md)；设计文档在 [`../docs`](../docs)（`architecture.md` §5、`development-plan.md` §3.2）。
+> 项目级交接仍是 [HANDOFF.md](HANDOFF.md)；设计文档在 [`docs/`](docs)（`architecture.md` §5、`development-plan.md` §3.2）。
 
 ## 0. 一页摘要
 
@@ -29,7 +29,7 @@
 | `windows/.../Interop/DevKey.cs`、`MainWindow.xaml.cs`、`CoreInteropTests.cs`、测试 csproj | 临时 key 文件；窗口传入 `db_key_b64`；互操作测试用临时目录（并测 `DevKey`） |
 | `android/.../DevKey.kt`、`CoreHost.kt` | 同上，key 放 `filesDir/clipbridge/devkey.b64` |
 | `core/proto/errors.go` | `CodeDBUnavailable`、`CodeKeyInvalid` |
-| `docs/api-spec.md`、`docs/development-plan.md`（仓库外） | 错误码表补齐；`store` 勾选 |
+| `docs/api-spec.md`、`docs/development-plan.md` | 错误码表补齐；`store` 勾选 |
 
 另外：`MarkOutboxSent` 现在对已是 `sent` 的行也累加 `attempts`（重连后重发要计数），`acked`/`expired` 不会退回 `sent`。
 

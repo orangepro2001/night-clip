@@ -1,8 +1,8 @@
 # night-clip
 
 Windows ↔ Android clipboard sync and file transfer over a Tailscale tailnet.
-One Go core, two thin shells. Design documents live in [`../docs`](../docs)
-(start with `README.md`, then `adr/005-go-core-and-tailnet-p2p.md`).
+One Go core, two thin shells. Design documents live in [`docs/`](docs)
+(start with `docs/README.md`, then `adr/005-go-core-and-tailnet-p2p.md`).
 **Picking this up? Read [`HANDOFF.md`](HANDOFF.md) first** — current state, decisions, verification matrix and the detailed next steps. The persistence increment (the `store` data layer, now wired into the facade) has its own handoff: [`HANDOFF-STORE.md`](HANDOFF-STORE.md).
 
 ```text
@@ -43,7 +43,7 @@ runs everything below and passes on the dev machine (Ubuntu 26.04, no KVM, no Wi
 ### What this machine cannot prove
 
 These need a real Windows PC or Android phone (or the prepared Windows CI job) and are
-tracked as Phase 0 PoC items in `../docs/development-plan.md` §3.3:
+tracked as Phase 0 PoC items in `docs/development-plan.md` §3.3:
 
 - WPF window actually rendering, tray, `WM_CLIPBOARDUPDATE`, DPAPI, firewall rule, Tailscale interface appearing late.
 - The core running inside an Android process under a real Tailscale VPN (P-A), foreground-service survival on OEM builds (P-C), Doze.

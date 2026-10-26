@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipbridge.local/schemas/event.schema.json",
+  "title": "ClipBridge event envelope v1 (tailnet P2P)",
+  "description": "clipbridge/v1 event envelope carried over the peer WebSocket. One envelope per link (source -> target). content_hash is sha256 over canonical_json(payload).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "event_id",
+    "kind",
+    "source_device_id",
+    "target_device_id",
+    "sequence",
+    "created_at",
+    "expires_at",
+    "content_hash",
+    "sensitive",
+    "payload"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "event_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "kind": { "enum": ["clipboard", "file", "control"] },
+    "source_device_id": { "type": "string", "pattern": "^dev_[a-z2-7]{26}$" },
+    "target_device_id": { "type": "string", "pattern": "^dev_[a-z2-7]{26}$" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "content_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "sensitive": { "type": "boolean" },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "clipboard" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mime_type", "content", "size"],
+            "properties": {
+              "mime_type": { "const": "text/plain; charset=utf-8" },
+              "content": { "type": "string" },
+              "size": { "type": "integer", "minimum": 0, "maximum": 65536 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "file" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["transfer_id", "name", "size", "sha256", "mode"],
+            "properties": {
+              "transfer_id": { "type": "string", "pattern": "^tr_[A-Za-z0-9_-]{8,64}$" },
+              "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+              "size": { "type": "integer", "minimum": 0 },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "mime_type": { "type": "string" },
+              "mode": { "enum": ["pull", "push"] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "control" } } },
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "required": ["action"],
+            "properties": {
+              "action": {
+                "enum": ["skip", "resync", "file_accept", "file_reject", "file_cancel", "revoke"]
+              },
+              "through": { "type": "integer", "minimum": 0 },
+              "after": { "type": "integer", "minimum": 0 },
+              "transfer_id": { "type": "string" },
+              "offset": { "type": "integer", "minimum": 0 },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

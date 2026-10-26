@@ -2,7 +2,7 @@
 
 > 写于 2026-10-26。读完这一份就能接着干活，不需要翻聊天记录。  
 > **2026-10-26 增量**：`store` 数据层已完成并**已接进门面**（`device_id` 重启不变），细节、验证结果见 [HANDOFF-STORE.md](HANDOFF-STORE.md)。仓库已推到 `git@github.com:orangepro2001/night-clip.git`（`main`）。  
-> 设计文档在 [`../docs`](../docs)（`README.md` → `adr/005-go-core-and-tailnet-p2p.md` → `architecture.md` → `api-spec.md` → `development-plan.md`）。  
+> 设计文档在 [`docs/`](docs)（`README.md` → `adr/005-go-core-and-tailnet-p2p.md` → `architecture.md` → `api-spec.md` → `development-plan.md`）。  
 > 本文只讲：**现在是什么状态、怎么验证、为什么这么做、下一步做什么、哪些事要等用户拍板。**
 
 ## 0. 一页摘要
@@ -13,7 +13,7 @@
 - **没有的**：网络、配对、剪贴板逻辑、文件传输、托盘、通知、命名管道——全部未开始。持久化已完成：`facade.Init` 现在要求 `data_dir`（绝对路径）+ `db_key_b64`（32 字节），身份落盘，重启后 `device_id` 不变；见 [HANDOFF-STORE.md](HANDOFF-STORE.md)。`peer/ pairing/ clip/ xfer/` 目前只有 `doc.go`。
 - **下一步**：补 `api-spec.md` 的三个规范空缺（§5 第 10 条），然后 `peer`（WP2）与双实例测试框架（WP5）→ `pairing` → `clip` → `xfer`（详见 §7；WP1 已完成）。
 - **环境**：全部在这台 Linux（Ubuntu 26.04，无 KVM，无 Windows）上验证。真机项目（WPF 渲染、剪贴板、Android 真实 VPN）见 §6。
-- **Git**：本地仓库在 `night-clip/`，远端 `origin = git@github.com:orangepro2001/night-clip.git`。用户已授权：每个阶段性新增功能完成后提交并推送，无需再询问；push 之外的破坏性操作（amend/reset/force）仍需明确授权。`docs/` 在仓库之外（`../docs`），**没有**被提交。
+- **Git**：本地仓库在 `night-clip/`，远端 `origin = git@github.com:orangepro2001/night-clip.git`。用户已授权：每个阶段性新增功能完成后提交并推送，无需再询问；push 之外的破坏性操作（amend/reset/force）仍需明确授权。设计文档在仓库内的 `docs/`（2026-10-26 从 `../docs` 移入）。
 
 ## 1. 接手：5 分钟上手
 
@@ -245,7 +245,7 @@ Gradle wrapper 8.11.1 已生成；AGP 8.7.3、Kotlin 2.1.0（compose 插件）�
 | ~~是否 `git init` 并提交；是否建远端并推送~~ | 已决定（2026-10-26）：远端 `orangepro2001/night-clip`，阶段性功能完成后直接提交推送 | 已执行 |
 | 新增第三方依赖：`modernc.org/sqlite`、`github.com/coder/websocket`，以及后续的 `go-winio` | 设计已认可，但属于新增依赖 | 同意 |
 | 命名：目录 `night-clip` vs 协议/产品 `ClipBridge` | 目前混用（线上名 `clipbridge/v1`、`clipbridge_core.dll`、`\\.\pipe\clipbridge.v1`；仓库名 `night-clip`） | 保持现状，README 已说明；若要统一，现在改成本最低 |
-| 把 `docs/` 移进 `night-clip/` 使仓库自洽 | 目前在 `night-clip/` 之外（`../docs`） | 建议移入 |
+| ~~把 `docs/` 移进 `night-clip/`~~ | 已完成（2026-10-26） | 已执行 |
 | 用哪台 Windows 做最终验收 | tailnet 里的 `afvi*` 当前都离线 | 需要时告知开机 |
 | Android 分发方式（侧载 vs Play） | `specialUse` 前台服务在 Play 上需要说明理由 | 先侧载 |
 | tailnet ACL | 建议只放行两台设备之间的 47821 | 文档里给示例，由用户决定是否收紧 |
