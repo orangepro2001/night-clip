@@ -162,6 +162,7 @@ func TestPullWindowsToPhone(t *testing.T) {
 	r.pix.waitState(t, id, StateDone)
 	r.win.waitState(t, id, StateDone)
 
+	testnet.WaitUntil(t, "file.done on the receiver", func() bool { return r.pix.Find("file.done", map[string]any{"transfer_id": id}) != nil })
 	done := r.pix.Find("file.done", map[string]any{"transfer_id": id})
 	final := filepath.Join(saveDir, "holiday photo.jpg")
 	if done == nil || done["path"] != final || done["direction"] != "in" {
@@ -173,9 +174,9 @@ func TestPullWindowsToPhone(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(saveDir, "."+id+".part")); !os.IsNotExist(err) {
 		t.Fatal("the part file was left behind")
 	}
-	if r.win.Find("file.done", map[string]any{"transfer_id": id, "direction": "out"}) == nil {
-		t.Fatal("the sender was not told it was delivered")
-	}
+	testnet.WaitUntil(t, "file.done on the sender", func() bool {
+		return r.win.Find("file.done", map[string]any{"transfer_id": id, "direction": "out"}) != nil
+	})
 	if r.pix.Count("file.progress") == 0 {
 		t.Fatal("no progress events")
 	}
@@ -322,9 +323,9 @@ func TestRejectingAnOfferTellsTheSender(t *testing.T) {
 				t.Fatal(err)
 			}
 			from.waitState(t, id, StateRejected)
-			if from.Find("file.failed", map[string]any{"transfer_id": id, "code": "REJECTED"}) == nil {
-				t.Fatal("the sender's shell was not told")
-			}
+			testnet.WaitUntil(t, "the sender's shell is told", func() bool {
+				return from.Find("file.failed", map[string]any{"transfer_id": id, "code": "REJECTED"}) != nil
+			})
 			if err := to.svc.Accept(id, ""); err == nil {
 				t.Fatal("accepting a rejected transfer succeeded")
 			}
@@ -451,9 +452,9 @@ func TestACorruptedFileIsDetectedDeletedAndReported(t *testing.T) {
 				}
 			}
 			from.waitState(t, id, StateFailed)
-			if from.Find("file.failed", map[string]any{"transfer_id": id, "code": "HASH_MISMATCH"}) == nil {
-				t.Fatal("the sender was not told that verification failed")
-			}
+			testnet.WaitUntil(t, "the sender is told that verification failed", func() bool {
+				return from.Find("file.failed", map[string]any{"transfer_id": id, "code": "HASH_MISMATCH"}) != nil
+			})
 		})
 	}
 }

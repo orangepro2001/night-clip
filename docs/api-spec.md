@@ -394,51 +394,64 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 
 敏感事件的 `clip.received` 对 UI 层的行为约束由壳实现：通知不显示 `text`。
 
-## 8. 本地命名管道（仅 Windows）
+## 8. 本地控制通道（命名管道）
 
 ```text
-\\.\pipe\clipbridge.v1      ACL：当前用户
+Windows：\\.\pipe\clipbridge.v1      仅创建它的用户可访问，拒绝远程客户端
+开发/测试（非 Windows）：Unix 套接字，权限 0600
 ```
 
-JSON Lines，每行一个请求：
+由 `Init` 配置项 `pipe` 开启（Windows 壳传 `\\.\pipe\clipbridge.v1`；为空则关闭）。地址已被占用（别的进程抢注了管道名）时核心照常工作，只发 `core.warning PIPE_UNAVAILABLE`。第一个管道实例使用 `FILE_FLAG_FIRST_PIPE_INSTANCE` 创建，避免被抢注后把客户端接到别人手里。
+
+JSON Lines，每行一个请求，每个请求恰好一行回复，`id` 原样带回（任意 JSON 类型）：
 
 ```json
 {"id":"1","method":"clip.send","params":{"text":"hello","to":["dev_…"]}}
-{"id":"1","ok":true,"result":{"event_id":"…"}}
+{"id":"1","ok":true,"result":{"sent":[…]}}
 ```
 
-方法集与 §7.3 相同（`shutdown` 和 `pair.*` 除外，仅限 GUI）。
+- 回复的其余部分就是 `Core.Call` 的结果（`ok` + `result` 或 `error`）。
+- 一行最长 1 MiB；格式错误的行得到一条 `INVALID` 回复，连接继续可用；空行忽略。
+- **只开放白名单方法**：`version`、`status`、`identity.get`、`diagnostics.get`、`peers.list`、`clip.send`、`inbox.list`、`inbox.get`、`transfers.list`、`file.offer`、`file.accept`、`file.reject`、`file.cancel`、`settings.get`、`pair.pending`。其余一律 `METHOD_NOT_FOUND`——尤其是 `pair.*`（配对必须由本人在界面上确认）、`peers.update/remove`、`update.*`、`settings.set` 和 `shutdown`：同一用户的其它进程不应能借此改变信任关系或更新来源。
+- 事件（`NextEvent`）不走这个通道：它只有一个消费者，属于壳。
 
-## 9. `cbridge.exe`（仅 Windows，纯 Go）
+## 9. `cbridge`（命令行）
 
 ```text
-cbridge
+cbridge [--json] <command>
+├── version
 ├── status
-├── peers list
-├── clip send  [--to <peer>] [--text … | stdin]
-├── file send  [--to <peer>] <path>…
-├── inbox list [--limit N]
-├── inbox apply <event-id>
-├── transfers list
-└── doctor
+├── peers [list]
+├── clip send [--to <peer>] [--text …]        （没有 --text 时读 stdin；没有 --to 发给所有设备）
+├── file send [--to <peer>] [--wait] <path>…
+├── file accept <id> [--dir <dir>] | file reject <id> | file cancel <id>
+├── inbox list [--limit N] | inbox show <event-id>
+├── transfers [list]
+├── settings get [key]
+├── doctor
+└── call <method> [json]
 ```
 
-- 通过命名管道调用运行中的托盘应用；托盘应用未运行时返回退出码 3。
-- `--json` 时 stdout 只输出 JSON，进度走 stderr。
-- 不在 argv 放任何密钥。
+- `<peer>` 是设备 ID，或设备名（唯一前缀即可）。
+- 通过控制通道调用运行中的应用；应用未运行时退出码 3。地址默认是 §8 的管道，可用环境变量 `CBRIDGE_PIPE` 改。
+- `--json` 时 stdout 只输出 JSON（错误也是 `{"ok":false,"error":{…}}`），人类可读的提示走 stderr。
+- 不在 argv 放任何密钥；敏感条目在 `inbox list` 里不显示正文，只有 `inbox show` 才输出。
+- `file send --wait` 轮询到所有传输结束；任一失败/被拒时用对应退出码退出。
+- `doctor` 检查 tailnet 监听地址、配对设备与连接状态，有问题退出码 6。
 
 退出码：
 
 | 码 | 含义 |
 | ---: | --- |
 | 0 | 成功（含幂等去重） |
+| 1 | 其它失败 |
 | 2 | 参数错误 |
-| 3 | 托盘应用/核心未运行 |
+| 3 | 应用/核心未运行 |
 | 4 | 未配对 / 对端不存在 |
-| 5 | 校验失败 |
-| 6 | 对端离线 / 无 tailnet |
-| 7 | 过期 / 撤销 / 不存在 |
-| 8 | 冲突 |
+| 5 | 校验失败（`HASH_MISMATCH`） |
+| 6 | 对端离线 / 无 tailnet / `doctor` 发现问题 |
+| 7 | 过期 / 不存在 |
+| 8 | 冲突 / 限流 |
 
 ## 10. Android 集成
 

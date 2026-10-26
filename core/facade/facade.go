@@ -48,6 +48,10 @@ type Config struct {
 	AppVersionCode int64  `json:"app_version_code"`
 	AppVersionName string `json:"app_version_name"`
 	UpdateURL      string `json:"update_url"`
+
+	// Pipe, when set, is where the local control channel listens (Windows: the named
+	// pipe \\.\pipe\clipbridge.v1; tests: a Unix socket path). Empty disables it.
+	Pipe string `json:"pipe"`
 }
 
 // Core is one running core instance. Exactly one is expected per process.
@@ -58,6 +62,7 @@ type Core struct {
 	db      *store.DB
 	upd     *update.Manager
 	n       *netState
+	ctl     *controlChannel
 	started bool
 	closed  bool
 
@@ -146,6 +151,7 @@ func (c *Core) Init(configJSON string) (err error) {
 		return err
 	}
 	c.n, c.upd, c.started = n, upd, true
+	c.startControlChannel(cfg.Pipe)
 	upd.Run()
 	c.emit(map[string]any{"type": "core.started", "device_id": id.DeviceID})
 	c.openGate()
@@ -190,6 +196,9 @@ func (c *Core) Shutdown() {
 	close(c.done)
 	if c.upd != nil {
 		c.upd.Close()
+	}
+	if c.ctl != nil {
+		c.ctl.close()
 	}
 	if c.n != nil {
 		c.n.close()

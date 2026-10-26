@@ -1,37 +1,22 @@
-// Command cbridge is the Windows CLI. It will talk to the running tray app
-// over the named pipe \\.\pipe\clipbridge.v1 (docs/api-spec.md §8–§9). The
-// pipe server is not implemented yet, so only "version" works today.
+// Command cbridge controls a running ClipBridge over its local control channel
+// (the named pipe \\.\pipe\clipbridge.v1 on Windows). Run "cbridge help".
 package main
 
 import (
-	"fmt"
+	"io"
 	"os"
 
-	"nightclip/core/facade"
+	"nightclip/core/cli"
+	"nightclip/core/pipe"
 )
 
-const (
-	exitOK       = 0
-	exitUsage    = 2
-	exitNoServer = 3
-)
-
-func main() { os.Exit(run(os.Args[1:])) }
-
-func run(args []string) int {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: cbridge <version|status|peers|clip|file|inbox|transfers|doctor>")
-		return exitUsage
+func main() {
+	addr := os.Getenv("CBRIDGE_PIPE") // for tests and non-default setups
+	if addr == "" {
+		addr = pipe.DefaultAddress()
 	}
-	switch args[0] {
-	case "version":
-		fmt.Printf("cbridge (core %s, protocol clipbridge/v1)\n", facade.Version)
-		return exitOK
-	case "status", "peers", "clip", "file", "inbox", "transfers", "doctor":
-		fmt.Fprintln(os.Stderr, "cbridge: named-pipe client not implemented yet; the tray app is not reachable")
-		return exitNoServer
-	default:
-		fmt.Fprintf(os.Stderr, "cbridge: unknown command %q\n", args[0])
-		return exitUsage
-	}
+	os.Exit(cli.Run(cli.Env{
+		Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr,
+		Dial: func() (rwc io.ReadWriteCloser, err error) { return pipe.Dial(addr) },
+	}, os.Args[1:]))
 }

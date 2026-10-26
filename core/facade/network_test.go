@@ -1,14 +1,18 @@
 package facade
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"nightclip/core/pipe"
 )
 
 // node is a Core driven purely through its public JSON API.
@@ -494,6 +498,7 @@ func TestFileTransferThroughTheFacade(t *testing.T) {
 	win.waitEvent("file.offered", map[string]any{"transfer_id": id3})
 	win.call("file.accept", map[string]any{"transfer_id": id3, "save_dir": saveDir})
 	win.waitEvent("file.done", map[string]any{"transfer_id": id3})
+	pix.waitEvent("file.done", map[string]any{"transfer_id": id3, "direction": "out"}) // the sender hears the 200 a moment later
 
 	list := pix.call("transfers.list", nil)["transfers"].([]any)
 	if len(list) != 3 {
@@ -525,4 +530,68 @@ func TestFileTransferThroughTheFacade(t *testing.T) {
 	if v := win.call("settings.get", map[string]any{"key": "max_file_bytes"})["value"]; v != "4294967296" {
 		t.Fatalf("max_file_bytes default = %v", v)
 	}
+}
+
+func TestControlChannelServesTheWhitelistedMethods(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "ctl.sock")
+	c := New()
+	cfg := configFor(t, t.TempDir(), func(m map[string]any) { m["pipe"] = sock; m["device_name"] = "Desk" })
+	if err := c.Init(cfg); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Shutdown)
+
+	conn, err := pipe.Dial(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	ask := func(line string) map[string]any {
+		if _, err := io.WriteString(conn, line+"\n"); err != nil {
+			t.Fatal(err)
+		}
+		b, err := bufio.NewReader(conn).ReadBytes('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		_ = json.Unmarshal(b, &m)
+		return m
+	}
+	if r := ask(`{"id":"1","method":"status"}`); r["ok"] != true || r["id"] != "1" || r["result"].(map[string]any)["device_name"] != "Desk" {
+		t.Fatalf("status over the pipe = %v", r)
+	}
+	if r := ask(`{"id":"2","method":"clip.send","params":{"text":"hi"}}`); r["ok"] != false || r["error"].(map[string]any)["code"] != "NOT_PAIRED" {
+		t.Fatalf("clip.send over the pipe = %v", r)
+	}
+	if r := ask(`{"id":"3","method":"pair.begin"}`); r["ok"] != false || r["error"].(map[string]any)["code"] != "METHOD_NOT_FOUND" {
+		t.Fatalf("pair.begin must not be reachable over the pipe: %v", r)
+	}
+	c.Shutdown()
+	if _, err := pipe.Dial(sock); err == nil {
+		t.Fatal("the socket still accepts connections after Shutdown")
+	}
+}
+
+func TestAClaimedControlAddressOnlyCostsTheControlChannel(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "ctl.sock")
+	squatter, err := pipe.Listen(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer squatter.Close()
+	n := New()
+	cfg := configFor(t, t.TempDir(), func(m map[string]any) { m["pipe"] = sock })
+	if err := n.Init(cfg); err != nil {
+		t.Fatalf("Init must survive an unavailable control channel: %v", err)
+	}
+	t.Cleanup(n.Shutdown)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		raw := n.NextEvent(100)
+		if strings.Contains(raw, "PIPE_UNAVAILABLE") {
+			return
+		}
+	}
+	t.Fatal("no PIPE_UNAVAILABLE warning")
 }
