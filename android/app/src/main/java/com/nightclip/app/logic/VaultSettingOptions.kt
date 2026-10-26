@@ -7,6 +7,7 @@ object VaultSettingOptions {
 
     /** How long a biometric quick unlock stays usable after the last master-password unlock; 0 = never expires. */
     val QUICK_MAX_AGE_SECONDS = listOf(0, 300, 3600, 24 * 3600, 72 * 3600, 7 * 24 * 3600, 30 * 24 * 3600)
+    val BACKGROUND_LOCK_SECONDS = listOf(0, 30, 60, 300, 900, 1800)
 
     fun autolockLabel(seconds: Int): String = when {
         seconds <= 0 -> "永不自动锁定"
@@ -16,6 +17,8 @@ object VaultSettingOptions {
     }
 
     fun clipClearLabel(seconds: Int): String = if (seconds <= 0) "不自动清除" else "$seconds 秒"
+
+    fun backgroundLockLabel(seconds: Int): String = if (seconds <= 0) "永不" else if (seconds < 60) "$seconds 秒" else "${seconds / 60} 分钟"
 
     fun quickMaxAgeLabel(seconds: Int): String = when {
         seconds <= 0 -> "永不过期"

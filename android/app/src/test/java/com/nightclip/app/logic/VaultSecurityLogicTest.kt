@@ -186,12 +186,14 @@ class AutoLockPolicyTest {
     @Test
     fun aClockGoingBackwardsLocks() {
         assertTrue(AutoLockPolicy.shouldLockOnReturn(50_000, 10_000, AutoLockPolicy.BACKGROUND_GRACE_MS))
+        assertFalse(AutoLockPolicy.shouldLockOnReturn(50_000, 10_000, 0)) // never in the background
     }
 
     @Test
     fun screenOffLocksOnlyAnOpenVault() {
         assertTrue(AutoLockPolicy.shouldLockOnScreenOff(true))
         assertFalse(AutoLockPolicy.shouldLockOnScreenOff(false))
+        assertFalse(AutoLockPolicy.shouldLockOnScreenOff(true, enabled = false))
     }
 }
 

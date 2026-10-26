@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Process-wide watcher of the vault's lock state (docs/vault-api.md §4 rule 4): locks it when the app stayed in the
- * background longer than [AutoLockPolicy.BACKGROUND_GRACE_MS] or the screen turns off, follows the core's
+ * background longer than the configured grace (default 30 s; 0 = never) or the screen turns off (if enabled), follows the core's
  * `vault.locked` event and tells the screens to forget everything. Installed once from [ClipBridgeApp.onCreate].
  */
 object VaultSession : Application.ActivityLifecycleCallbacks {
@@ -165,9 +165,15 @@ object VaultSession : Application.ActivityLifecycleCallbacks {
         if (activity.isChangingConfigurations) return // a rotation stops and restarts the activity
         val now = SystemClock.elapsedRealtime()
         backgroundedAtMs = now
-        val grace = AutoLockPolicy.graceMs(now - systemUiAskedAtMs < SYSTEM_UI_WINDOW_MS)
+        val configured = app.prefs.vaultBackgroundLockNow * 1000L
+        val systemUi = now - systemUiAskedAtMs < SYSTEM_UI_WINDOW_MS
+        val grace = if (configured <= 0) 0L else if (systemUi) maxOf(configured, AutoLockPolicy.PICKER_GRACE_MS) else configured
         graceUsedMs = grace
-        if (!_unlocked.value) return
+        if (!_unlocked.value || grace <= 0) {
+            lockJob?.cancel()
+            lockJob = null
+            return
+        }
         lockJob?.cancel()
         lockJob = app.appScope.launch {
             delay(grace)
@@ -184,7 +190,7 @@ object VaultSession : Application.ActivityLifecycleCallbacks {
         if (screenOffReceiver != null) return
         val r = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                if (intent.action == Intent.ACTION_SCREEN_OFF && AutoLockPolicy.shouldLockOnScreenOff(_unlocked.value)) lockNow()
+                if (intent.action == Intent.ACTION_SCREEN_OFF && AutoLockPolicy.shouldLockOnScreenOff(_unlocked.value, app.prefs.vaultLockOnScreenOffNow)) lockNow()
             }
         }
         app.registerReceiver(r, IntentFilter(Intent.ACTION_SCREEN_OFF))

@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nightclip.app.R
+import com.nightclip.app.app
 import com.nightclip.app.logic.QuickUnlockAvailability
 import com.nightclip.app.logic.VaultSettingOptions
 import com.nightclip.app.platform.VaultSession
@@ -40,7 +41,10 @@ fun VaultSettingsScreen(vm: VaultViewModel, onMessage: (String) -> Unit) {
     val status by vm.status.collectAsStateWithLifecycle()
     val quick by vm.quickAvailability.collectAsStateWithLifecycle()
     val quickMaxAge by vm.quickMaxAgeSeconds.collectAsStateWithLifecycle()
-    val activity = LocalContext.current.findActivity() as? FragmentActivity
+    val context = LocalContext.current
+    val backgroundLock by context.app.prefs.vaultBackgroundLock.collectAsStateWithLifecycle()
+    val screenOffLock by context.app.prefs.vaultLockOnScreenOff.collectAsStateWithLifecycle()
+    val activity = context.findActivity() as? FragmentActivity
     var askPassword by remember { mutableStateOf(false) }
     val quickOn = quick == QuickUnlockAvailability.AVAILABLE
     val quickPossible = remember(activity) { activity != null && vm.quickAvailableOnDevice(activity) }
@@ -56,6 +60,17 @@ fun VaultSettingsScreen(vm: VaultViewModel, onMessage: (String) -> Unit) {
                 VaultSettingOptions.AUTOLOCK_SECONDS.map { it to VaultSettingOptions.autolockLabel(it) },
             ) { vm.setAutolock(it) }
             HintText(stringResource(R.string.vault_settings_autolock_hint))
+            ChoiceRow(
+                stringResource(R.string.vault_settings_background_lock),
+                VaultSettingOptions.backgroundLockLabel(backgroundLock),
+                VaultSettingOptions.BACKGROUND_LOCK_SECONDS.map { it to VaultSettingOptions.backgroundLockLabel(it) },
+            ) { context.app.prefs.setVaultBackgroundLock(it) }
+            HintText(stringResource(R.string.vault_settings_background_lock_hint))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.vault_settings_screen_off_lock), Modifier.weight(1f))
+                Switch(checked = screenOffLock, onCheckedChange = { context.app.prefs.setVaultLockOnScreenOff(it) })
+            }
+            HintText(stringResource(R.string.vault_settings_screen_off_lock_hint))
             ChoiceRow(
                 stringResource(R.string.vault_settings_clip_clear),
                 VaultSettingOptions.clipClearLabel(s?.clipClearS ?: 20),

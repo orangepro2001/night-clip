@@ -18,10 +18,11 @@ object AutoLockPolicy {
      * backwards (negative elapsed time) is not trusted and locks.
      */
     fun shouldLockOnReturn(backgroundedAtMs: Long, nowMs: Long, graceMs: Long): Boolean {
+        if (graceMs <= 0) return false // the user chose "never"
         val away = nowMs - backgroundedAtMs
         return away < 0 || away >= graceMs
     }
 
-    /** The screen turned off: lock if the vault is open. */
-    fun shouldLockOnScreenOff(unlocked: Boolean): Boolean = unlocked
+    /** The screen turned off: lock if the vault is open and the user left that protection on. */
+    fun shouldLockOnScreenOff(unlocked: Boolean, enabled: Boolean = true): Boolean = unlocked && enabled
 }

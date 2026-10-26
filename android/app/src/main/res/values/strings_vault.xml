@@ -209,7 +209,11 @@
     <!-- Settings -->
     <string name="vault_settings_lock">锁定</string>
     <string name="vault_settings_autolock">空闲自动锁定</string>
-    <string name="vault_settings_autolock_hint">可选“永不自动锁定”，此时核心不会因空闲锁定；但应用切到后台超过 30 秒、屏幕熄灭时仍会锁定，可用生物解锁。后台/熄屏锁定目前固定。</string>
+    <string name="vault_settings_autolock_hint">可选“永不自动锁定”，此时核心不会因空闲锁定；后台与熄屏锁定在下面单独配置。</string>
+    <string name="vault_settings_background_lock">切到后台后锁定</string>
+    <string name="vault_settings_background_lock_hint">应用进入后台超过这个时间后锁定；“永不”表示不在后台自动锁定。系统文件选择器/生物识别弹窗期间另有 5 分钟宽限。</string>
+    <string name="vault_settings_screen_off_lock">屏幕熄灭时锁定</string>
+    <string name="vault_settings_screen_off_lock_hint">关闭后熄屏不会自动锁定；这会降低安全性，请只在明确需要时关闭。</string>
     <string name="vault_settings_clip_clear">复制后清除剪贴板</string>
     <string name="vault_settings_clip_hint">复制的密码会在这段时间后从剪贴板清除（只清除密码库自己复制的那一份）。应用不在前台时，系统可能不让读取剪贴板，这时会直接清空。</string>
     <string name="vault_settings_quick">快速解锁</string>

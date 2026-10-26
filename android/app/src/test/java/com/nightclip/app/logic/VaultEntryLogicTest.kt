@@ -329,6 +329,9 @@ class VaultSettingOptionsTest {
         assertEquals("1 小时", VaultSettingOptions.autolockLabel(3600))
         assertEquals("不自动清除", VaultSettingOptions.clipClearLabel(0))
         assertEquals("20 秒", VaultSettingOptions.clipClearLabel(20))
+        assertEquals("永不", VaultSettingOptions.backgroundLockLabel(0))
+        assertEquals("30 秒", VaultSettingOptions.backgroundLockLabel(30))
+        assertEquals("5 分钟", VaultSettingOptions.backgroundLockLabel(300))
         assertEquals("永不过期", VaultSettingOptions.quickMaxAgeLabel(0))
         assertEquals("3 天", VaultSettingOptions.quickMaxAgeLabel(72 * 3600))
     }
