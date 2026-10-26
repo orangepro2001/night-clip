@@ -48,3 +48,19 @@ func (db *DB) SetLink(l Link) error {
 	}
 	return nil
 }
+
+// SetRecvCursor raises the receive cursor of the link to peerID. It never
+// lowers it, so a late or repeated write cannot make already-delivered events
+// look new again, and it does not touch next_seq_out.
+func (db *DB) SetRecvCursor(peerID string, cursor int64) error {
+	_, err := db.sql.Exec(`
+		INSERT INTO links (peer_id, next_seq_out, recv_cursor, updated_at) VALUES (?, 1, ?, ?)
+		ON CONFLICT(peer_id) DO UPDATE SET
+			recv_cursor = MAX(recv_cursor, excluded.recv_cursor),
+			updated_at = excluded.updated_at`,
+		peerID, cursor, time.Now().Unix())
+	if err != nil {
+		return dbErr("store receive cursor", err)
+	}
+	return nil
+}

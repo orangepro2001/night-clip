@@ -12,7 +12,7 @@
 - 实时通道：WebSocket，`Sec-WebSocket-Protocol: clipbridge.v1`，文本帧 JSON。
 - 文件：同一 HTTPS 服务上的 `GET`/`PUT /v1/files/{id}`，`application/octet-stream`。
 - 时间：RFC 3339 UTC。ID：事件为 UUIDv4；设备为 `dev_` + base32(sha256(SPKI))[:26]。
-- 单个 WebSocket 帧 ≤ 64 KiB；文件不走 WebSocket。
+- 单个 WebSocket 消息 ≤ 512 KiB（`hello_ack.max_frame_bytes`）。剪贴板文本本身仍 ≤ 64 KiB，但 JSON 转义最坏会膨胀数倍，所以帧上限留有余量；文件不走 WebSocket。
 
 ### 1.2 安全默认值
 
@@ -124,8 +124,7 @@ v1 只支持 UTF-8 纯文本，`size` ≤ 64 KiB。更大文本走文件。
 
 | action | 参数 | 含义 |
 | --- | --- | --- |
-| `skip` | `through` | ≤through 的 sequence 不会再发（已过期/清除），接收方推进游标 |
-| `resync` | `after` | 请求从 after 之后重发 |
+| ~~`skip`~~ / ~~`resync`~~ | | **不是事件**：它们是链路帧，见 §4.3（它们不占用 sequence，也不进发件箱） |
 | `file_accept` | `transfer_id`, `offset` | 接受 push 类传输，从 offset 开始 |
 | `file_reject` | `transfer_id`, `reason` | 拒绝 |
 | `file_cancel` | `transfer_id` | 取消 |
@@ -208,6 +207,15 @@ clipbridge://pair?v=1&host=<ip>&port=47821&fp=<b64url>&psk=<b64url>&exp=<unix>
 `result`：`received` / `applied` / `ignored` / `expired` / `error`。`ignored` 的 `reason`：`duplicate`、`target_mismatch`、`policy_blocked`、`user_dismissed`。ack 幂等，不携带明文。`received` 仅表示已入库；"已应用"只来自 `applied`。
 
 ### 4.3 其它
+
+链路层帧（不是事件，不占用 sequence，不入发件箱）：
+
+```json
+{"type":"skip","through":41}    // 发送方：≤41 的 sequence 不会再发（已过期/清除），接收方把游标推进到 41
+{"type":"resync","after":17}    // 接收方：乱序缓存溢出，请从 17 之后重发
+```
+
+发送方在发送 sequence 不连续的下一个事件之前先发 `skip`（缺口由「已过期/已清除」的行产生），所以丢失的事件不会卡住后续事件。接收方对乱序事件最多缓存 64 条；`skip` 会连同缓存里 ≤through 的事件一起按序放行。
 
 ```json
 {"type":"ping","ts":"…"}   {"type":"pong","ts":"…"}

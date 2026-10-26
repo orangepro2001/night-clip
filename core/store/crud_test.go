@@ -2,8 +2,10 @@ package store
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 
 	"nightclip/core/proto"
@@ -794,5 +796,181 @@ func TestRevocationSurvivesPeerDeletion(t *testing.T) {
 	}
 	if ok, err := db.IsRevoked(p.CertFP); err != nil || !ok {
 		t.Fatalf("IsRevoked after DeletePeer = %v, %v; want true", ok, err)
+	}
+}
+
+func TestEnqueueOutboxAllocatesSequencesAtomically(t *testing.T) {
+	db := openTestDB(t)
+	mustPutPeer(t, db, "dev_a")
+	mustPutPeer(t, db, "dev_b")
+
+	build := func(id string) func(int64) (OutboxRow, error) {
+		return func(seq int64) (OutboxRow, error) {
+			r := sampleOutbox(id, "ignored", 0)
+			r.Envelope = []byte(fmt.Sprintf(`{"event_id":%q,"sequence":%d}`, id, seq))
+			return r, nil
+		}
+	}
+	for i, want := range []int64{1, 2, 3} {
+		r, err := db.EnqueueOutbox("dev_a", build(fmt.Sprintf("ev-%d", i)))
+		if err != nil || r.Sequence != want || r.PeerID != "dev_a" || r.State != "queued" {
+			t.Fatalf("enqueue %d = %+v, %v; want sequence %d", i, r, err, want)
+		}
+		if !bytes.Contains(r.Envelope, []byte(fmt.Sprintf(`"sequence":%d`, want))) {
+			t.Fatalf("build did not see the allocated sequence: %s", r.Envelope)
+		}
+	}
+	if r, err := db.EnqueueOutbox("dev_b", build("other")); err != nil || r.Sequence != 1 {
+		t.Fatalf("links are independent: %+v, %v", r, err)
+	}
+	l, _, _ := db.GetLink("dev_a")
+	if l.NextSeqOut != 4 {
+		t.Fatalf("next_seq_out = %d, want 4", l.NextSeqOut)
+	}
+
+	// A failing build consumes no sequence and stores nothing.
+	if _, err := db.EnqueueOutbox("dev_a", func(int64) (OutboxRow, error) { return OutboxRow{}, errors.New("nope") }); err == nil {
+		t.Fatal("build error swallowed")
+	}
+	// A failing insert (duplicate event_id) rolls the sequence back too.
+	if _, err := db.EnqueueOutbox("dev_a", build("ev-0")); err == nil {
+		t.Fatal("duplicate event_id accepted")
+	}
+	if l, _, _ := db.GetLink("dev_a"); l.NextSeqOut != 4 {
+		t.Fatalf("a failed enqueue moved next_seq_out to %d", l.NextSeqOut)
+	}
+	if r, err := db.EnqueueOutbox("dev_a", build("ev-4")); err != nil || r.Sequence != 4 {
+		t.Fatalf("next enqueue = %+v, %v; want sequence 4", r, err)
+	}
+	if _, err := db.EnqueueOutbox("dev_ghost", build("g")); err == nil {
+		t.Fatal("enqueue for an unknown peer must violate the foreign key")
+	}
+}
+
+func TestEnqueueOutboxConcurrentCallersNeverShareASequence(t *testing.T) {
+	db := openTestDB(t)
+	mustPutPeer(t, db, "dev_a")
+	const n = 40
+	var wg sync.WaitGroup
+	seqs := make(chan int64, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			r, err := db.EnqueueOutbox("dev_a", func(seq int64) (OutboxRow, error) {
+				x := sampleOutbox(fmt.Sprintf("ev-%d", i), "dev_a", seq)
+				return x, nil
+			})
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			seqs <- r.Sequence
+		}(i)
+	}
+	wg.Wait()
+	close(seqs)
+	seen := map[int64]bool{}
+	for s := range seqs {
+		if seen[s] {
+			t.Fatalf("sequence %d allocated twice", s)
+		}
+		seen[s] = true
+	}
+	for want := int64(1); want <= n; want++ {
+		if !seen[want] {
+			t.Fatalf("sequence %d missing (gaps: %v)", want, seen)
+		}
+	}
+}
+
+func TestSetRecvCursorOnlyMovesForwardAndKeepsNextSeq(t *testing.T) {
+	db := openTestDB(t)
+	mustPutPeer(t, db, "dev_a")
+	if err := db.SetLink(Link{PeerID: "dev_a", NextSeqOut: 9, RecvCursor: 2}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ set, want int64 }{{5, 5}, {3, 5}, {5, 5}, {8, 8}} {
+		if err := db.SetRecvCursor("dev_a", c.set); err != nil {
+			t.Fatal(err)
+		}
+		l, _, _ := db.GetLink("dev_a")
+		if l.RecvCursor != c.want || l.NextSeqOut != 9 {
+			t.Fatalf("after SetRecvCursor(%d): %+v, want cursor %d next 9", c.set, l, c.want)
+		}
+	}
+	// no prior link row: created with next_seq_out 1
+	mustPutPeer(t, db, "dev_b")
+	if err := db.SetRecvCursor("dev_b", 4); err != nil {
+		t.Fatal(err)
+	}
+	if l, found, _ := db.GetLink("dev_b"); !found || l.RecvCursor != 4 || l.NextSeqOut != 1 {
+		t.Fatalf("fresh link = %+v found %v", l, found)
+	}
+}
+
+func TestPurgeOutboxAndPendingCount(t *testing.T) {
+	db := openTestDB(t)
+	mustPutPeer(t, db, "dev_a")
+	mk := func(id string, seq int64, expires int64) {
+		r := sampleOutbox(id, "dev_a", seq)
+		r.ExpiresAt = expires
+		if err := db.InsertOutbox(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("acked-old", 1, 100)
+	mk("expired-old", 2, 100)
+	mk("expired-new", 3, 100)
+	mk("queued", 4, 100000)
+	mk("sent", 5, 100000)
+	_ = db.MarkOutboxAcked("acked-old", "applied", 50)
+	_ = db.MarkOutboxSent("sent")
+	if _, err := db.ExpireOutbox(200); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.MarkOutboxAcked("expired-new", "applied", 900); err != nil { // acked late: kept longer
+		t.Fatal(err)
+	}
+
+	if n, err := db.CountPendingOutbox("dev_a"); err != nil || n != 2 {
+		t.Fatalf("pending = %d, %v; want 2 (queued + sent)", n, err)
+	}
+	n, err := db.PurgeOutbox(500)
+	if err != nil || n != 2 {
+		t.Fatalf("purged %d, %v; want acked-old and expired-old", n, err)
+	}
+	for id, wantFound := range map[string]bool{"acked-old": false, "expired-old": false, "expired-new": true, "queued": true, "sent": true} {
+		if _, found, _ := db.GetOutbox(id); found != wantFound {
+			t.Errorf("%s found = %v, want %v", id, found, wantFound)
+		}
+	}
+}
+
+func TestTouchPeerAndSetPeerState(t *testing.T) {
+	db := openTestDB(t)
+	mustPutPeer(t, db, "dev_a")
+	if err := db.TouchPeer("dev_a", []string{"100.64.0.7"}, 777); err != nil {
+		t.Fatal(err)
+	}
+	p, _, _ := db.GetPeer("dev_a")
+	if !reflect.DeepEqual(p.TailnetAddrs, []string{"100.64.0.7"}) || p.LastSeenAt != 777 {
+		t.Fatalf("after touch = %+v", p)
+	}
+	if err := db.TouchPeer("dev_a", nil, 888); err != nil {
+		t.Fatal(err)
+	}
+	p, _, _ = db.GetPeer("dev_a")
+	if !reflect.DeepEqual(p.TailnetAddrs, []string{"100.64.0.7"}) || p.LastSeenAt != 888 {
+		t.Fatalf("empty addrs must keep the stored ones: %+v", p)
+	}
+	if err := db.SetPeerState("dev_a", "revoked"); err != nil {
+		t.Fatal(err)
+	}
+	if p, _, _ = db.GetPeer("dev_a"); p.State != "revoked" {
+		t.Fatalf("state = %s", p.State)
+	}
+	if err := db.SetPeerState("dev_a", "bogus"); err == nil {
+		t.Fatal("invalid state accepted")
 	}
 }

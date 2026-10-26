@@ -142,3 +142,33 @@ func scanPeer(row rowScanner) (Peer, error) {
 	}
 	return p, nil
 }
+
+// TouchPeer records that the peer was just seen at addrs. An empty addrs keeps
+// the stored addresses.
+func (db *DB) TouchPeer(deviceID string, addrs []string, seenAt int64) error {
+	if len(addrs) == 0 {
+		_, err := db.sql.Exec(`UPDATE peers SET last_seen_at = ? WHERE device_id = ?`, seenAt, deviceID)
+		if err != nil {
+			return dbErr("touch peer", err)
+		}
+		return nil
+	}
+	raw, err := json.Marshal(addrs)
+	if err != nil {
+		return proto.Errorf(proto.CodeInvalid, "tailnet addresses: %v", err)
+	}
+	if _, err := db.sql.Exec(
+		`UPDATE peers SET tailnet_addrs_json = ?, last_seen_at = ? WHERE device_id = ?`,
+		string(raw), seenAt, deviceID); err != nil {
+		return dbErr("touch peer", err)
+	}
+	return nil
+}
+
+// SetPeerState sets a peer's state ("paired" or "revoked").
+func (db *DB) SetPeerState(deviceID, state string) error {
+	if _, err := db.sql.Exec(`UPDATE peers SET state = ? WHERE device_id = ?`, state, deviceID); err != nil {
+		return dbErr("set peer state", err)
+	}
+	return nil
+}

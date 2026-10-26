@@ -1,0 +1,247 @@
+package peer
+
+import (
+	"context"
+	"crypto/tls"
+	"encoding/json"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"net/netip"
+	"strconv"
+	"time"
+
+	"nightclip/core/identity"
+	"nightclip/core/proto"
+	"nightclip/core/store"
+)
+
+type route struct {
+	pattern string
+	handler http.Handler
+	public  bool // reachable by an unpaired (but TLS-authenticated) certificate
+}
+
+// Handle registers an HTTP handler on the mTLS server. Private routes (public
+// == false) answer 403 NOT_PAIRED unless the client certificate belongs to a
+// paired peer; public routes are for the pairing handshake only. Call it before
+// Start. A handler can read the caller with PeerFromContext.
+func (e *Engine) Handle(pattern string, h http.Handler, public bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.routes = append(e.routes, route{pattern, h, public})
+}
+
+type ctxKey int
+
+const callerKey ctxKey = 1
+
+// Caller is who is on the other end of an authenticated connection.
+type Caller struct {
+	Fingerprint string
+	Peer        *store.Peer // nil when the certificate is not (or no longer) paired
+}
+
+// PeerFromContext returns the caller of a request served by the engine.
+func PeerFromContext(ctx context.Context) Caller {
+	c, _ := ctx.Value(callerKey).(Caller)
+	return c
+}
+
+type listener struct {
+	addr netip.Addr
+	ln   net.Listener
+	srv  *http.Server
+}
+
+func (l *listener) close() { _ = l.srv.Close() }
+
+// ListenPort returns the port of the first active listener (0 if none). Tests
+// that bind port 0 use it to learn where to dial.
+func (e *Engine) ListenPort() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, l := range e.listeners {
+		if ta, ok := l.ln.Addr().(*net.TCPAddr); ok {
+			return ta.Port
+		}
+	}
+	return 0
+}
+
+// ListenAddrs returns the addresses currently being listened on.
+func (e *Engine) ListenAddrs() []netip.Addr {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make([]netip.Addr, 0, len(e.listeners))
+	for a := range e.listeners {
+		out = append(out, a)
+	}
+	return out
+}
+
+func (e *Engine) wantedAddrs() []netip.Addr {
+	if e.hooks.ListenAddrs != nil {
+		return e.hooks.ListenAddrs()
+	}
+	return TailnetAddrs()
+}
+
+// listenLoop keeps one TLS listener per tailnet address, rebinding when
+// Tailscale brings an interface up or takes it down. It never binds 0.0.0.0.
+func (e *Engine) listenLoop() {
+	defer e.wg.Done()
+	t := time.NewTicker(e.timing.Rebind)
+	defer t.Stop()
+	for {
+		e.reconcileListeners()
+		select {
+		case <-e.ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+func (e *Engine) reconcileListeners() {
+	want := map[netip.Addr]bool{}
+	for _, a := range e.wantedAddrs() {
+		want[a.Unmap()] = true
+	}
+
+	e.mu.Lock()
+	var drop []*listener
+	for a, l := range e.listeners {
+		if !want[a] {
+			drop = append(drop, l)
+			delete(e.listeners, a)
+		}
+	}
+	var add []netip.Addr
+	for a := range want {
+		if _, ok := e.listeners[a]; !ok {
+			add = append(add, a)
+		}
+	}
+	e.mu.Unlock()
+
+	for _, l := range drop {
+		l.close()
+	}
+	for _, a := range add {
+		l, err := e.listenOn(a)
+		if err != nil {
+			e.emit(map[string]any{"type": "core.warning", "code": "LISTEN_FAILED", "addr": a.String()})
+			continue
+		}
+		e.mu.Lock()
+		if e.closed {
+			e.mu.Unlock()
+			l.close()
+			return
+		}
+		e.listeners[a] = l
+		e.mu.Unlock()
+	}
+
+	e.mu.Lock()
+	none := len(e.listeners) == 0
+	changed := none != e.noTailnet
+	e.noTailnet = none
+	e.mu.Unlock()
+	if changed && none {
+		e.emit(map[string]any{"type": "core.warning", "code": string(proto.CodeNoTailnet)})
+	}
+	if len(drop) > 0 || len(add) > 0 {
+		addrs := []string{}
+		for _, a := range e.ListenAddrs() {
+			addrs = append(addrs, a.String())
+		}
+		e.emit(map[string]any{"type": "core.listening", "addrs": addrs, "port": e.ListenPort()})
+	}
+}
+
+func (e *Engine) listenOn(a netip.Addr) (*listener, error) {
+	ln, err := net.Listen("tcp", net.JoinHostPort(a.String(), strconv.Itoa(e.cfg.Port)))
+	if err != nil {
+		return nil, err
+	}
+	srv := &http.Server{
+		Handler:           e.httpHandler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		ErrorLog:          log.New(io.Discard, "", 0), // handshake noise from strangers is not worth logging
+	}
+	l := &listener{addr: a, ln: ln, srv: srv}
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		_ = srv.Serve(tls.NewListener(ln, e.tlsCfg))
+	}()
+	return l, nil
+}
+
+// httpHandler builds the route table: the built-in routes plus whatever was
+// registered with Handle, all behind the source-address and fingerprint checks.
+func (e *Engine) httpHandler() http.Handler {
+	mux := http.NewServeMux()
+	e.mu.Lock()
+	routes := append([]route(nil), e.routes...)
+	e.mu.Unlock()
+	routes = append(routes,
+		route{"GET /v1/ws", http.HandlerFunc(e.serveWS), false},
+		route{"GET /healthz", http.HandlerFunc(e.serveHealth), false},
+	)
+	for _, rt := range routes {
+		rt := rt
+		mux.Handle(rt.pattern, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			caller, ok := e.authenticate(w, r)
+			if !ok {
+				return
+			}
+			if !rt.public && caller.Peer == nil {
+				writeJSONError(w, http.StatusForbidden, proto.CodeNotPaired, "this device is not paired")
+				return
+			}
+			rt.handler.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), callerKey, caller)))
+		}))
+	}
+	return mux
+}
+
+// authenticate applies the connection admission rules of docs/architecture.md §3.3:
+// the source must be a tailnet address, a client certificate must be present,
+// and a revoked fingerprint is refused everywhere.
+func (e *Engine) authenticate(w http.ResponseWriter, r *http.Request) (Caller, bool) {
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil || !e.addrAllowed(ap.Addr()) {
+		writeJSONError(w, http.StatusForbidden, proto.CodeNotPaired, "source address is not on the tailnet")
+		return Caller{}, false
+	}
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+		writeJSONError(w, http.StatusUnauthorized, proto.CodeNotPaired, "client certificate required")
+		return Caller{}, false
+	}
+	fp := identity.Fingerprint(r.TLS.PeerCertificates[0].Raw)
+	if revoked, err := e.db.IsRevoked(fp); err != nil || revoked {
+		writeJSONError(w, http.StatusForbidden, proto.CodeNotPaired, "this device is not paired")
+		return Caller{}, false
+	}
+	caller := Caller{Fingerprint: fp}
+	if p, found, err := e.db.FindPeerByFingerprint(fp); err == nil && found && p.State == "paired" {
+		caller.Peer = &p
+	}
+	return caller, true
+}
+
+func (e *Engine) serveHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "device_id": e.id.DeviceID})
+}
+
+func writeJSONError(w http.ResponseWriter, status int, code proto.Code, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": code, "message": msg, "retryable": false}})
+}

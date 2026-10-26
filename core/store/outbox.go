@@ -24,9 +24,17 @@ type OutboxRow struct {
 	AckResult string
 }
 
+// execer is satisfied by *sql.DB and *sql.Tx.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
 // InsertOutbox queues an event. Sequence allocation is the caller's job, and
 // (peer_id, sequence) is unique so a bug cannot silently duplicate a sequence.
-func (db *DB) InsertOutbox(r OutboxRow) error {
+// Prefer EnqueueOutbox, which allocates the sequence atomically.
+func (db *DB) InsertOutbox(r OutboxRow) error { return db.insertOutbox(db.sql, r) }
+
+func (db *DB) insertOutbox(ex execer, r OutboxRow) error {
 	if r.State == "" {
 		r.State = "queued"
 	}
@@ -37,7 +45,7 @@ func (db *DB) InsertOutbox(r OutboxRow) error {
 	if err != nil {
 		return proto.Errorf(proto.CodeInternal, "seal outbox envelope: %v", err)
 	}
-	_, err = db.sql.Exec(`
+	_, err = ex.Exec(`
 		INSERT INTO outbox (event_id, peer_id, sequence, kind, envelope_enc,
 		                    created_at, expires_at, state, attempts, acked_at, ack_result)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -47,6 +55,77 @@ func (db *DB) InsertOutbox(r OutboxRow) error {
 		return dbErr("queue outbox event", err)
 	}
 	return nil
+}
+
+// EnqueueOutbox allocates the next sequence of the link to peerID, lets build
+// produce the row for it (the envelope usually embeds the sequence) and stores
+// the row, all in one transaction: concurrent callers never share a sequence,
+// and a failing build or insert consumes none.
+func (db *DB) EnqueueOutbox(peerID string, build func(seq int64) (OutboxRow, error)) (OutboxRow, error) {
+	tx, err := db.sql.Begin()
+	if err != nil {
+		return OutboxRow{}, dbErr("begin enqueue", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	seq := int64(1)
+	err = tx.QueryRow(`SELECT next_seq_out FROM links WHERE peer_id = ?`, peerID).Scan(&seq)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return OutboxRow{}, dbErr("read link", err)
+	}
+	row, err := build(seq)
+	if err != nil {
+		return OutboxRow{}, err
+	}
+	row.PeerID, row.Sequence = peerID, seq
+	if row.CreatedAt == 0 {
+		row.CreatedAt = time.Now().Unix()
+	}
+	if err := db.insertOutbox(tx, row); err != nil {
+		return OutboxRow{}, err
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO links (peer_id, next_seq_out, recv_cursor, updated_at) VALUES (?, ?, 0, ?)
+		ON CONFLICT(peer_id) DO UPDATE SET next_seq_out = excluded.next_seq_out, updated_at = excluded.updated_at`,
+		peerID, seq+1, row.CreatedAt); err != nil {
+		return OutboxRow{}, dbErr("advance link", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return OutboxRow{}, dbErr("commit enqueue", err)
+	}
+	if row.State == "" {
+		row.State = "queued"
+	}
+	return row, nil
+}
+
+// CountPendingOutbox returns how many events for peerID are queued or sent but
+// not yet acknowledged.
+func (db *DB) CountPendingOutbox(peerID string) (int, error) {
+	var n int
+	err := db.sql.QueryRow(
+		`SELECT count(*) FROM outbox WHERE peer_id = ? AND state IN ('queued', 'sent')`, peerID).Scan(&n)
+	if err != nil {
+		return 0, dbErr("count outbox", err)
+	}
+	return n, nil
+}
+
+// PurgeOutbox deletes acknowledged and expired rows that finished before
+// olderThan (unix seconds), returning how many were removed. The sequence
+// gaps this leaves are covered by skip frames.
+func (db *DB) PurgeOutbox(olderThan int64) (int64, error) {
+	res, err := db.sql.Exec(`
+		DELETE FROM outbox
+		WHERE state IN ('acked', 'expired') AND COALESCE(acked_at, expires_at) < ?`, olderThan)
+	if err != nil {
+		return 0, dbErr("purge outbox", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, dbErr("purge outbox", err)
+	}
+	return n, nil
 }
 
 // ListOutbox returns this peer's queued rows with sequence > afterSeq, oldest

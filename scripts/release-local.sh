@@ -77,6 +77,13 @@ if [ "$platform" = windows ] || [ "$platform" = all ]; then
   publish windows "$zip"
 fi
 
+# Keep the installed server in step with this checkout (new endpoints ship with the code).
+if [ -x "$HOME/.local/bin/cbdist" ] && ! cmp -s "$cbdist" "$HOME/.local/bin/cbdist"; then
+  install -m 755 "$cbdist" "$HOME/.local/bin/cbdist"
+  systemctl --user try-restart clipbridge-dist.service 2>/dev/null || true
+  sleep 1
+fi
+
 for p in android windows; do
   if [ "$platform" = all ] || [ "$platform" = "$p" ]; then "$cbdist" verify -dir "$releases" -platform "$p"; fi
 done
