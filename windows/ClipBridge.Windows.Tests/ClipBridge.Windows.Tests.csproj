@@ -8,6 +8,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
+    <!-- On Linux the Go core (cgo, own signal handlers) and the runtime's background GC thread crash the test host
+         when both are active in one process (measured: 6 of 8 full runs). Blocking GCs are stable. Windows is not affected
+         (no signals), and the app itself does not use this switch. -->
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <DistDir>$(MSBuildThisFileDirectory)..\..\core\dist\</DistDir>
   </PropertyGroup>
 
