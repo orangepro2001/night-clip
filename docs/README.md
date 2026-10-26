@@ -86,8 +86,9 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | --- | --- |
 | [user-guide.md](user-guide.md) | **使用说明书**：现在能做什么、安装、界面、更新、排错、计划中的用法 |
 | [update.md](update.md) | 自动更新与本机分发：信任模型、发布流程 |
-| [../HANDOFF-20261027-0230.md](../HANDOFF-20261027-0230.md) | **最新交接快照**：密码库列表点按复制/独立查看编辑、0.1.66 发布 |
-| [../HANDOFF-20261027-0215.md](../HANDOFF-20261027-0215.md) | 上一轮快照：密码库空闲/后台/熄屏锁定与生物解锁有效期可定制、0.1.65 发布 |
+| [../HANDOFF-20261027-0745.md](../HANDOFF-20261027-0745.md) | **最新交接快照**：Android/Windows 紧凑专业工具风 UI、0.1.73 发布 |
+| [../HANDOFF-20261027-0230.md](../HANDOFF-20261027-0230.md) | 上一轮快照：密码库列表点按复制/独立查看编辑、0.1.66 发布 |
+| [../HANDOFF-20261027-0215.md](../HANDOFF-20261027-0215.md) | 更早快照：密码库空闲/后台/熄屏锁定与生物解锁有效期可定制、0.1.65 发布 |
 | [../HANDOFF-20261027-0205.md](../HANDOFF-20261027-0205.md) | 更早快照：空闲自动锁定/生物解锁有效期、0.1.64 发布 |
 | [../HANDOFF-20261027-0145.md](../HANDOFF-20261027-0145.md) | 更早快照：Android 文件选择器崩溃根因修复、0.1.63 发布 |
 | [../HANDOFF-20261027-0130.md](../HANDOFF-20261027-0130.md) | 更早快照：敏感内容识别可关闭、0.1.62 发布 |
@@ -101,6 +102,7 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | [api-spec.md](api-spec.md) | 信封、配对/WebSocket/文件端点、核心门面方法与事件、命名管道、CLI |
 | [development-plan.md](development-plan.md) | 阶段、PoC Go/No-Go、验收、测试矩阵、风险 |
 | [vault-v0-poc-report.md](vault-v0-poc-report.md) | 密码库 V0 验证：gokeepasslib（KDBX 4）实测结果、缺陷与补丁清单 |
+| [ui-refresh-2026-10.md](ui-refresh-2026-10.md) | 紧凑专业工具风的 Android/Windows UI 改动说明 |
 | [plan-vault.md](plan-vault.md) | **计划与实施状态**：密码/凭证管理（KDBX 4、备份/恢复、多设备同步、自动填充）；V1–V3 已合并，真机验证待做 |
 | [vault-api.md](vault-api.md) | **密码库门面接口**：`vault.*` 方法、错误码、同步协议与壳层规则 |
 | [adr/007-password-vault.md](adr/007-password-vault.md) | **密码库决策**：KDBX 4、本机加密、经 tailnet 在已配对设备间自动同步；每台完整副本 |

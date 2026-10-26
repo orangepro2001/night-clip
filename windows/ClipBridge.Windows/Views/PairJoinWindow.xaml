@@ -44,7 +44,7 @@
             <TextBlock x:Name="SasPrompt" TextWrapping="Wrap" HorizontalAlignment="Center" />
             <TextBlock x:Name="SasText" FontSize="48" FontWeight="Bold" FontFamily="Consolas" HorizontalAlignment="Center"
                        Margin="0,6" />
-            <TextBlock x:Name="SasHint" TextWrapping="Wrap" HorizontalAlignment="Center" Foreground="#FF666666" />
+            <TextBlock x:Name="SasHint" TextWrapping="Wrap" HorizontalAlignment="Center" Foreground="{DynamicResource AppMuted}" />
         </StackPanel>
 
         <TextBlock x:Name="StatusText" TextWrapping="Wrap" Margin="0,12,0,0" />

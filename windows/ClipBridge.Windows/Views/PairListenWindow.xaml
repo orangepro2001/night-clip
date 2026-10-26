@@ -6,7 +6,7 @@
         WindowStartupLocation="CenterScreen">
     <StackPanel Margin="20" MaxWidth="440">
         <TextBlock x:Name="IntroText" TextWrapping="Wrap" Margin="0,0,0,12" />
-        <Border Background="White" BorderBrush="#FFCCCCCC" BorderThickness="1" HorizontalAlignment="Center"
+        <Border Background="{DynamicResource AppSurface}" BorderBrush="{DynamicResource AppBorder}" BorderThickness="1" HorizontalAlignment="Center"
                 MinWidth="200" MinHeight="200">
             <Grid>
                 <Image x:Name="QrImage" Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor"

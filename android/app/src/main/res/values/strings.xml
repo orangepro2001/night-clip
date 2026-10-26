@@ -68,6 +68,7 @@
     <string name="pair_new_device">配对新设备</string>
     <string name="send_text_label">输入要发送的文字</string>
     <string name="paired_devices">已配对的设备</string>
+    <string name="no_devices_title">还没有设备</string>
     <string name="no_devices_hint">还没有配对设备。请先在电脑上的 ClipBridge 里点“配对新设备”，再在这里扫码。</string>
     <string name="send_file">发送文件</string>
     <string name="repair">重新配对</string>

@@ -16,15 +16,18 @@
                 <Button Content="{x:Static local:Strings.DiagOpenLogs}" Click="Logs_Click" />
                 <Button Content="{x:Static local:Strings.DiagOpenData}" Click="Data_Click" />
             </StackPanel>
-            <TextBlock Text="{x:Static local:Strings.DiagTitle}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <StackPanel>
+                <TextBlock Text="{x:Static local:Strings.DiagTitle}" Style="{StaticResource PageTitle}" />
+                <TextBlock Text="连接、同步与运行时信息" Style="{StaticResource PageSubtitle}" />
+            </StackPanel>
         </DockPanel>
 
-        <Border x:Name="NoTailnetBanner" Grid.Row="1" Background="#FFFFF4CE" BorderBrush="#FFE0B000" BorderThickness="1"
+        <Border x:Name="NoTailnetBanner" Grid.Row="1" Background="{DynamicResource AppWarningSoft}" BorderBrush="{DynamicResource AppWarning}" BorderThickness="1"
                 Padding="10,6" Margin="0,0,0,10" Visibility="Collapsed">
             <TextBlock Text="{x:Static local:Strings.NoTailnetBanner}" TextWrapping="Wrap" />
         </Border>
 
-        <TextBox x:Name="DiagText" Grid.Row="2" IsReadOnly="True" FontFamily="Consolas" TextWrapping="NoWrap"
+        <TextBox x:Name="DiagText" Grid.Row="2" IsReadOnly="True" FontFamily="{DynamicResource AppMonoFont}" TextWrapping="NoWrap"
                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
     </Grid>
 </UserControl>

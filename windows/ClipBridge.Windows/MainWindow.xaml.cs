@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 using ClipBridge.Windows.Logic;
 using ClipBridge.Windows.Services;
@@ -22,8 +23,22 @@ public partial class MainWindow : Window
         Instance = this;
         Title = Strings.AppName;
 
-        foreach (var label in new[] { Strings.NavDevices, Strings.NavInbox, Strings.NavTransfers, Strings.NavVault, Strings.NavSettings, Strings.NavDiagnostics })
-            Nav.Items.Add(new ListBoxItem { Content = label, Padding = new Thickness(16, 10, 8, 10) });
+        var navItems = new[]
+        {
+            ("\uE772", Strings.NavDevices), ("\uE715", Strings.NavInbox), ("\uE896", Strings.NavTransfers),
+            ("\uE72E", Strings.NavVault), ("\uE713", Strings.NavSettings), ("\uE9D9", Strings.NavDiagnostics),
+        };
+        foreach (var (glyph, label) in navItems)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock
+            {
+                Text = glyph, FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 14,
+                Width = 22, VerticalAlignment = VerticalAlignment.Center,
+            });
+            row.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+            Nav.Items.Add(new ListBoxItem { Content = row });
+        }
 
         DevicesPage.Attach(_shell);
         InboxPage.Attach(_shell);

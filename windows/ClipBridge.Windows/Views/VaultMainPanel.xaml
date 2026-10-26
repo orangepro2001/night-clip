@@ -49,7 +49,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <ListBox x:Name="FilterList" Grid.Row="0" BorderThickness="0" SelectionChanged="FilterList_SelectionChanged" />
-                <TextBlock Grid.Row="1" Text="{x:Static local:Strings.GroupsTitle}" FontWeight="SemiBold" Foreground="#FF555555" Margin="6,14,0,4" />
+                <TextBlock Grid.Row="1" Text="{x:Static local:Strings.GroupsTitle}" FontWeight="SemiBold" Foreground="{DynamicResource AppMuted}" Margin="6,14,0,4" />
                 <WrapPanel Grid.Row="2" Margin="0,0,0,4">
                     <Button Content="{x:Static local:Strings.BtnNewGroup}" Margin="0,0,4,4" Padding="6,2" Click="NewGroup_Click" />
                     <Button x:Name="RenameGroupButton" Content="{x:Static local:Strings.BtnRenameGroup}" Margin="0,0,4,4" Padding="6,2" Click="RenameGroup_Click" />
@@ -69,10 +69,10 @@
                 </Grid.RowDefinitions>
                 <Grid Grid.Row="0">
                     <TextBox x:Name="SearchBox" MaxLength="200" TextChanged="SearchBox_TextChanged" Padding="4,4" />
-                    <TextBlock x:Name="SearchHint" Text="{x:Static local:Strings.SearchHint}" Foreground="#FF999999" IsHitTestVisible="False"
+                    <TextBlock x:Name="SearchHint" Text="{x:Static local:Strings.SearchHint}" Foreground="{DynamicResource AppFaint}" IsHitTestVisible="False"
                                Margin="8,0,0,0" VerticalAlignment="Center" />
                 </Grid>
-                <TextBlock x:Name="CountText" Grid.Row="1" Foreground="#FF777777" FontSize="12" Margin="4,6,0,4" />
+                <TextBlock x:Name="CountText" Grid.Row="1" Foreground="{DynamicResource AppMuted}" FontSize="12" Margin="4,6,0,4" />
                 <ListBox x:Name="EntryList" Grid.Row="2" BorderThickness="0" HorizontalContentAlignment="Stretch"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="EntryList_SelectionChanged">
                     <ListBox.ItemTemplate>
@@ -86,24 +86,24 @@
                                 <TextBlock Grid.Column="0" Text="{Binding Glyph, Mode=OneWay}" FontSize="20" Margin="0,0,10,0" VerticalAlignment="Center" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Subtitle, Mode=OneWay}" Foreground="#FF777777" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Subtitle, Mode=OneWay}" Foreground="{DynamicResource AppMuted}" FontSize="12" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0">
-                                    <TextBlock Text="{Binding TotpBadge, Mode=OneWay}" Foreground="#FF1A73E8" FontSize="11" HorizontalAlignment="Right" />
-                                    <TextBlock Text="{Binding ExpiryBadge, Mode=OneWay}" Foreground="#FFB36B00" FontSize="11" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding TotpBadge, Mode=OneWay}" Foreground="{DynamicResource AppAccent}" FontSize="11" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding ExpiryBadge, Mode=OneWay}" Foreground="{DynamicResource AppWarning}" FontSize="11" HorizontalAlignment="Right" />
                                     <TextBlock Text="{Binding AttachBadge, Mode=OneWay}" FontSize="11" HorizontalAlignment="Right" />
                                 </StackPanel>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <TextBlock x:Name="EmptyText" Grid.Row="2" Foreground="#FF777777" TextWrapping="Wrap" HorizontalAlignment="Center"
+                <TextBlock x:Name="EmptyText" Grid.Row="2" Foreground="{DynamicResource AppMuted}" TextWrapping="Wrap" HorizontalAlignment="Center"
                            VerticalAlignment="Center" Margin="12" Visibility="Collapsed" />
             </Grid>
 
             <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="Transparent" />
 
-            <Border Grid.Column="4" BorderBrush="#FFD5D5D5" BorderThickness="1" CornerRadius="4" Background="White">
+            <Border Grid.Column="4" BorderBrush="{DynamicResource AppBorder}" BorderThickness="1" CornerRadius="10" Background="{DynamicResource AppSurface}">
                 <views:EntryDetailPane x:Name="Detail" />
             </Border>
         </Grid>

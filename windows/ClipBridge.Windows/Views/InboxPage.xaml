@@ -10,9 +10,9 @@
 
         <DockPanel Grid.Row="0" Margin="0,0,0,12">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                <Button Content="{x:Static local:Strings.BtnClear}" Click="Clear_Click" />
+                <Button Content="{x:Static local:Strings.BtnClear}" Click="Clear_Click" Style="{StaticResource PrimaryButton}" />
             </StackPanel>
-            <TextBlock Text="{x:Static local:Strings.InboxTitle}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <StackPanel><TextBlock Text="{x:Static local:Strings.InboxTitle}" Style="{StaticResource PageTitle}" /><TextBlock Text="来自其它设备的内容" Style="{StaticResource PageSubtitle}" /></StackPanel>
         </DockPanel>
 
         <ListBox x:Name="ItemList" Grid.Row="1" BorderThickness="0" HorizontalContentAlignment="Stretch"
@@ -20,19 +20,20 @@
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">
                     <Setter Property="Focusable" Value="False" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0" />
                 </Style>
             </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Border BorderBrush="#FFD5D5D5" BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,8"
-                            Background="White">
+                    <Border Style="{StaticResource CardBorder}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Foreground="#FF777777" FontSize="12">
+                                <TextBlock Foreground="{DynamicResource AppMuted}" FontSize="12">
                                     <Run Text="{Binding FromText, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding TimeText, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding StateText, Mode=OneWay}" />
                                 </TextBlock>
                                 <TextBlock Text="{Binding Preview, Mode=OneWay}" TextWrapping="Wrap" MaxHeight="90" Margin="0,4,0,0"
@@ -51,7 +52,7 @@
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
-        <TextBlock x:Name="EmptyText" Grid.Row="1" Text="{x:Static local:Strings.InboxEmpty}" Foreground="#FF777777"
+        <TextBlock x:Name="EmptyText" Grid.Row="1" Text="{x:Static local:Strings.InboxEmpty}" Foreground="{DynamicResource AppMuted}"
                    HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
     </Grid>
 </UserControl>

@@ -76,8 +76,14 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
     LifecycleRefresh { vm.refresh() }
     CollectWhileStarted(vm.messages) { onMessage(it) }
 
-    Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(R.string.nav_settings), style = MaterialTheme.typography.headlineSmall)
+    Column(
+        modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 0.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        PageHeader(
+            stringResource(R.string.nav_settings),
+            subtitle = "连接、同步与密码库",
+        )
 
         SectionCard(stringResource(R.string.settings_realtime)) {
             SwitchRow(stringResource(R.string.settings_realtime_switch), realtime) { RealtimeMode.set(context, it) }
@@ -464,19 +470,17 @@ private fun UpdateCard(update: UpdateState, vm: SettingsViewModel, context: andr
 
 @Composable
 private fun SectionCard(title: String, content: @Composable () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            HorizontalDivider()
-            content()
-        }
+    PanelCard {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { content() }
     }
 }
 
 @Composable
 private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, Modifier.weight(1f))
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
     }
 }
@@ -485,7 +489,7 @@ private fun SwitchRow(label: String, checked: Boolean, enabled: Boolean = true, 
 private fun ChoiceRow(label: String, current: String, options: List<Pair<String, String>>, onPick: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, Modifier.weight(1f))
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
         Column {
             TextButton(onClick = { open = true }) { Text(current) }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {

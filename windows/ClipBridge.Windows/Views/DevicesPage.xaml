@@ -13,10 +13,9 @@
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <Button Content="{x:Static local:Strings.BtnSendFiles}" Click="SendFiles_Click" />
                 <Button Content="{x:Static local:Strings.BtnJoinPair}" Click="Join_Click" />
-                <Button Content="{x:Static local:Strings.BtnPairNew}" Click="Pair_Click" />
+                <Button Content="{x:Static local:Strings.BtnPairNew}" Click="Pair_Click" Style="{StaticResource PrimaryButton}" />
             </StackPanel>
-            <TextBlock Text="{x:Static local:Strings.DevicesTitle}" FontSize="20" FontWeight="SemiBold"
-                       VerticalAlignment="Center" />
+            <StackPanel><TextBlock Text="{x:Static local:Strings.DevicesTitle}" Style="{StaticResource PageTitle}" /><TextBlock Text="已配对设备、自动发送与文件传输" Style="{StaticResource PageSubtitle}" /></StackPanel>
         </DockPanel>
 
         <ListBox x:Name="PeerList" Grid.Row="1" BorderThickness="0" HorizontalContentAlignment="Stretch"
@@ -25,14 +24,15 @@
                 <Style TargetType="ListBoxItem">
                     <Setter Property="AllowDrop" Value="True" />
                     <Setter Property="Focusable" Value="False" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0" />
                     <EventSetter Event="DragOver" Handler="Peer_DragOver" />
                     <EventSetter Event="Drop" Handler="Peer_Drop" />
                 </Style>
             </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Border BorderBrush="#FFD5D5D5" BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,8"
-                            Background="White">
+                    <Border Style="{StaticResource CardBorder}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -41,11 +41,11 @@
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding DisplayName, Mode=OneWay}" FontSize="16" FontWeight="SemiBold"
                                            TextTrimming="CharacterEllipsis" />
-                                <TextBlock Margin="0,2,0,0" TextWrapping="Wrap" Foreground="#FF444444">
+                                <TextBlock Margin="0,2,0,0" TextWrapping="Wrap" Foreground="{DynamicResource AppMuted}">
                                     <Run Text="{Binding PlatformText, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding StateText, Mode=OneWay}" />
                                 </TextBlock>
-                                <TextBlock Text="{Binding LastSeenText, Mode=OneWay}" Foreground="#FF888888" FontSize="12" />
-                                <TextBlock Text="{Binding PendingText, Mode=OneWay}" Foreground="#FFB36B00" FontSize="12" />
+                                <TextBlock Text="{Binding LastSeenText, Mode=OneWay}" Foreground="{DynamicResource AppMuted}" FontSize="12" />
+                                <TextBlock Text="{Binding PendingText, Mode=OneWay}" Foreground="{DynamicResource AppWarning}" FontSize="12" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                 <CheckBox Content="{x:Static local:Strings.DeviceAutoSend}" IsChecked="{Binding SendEnabled, Mode=OneWay}"
@@ -76,9 +76,9 @@
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <TextBlock x:Name="EmptyText" Grid.Row="1" Text="{x:Static local:Strings.DevicesEmpty}" Foreground="#FF777777"
+        <TextBlock x:Name="EmptyText" Grid.Row="1" Text="{x:Static local:Strings.DevicesEmpty}" Foreground="{DynamicResource AppMuted}"
                    TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
-        <TextBlock Grid.Row="2" Text="{x:Static local:Strings.DropFilesHint}" Foreground="#FF999999" FontSize="12"
+        <TextBlock Grid.Row="2" Text="{x:Static local:Strings.DropFilesHint}" Foreground="{DynamicResource AppFaint}" FontSize="12"
                    Margin="2,6,0,0" />
     </Grid>
 </UserControl>

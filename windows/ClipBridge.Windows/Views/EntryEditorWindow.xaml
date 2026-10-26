@@ -77,14 +77,14 @@
                     <Button Content="{x:Static local:Strings.BtnAddField}" HorizontalAlignment="Left" Margin="0,6,0,0" Click="AddField_Click" />
                 </StackPanel>
 
-                <TextBlock x:Name="ErrorText" Foreground="#FFC62828" TextWrapping="Wrap" Margin="0,14,0,0" />
-                <TextBlock x:Name="WarnText" Foreground="#FFB36B00" TextWrapping="Wrap" Margin="0,4,0,0" />
+                <TextBlock x:Name="ErrorText" Foreground="{DynamicResource AppDanger}" TextWrapping="Wrap" Margin="0,14,0,0" />
+                <TextBlock x:Name="WarnText" Foreground="{DynamicResource AppWarning}" TextWrapping="Wrap" Margin="0,4,0,0" />
             </StackPanel>
         </ScrollViewer>
 
-        <Border Grid.Row="1" BorderBrush="#FFDDDDDD" BorderThickness="0,1,0,0" Padding="18,10" Background="#FFF6F6F6">
+        <Border Grid.Row="1" BorderBrush="{DynamicResource AppBorder}" BorderThickness="0,1,0,0" Padding="18,10" Background="{DynamicResource AppSurfaceAlt}">
             <DockPanel>
-                <TextBlock x:Name="LoadingText" Text="{x:Static local:Strings.EditorLoading}" Foreground="#FF777777" VerticalAlignment="Center" Visibility="Collapsed" />
+                <TextBlock x:Name="LoadingText" Text="{x:Static local:Strings.EditorLoading}" Foreground="{DynamicResource AppMuted}" VerticalAlignment="Center" Visibility="Collapsed" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button x:Name="SaveButton" Content="{x:Static local:Strings.BtnSave}" MinWidth="90" IsDefault="True" Click="Save_Click" />
                     <Button Content="{x:Static local:Strings.BtnCancel}" MinWidth="90" Click="Cancel_Click" />

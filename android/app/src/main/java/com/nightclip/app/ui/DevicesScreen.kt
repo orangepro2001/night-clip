@@ -6,8 +6,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +17,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -75,39 +78,68 @@ fun DevicesScreen(vm: AppViewModel, onPair: () -> Unit, modifier: Modifier = Mod
 
     LifecycleRefresh { vm.refreshAll() }
 
-    LazyColumn(modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item { Text(stringResource(R.string.nav_devices), style = MaterialTheme.typography.headlineSmall) }
+    LazyColumn(
+        modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            PageHeader(
+                stringResource(R.string.nav_devices),
+                subtitle = if (vpn) "Tailscale 已连接" else "Tailscale 未连接",
+                actions = {
+                    TextButton(onClick = onPair) { Text(stringResource(R.string.pair_new_device)) }
+                },
+            )
+        }
         TailscaleHint.message(vpn)?.let { hint ->
             item { InfoCard(container = MaterialTheme.colorScheme.errorContainer) { Text(hint, color = MaterialTheme.colorScheme.onErrorContainer) } }
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                Button(onClick = {
-                    // Reading the clipboard is only allowed while this screen is in the foreground (Android 10+).
-                    vm.sendText(ClipboardAccess.readText(context).orEmpty())
-                }, enabled = peers.any { it.canSend }) { Text(stringResource(R.string.send_clipboard)) }
-                FilledTonalButton(onClick = onPair) { Text(stringResource(R.string.pair_new_device)) }
+            PanelCard {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = {
+                            // Reading the clipboard is only allowed while this screen is in the foreground (Android 10+).
+                            vm.sendText(ClipboardAccess.readText(context).orEmpty())
+                        },
+                        enabled = peers.any { it.canSend },
+                        modifier = Modifier.weight(1f).height(40.dp),
+                    ) { Text(stringResource(R.string.send_clipboard)) }
+                    FilledTonalButton(
+                        onClick = onPair,
+                        modifier = Modifier.weight(1f).height(40.dp),
+                    ) { Text(stringResource(R.string.pair_new_device)) }
+                }
+                Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = manualText,
+                        onValueChange = { manualText = it },
+                        label = { Text(stringResource(R.string.send_text_label)) },
+                        modifier = Modifier.weight(1f),
+                        maxLines = 3,
+                        keyboardOptions = KeyboardOptions.Default,
+                    )
+                    Button(
+                        onClick = {
+                            vm.sendText(manualText)
+                            manualText = ""
+                        },
+                        enabled = manualText.isNotBlank() && peers.any { it.canSend },
+                        modifier = Modifier.padding(top = 6.dp).height(40.dp),
+                    ) { Text(stringResource(R.string.send)) }
+                }
             }
         }
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = manualText,
-                    onValueChange = { manualText = it },
-                    label = { Text(stringResource(R.string.send_text_label)) },
-                    modifier = Modifier.weight(1f),
-                    maxLines = 4,
-                    keyboardOptions = KeyboardOptions.Default,
-                )
-                Button(onClick = {
-                    vm.sendText(manualText)
-                    manualText = ""
-                }, enabled = manualText.isNotBlank() && peers.any { it.canSend }) { Text(stringResource(R.string.send)) }
-            }
-        }
-        item { SectionTitle(stringResource(R.string.paired_devices)) }
+        item { SectionTitle(stringResource(R.string.paired_devices) + "  ${peers.size}") }
         if (peers.isEmpty()) {
-            item { Text(stringResource(R.string.no_devices_hint), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item {
+                EmptyState(
+                    Icons.Filled.Phone,
+                    stringResource(R.string.no_devices_title),
+                    stringResource(R.string.no_devices_hint),
+                )
+            }
         }
         items(peers, key = { it.deviceId }) { peer ->
             PeerCard(
@@ -128,9 +160,16 @@ fun DevicesScreen(vm: AppViewModel, onPair: () -> Unit, modifier: Modifier = Mod
                 onRepair = onPair,
             )
         }
-        item { SectionTitle(stringResource(R.string.transfers)) }
+        item { SectionTitle(stringResource(R.string.transfers) + "  ${transfers.size}") }
         if (transfers.isEmpty()) {
-            item { Text(stringResource(R.string.no_transfers), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item {
+                Text(
+                    stringResource(R.string.no_transfers),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
+                )
+            }
         }
         items(transfers.take(20), key = { it.transferId }) { t ->
             TransferRow(t, onAccept = { vm.accept(t.transferId) }, onReject = { vm.reject(t.transferId) }, onCancel = { vm.cancel(t.transferId) })
@@ -204,44 +243,50 @@ private fun PeerCard(
 ) {
     var menu by remember { mutableStateOf(false) }
     val now = System.currentTimeMillis() / 1000
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(peer.name.ifBlank { Strings.UNKNOWN_DEVICE }, style = MaterialTheme.typography.titleMedium)
-                    Text(PeerTexts.platformLabel(peer.platform), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { menu = false; onRename() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.apply_mode_menu, PeerTexts.applyModeLabel(peer.applyMode))) }, onClick = { menu = false; onMode() })
-                    DropdownMenuItem(
-                        text = { Text(stringResource(if (peer.sendEnabled) R.string.auto_send_on else R.string.auto_send_off)) },
-                        onClick = { menu = false; onToggleSend() },
+    val stateColor = when (peer.state) {
+        "connected" -> MaterialTheme.colorScheme.primary
+        "unpaired", "revoked" -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    PanelCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        peer.name.ifBlank { Strings.UNKNOWN_DEVICE },
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
-                    DropdownMenuItem(text = { Text(stringResource(R.string.remove)) }, onClick = { menu = false; onRemove() })
+                    StatusPill(PeerTexts.stateLabel(peer), stateColor)
                 }
+                Text(
+                    PeerTexts.platformLabel(peer.platform) + "  ·  " +
+                        stringResource(R.string.last_seen, Formatters.relativeTime(peer.lastSeenAt, now)) + "  ·  " +
+                        PeerTexts.applyModeLabel(peer.applyMode),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
             }
-            Text(
-                PeerTexts.stateLabel(peer),
-                color = when (peer.state) {
-                    "connected" -> MaterialTheme.colorScheme.primary
-                    "unpaired", "revoked" -> MaterialTheme.colorScheme.error
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-            Text(
-                stringResource(R.string.last_seen, Formatters.relativeTime(peer.lastSeenAt, now)) + " · " + PeerTexts.applyModeLabel(peer.applyMode),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (peer.state == "unpaired" || peer.state == "revoked") {
-                OutlinedButton(onClick = onRepair) { Text(stringResource(R.string.repair)) }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = onSendClipboard) { Text(stringResource(R.string.send_clipboard)) }
-                    FilledTonalButton(onClick = onSendFile) { Text(stringResource(R.string.send_file)) }
-                }
+            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { menu = false; onRename() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.apply_mode_menu, PeerTexts.applyModeLabel(peer.applyMode))) }, onClick = { menu = false; onMode() })
+                DropdownMenuItem(
+                    text = { Text(stringResource(if (peer.sendEnabled) R.string.auto_send_on else R.string.auto_send_off)) },
+                    onClick = { menu = false; onToggleSend() },
+                )
+                DropdownMenuItem(text = { Text(stringResource(R.string.remove)) }, onClick = { menu = false; onRemove() })
+            }
+        }
+        if (peer.state == "unpaired" || peer.state == "revoked") {
+            OutlinedButton(onClick = onRepair, modifier = Modifier.height(36.dp)) { Text(stringResource(R.string.repair)) }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onSendClipboard, modifier = Modifier.height(36.dp)) { Text(stringResource(R.string.send_clipboard)) }
+                TextButton(onClick = onSendFile, modifier = Modifier.height(36.dp)) { Text(stringResource(R.string.send_file)) }
             }
         }
     }
@@ -249,29 +294,31 @@ private fun PeerCard(
 
 @Composable
 private fun TransferRow(t: TransferInfo, onAccept: () -> Unit, onReject: () -> Unit, onCancel: () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            val arrow = if (t.incoming) "↓" else "↑"
-            Text("$arrow ${t.name}", style = MaterialTheme.typography.titleSmall)
-            Text(
-                listOf(t.peerName, Formatters.fileSize(t.size), PeerTexts.transferStateLabel(t)).filter { it.isNotBlank() }.joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (t.state == "transferring") {
-                LinearProgressIndicator(progress = { Formatters.percent(t.offset, t.size) / 100f }, modifier = Modifier.fillMaxWidth())
-                Text(Formatters.progressLine(t.offset, t.size, t.rateBps), style = MaterialTheme.typography.bodySmall)
-            } else if (t.state == "hashing") {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    PanelCard {
+        val arrow = if (t.incoming) "↓" else "↑"
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(arrow, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text(t.name, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(Formatters.fileSize(t.size), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(
+            listOf(t.peerName, PeerTexts.transferStateLabel(t)).filter { it.isNotBlank() }.joinToString(" · "),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (t.state == "transferring") {
+            LinearProgressIndicator(progress = { Formatters.percent(t.offset, t.size) / 100f }, modifier = Modifier.fillMaxWidth())
+            Text(Formatters.progressLine(t.offset, t.size, t.rateBps), style = MaterialTheme.typography.bodySmall)
+        } else if (t.state == "hashing") {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        if (t.awaitingMyDecision) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onAccept, modifier = Modifier.height(36.dp)) { Text(stringResource(R.string.action_accept)) }
+                TextButton(onClick = onReject, modifier = Modifier.height(36.dp)) { Text(stringResource(R.string.action_reject)) }
             }
-            if (t.awaitingMyDecision) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onAccept) { Text(stringResource(R.string.action_accept)) }
-                    OutlinedButton(onClick = onReject) { Text(stringResource(R.string.action_reject)) }
-                }
-            } else if (t.active) {
-                OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
-            }
+        } else if (t.active) {
+            TextButton(onClick = onCancel, modifier = Modifier.height(36.dp)) { Text(stringResource(R.string.action_cancel)) }
         }
     }
 }

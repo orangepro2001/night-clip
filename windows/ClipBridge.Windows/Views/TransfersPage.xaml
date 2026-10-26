@@ -12,7 +12,7 @@
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <Button Content="{x:Static local:Strings.BtnRefresh}" Click="Refresh_Click" />
             </StackPanel>
-            <TextBlock Text="{x:Static local:Strings.TransfersTitle}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <StackPanel><TextBlock Text="{x:Static local:Strings.TransfersTitle}" Style="{StaticResource PageTitle}" /><TextBlock Text="文件收发与进度" Style="{StaticResource PageSubtitle}" /></StackPanel>
         </DockPanel>
 
         <ListBox x:Name="TransferList" Grid.Row="1" BorderThickness="0" HorizontalContentAlignment="Stretch"
@@ -20,12 +20,13 @@
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">
                     <Setter Property="Focusable" Value="False" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0" />
                 </Style>
             </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <Border BorderBrush="#FFD5D5D5" BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,8"
-                            Background="White">
+                    <Border Style="{StaticResource CardBorder}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -35,14 +36,14 @@
                                 <TextBlock FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis">
                                     <Run Text="{Binding DirectionGlyph, Mode=OneWay}" /><Run Text=" " /><Run Text="{Binding DisplayName, Mode=OneWay}" />
                                 </TextBlock>
-                                <TextBlock Foreground="#FF777777" FontSize="12" Margin="0,2,0,0">
+                                <TextBlock Foreground="{DynamicResource AppMuted}" FontSize="12" Margin="0,2,0,0">
                                     <Run Text="{Binding DirectionText, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding PeerName, Mode=OneWay}" /><Run Text="  ·  " /><Run Text="{Binding SizeText, Mode=OneWay}" />
                                 </TextBlock>
                                 <TextBlock Text="{Binding StateText, Mode=OneWay}" TextWrapping="Wrap" Margin="0,4,0,0" />
                                 <ProgressBar Minimum="0" Maximum="1" Height="8" Margin="0,6,0,0"
                                              Value="{Binding Progress, Mode=OneWay}"
                                              Visibility="{Binding ShowProgress, Converter={StaticResource B2V}}" />
-                                <TextBlock Text="{Binding Detail, Mode=OneWay}" Foreground="#FF555555" FontSize="12" Margin="0,3,0,0" />
+                                <TextBlock Text="{Binding Detail, Mode=OneWay}" Foreground="{DynamicResource AppMuted}" FontSize="12" Margin="0,3,0,0" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
                                 <Button Content="{x:Static local:Strings.BtnAccept}" Click="Accept_Click"
@@ -61,7 +62,7 @@
                 </DataTemplate>
             </ListBox.ItemTemplate>
         </ListBox>
-        <TextBlock x:Name="EmptyText" Grid.Row="1" Text="{x:Static local:Strings.TransfersEmpty}" Foreground="#FF777777"
+        <TextBlock x:Name="EmptyText" Grid.Row="1" Text="{x:Static local:Strings.TransfersEmpty}" Foreground="{DynamicResource AppMuted}"
                    HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
     </Grid>
 </UserControl>

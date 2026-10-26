@@ -4,7 +4,7 @@
              xmlns:local="clr-namespace:ClipBridge.Windows"
              xmlns:views="clr-namespace:ClipBridge.Windows.Views">
     <Grid>
-        <TextBlock x:Name="LoadingText" Text="{x:Static local:Strings.VaultLoading}" Foreground="#FF777777"
+        <TextBlock x:Name="LoadingText" Text="{x:Static local:Strings.VaultLoading}" Foreground="{DynamicResource AppMuted}"
                    HorizontalAlignment="Center" VerticalAlignment="Center" />
         <views:VaultLockPanel x:Name="LockPanel" Visibility="Collapsed" />
         <views:VaultMainPanel x:Name="MainPanel" Visibility="Collapsed" />
