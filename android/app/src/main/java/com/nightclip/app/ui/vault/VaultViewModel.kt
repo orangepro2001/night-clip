@@ -14,6 +14,7 @@ import com.nightclip.app.logic.KdfChoice
 import com.nightclip.app.logic.KdfLevel
 import com.nightclip.app.logic.QuickUnlockAvailability
 import com.nightclip.app.logic.QuickUnlockPolicy
+import com.nightclip.app.logic.VaultSettingOptions
 import com.nightclip.app.logic.RateLimitCountdown
 import com.nightclip.app.logic.VaultErrors
 import com.nightclip.app.platform.QuickUnlock
@@ -48,6 +49,9 @@ class VaultViewModel(application: Application) : VaultBaseViewModel(application)
 
     private val _quickAvailability = MutableStateFlow(QuickUnlockAvailability.DISABLED)
     val quickAvailability: StateFlow<QuickUnlockAvailability> = _quickAvailability.asStateFlow()
+
+    private val _quickMaxAgeSeconds = MutableStateFlow(prefs.quickMaxAgeSeconds)
+    val quickMaxAgeSeconds: StateFlow<Int> = _quickMaxAgeSeconds.asStateFlow()
 
     /** Why quick unlock is not offered although it was enabled (72 hours, restart, failures); null otherwise. */
     private val _quickNotice = MutableStateFlow<String?>(null)
@@ -130,7 +134,7 @@ class VaultViewModel(application: Application) : VaultBaseViewModel(application)
     }
 
     private fun refreshQuick() {
-        val a = QuickUnlockPolicy.check(prefs.quickState(), System.currentTimeMillis(), prefs.currentBootCount())
+        val a = QuickUnlockPolicy.check(prefs.quickState(), System.currentTimeMillis(), prefs.currentBootCount(), prefs.quickMaxAgeMs)
         if (a.shouldPurge) {
             purgeQuick()
             _quickNotice.value = a.explanation
@@ -348,6 +352,14 @@ class VaultViewModel(application: Application) : VaultBaseViewModel(application)
     }
 
     // ---- settings, master password ------------------------------------------------------------
+
+    /** How long a biometric unlock stays usable after the last master-password unlock; 0 = never expires. */
+    fun setQuickMaxAge(seconds: Int) {
+        if (!VaultSettingOptions.QUICK_MAX_AGE_SECONDS.contains(seconds)) return
+        prefs.quickMaxAgeSeconds = seconds
+        _quickMaxAgeSeconds.value = seconds
+        refreshQuick()
+    }
 
     fun setAutolock(seconds: Int) {
         viewModelScope.launch {

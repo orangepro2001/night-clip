@@ -21,6 +21,13 @@ class VaultPrefs(context: Context) {
             prefs.edit().apply { if (value == null) remove(KEY_KDF_MS) else putLong(KEY_KDF_MS, value) }.apply()
         }
 
+    /** How long after the last master-password unlock biometric unlock stays usable; 0 = never expires. */
+    var quickMaxAgeSeconds: Int
+        get() = prefs.getInt(KEY_QUICK_MAX_AGE, DEFAULT_QUICK_MAX_AGE).coerceIn(0, MAX_QUICK_MAX_AGE)
+        set(value) = prefs.edit().putInt(KEY_QUICK_MAX_AGE, value.coerceIn(0, MAX_QUICK_MAX_AGE)).apply()
+
+    val quickMaxAgeMs: Long get() = quickMaxAgeSeconds.toLong() * 1000
+
     /** The user said "not now" to the quick-unlock offer; it is only offered again from the vault settings. */
     var quickOfferDismissed: Boolean
         get() = prefs.getBoolean(KEY_OFFER_DISMISSED, false)
@@ -64,6 +71,9 @@ class VaultPrefs(context: Context) {
 
     private companion object {
         const val KEY_KDF_MS = "last_kdf_ms"
+        const val KEY_QUICK_MAX_AGE = "quick_max_age_s"
+        const val DEFAULT_QUICK_MAX_AGE = 72 * 3600
+        const val MAX_QUICK_MAX_AGE = 30 * 24 * 3600
         const val KEY_OFFER_DISMISSED = "quick_offer_dismissed"
         const val KEY_BLOB = "quick_blob"
         const val KEY_QUICK_ENABLED = "quick_enabled"

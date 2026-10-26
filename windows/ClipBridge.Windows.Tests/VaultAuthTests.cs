@@ -226,6 +226,7 @@ public class FormCheckTests
     }
 
     [Theory]
+    [InlineData("0", 0, true)]
     [InlineData("30", 30, true)]
     [InlineData("86400", 86400, true)]
     [InlineData(" 300 ", 300, true)]

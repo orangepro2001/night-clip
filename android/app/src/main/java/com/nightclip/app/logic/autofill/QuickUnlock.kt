@@ -45,12 +45,18 @@ object AutofillQuickUnlockPolicy {
 
     enum class Decision { USE_QUICK, ASK_PASSWORD }
 
-    /** Every 72 hours, after a restart, after 5 failures in a row, or without a provider: type the master password. */
-    fun decide(provider: QuickUnlockProvider, st: AutofillQuickUnlockState, nowMs: Long, nowElapsedMs: Long): Decision = when {
+    /** After [maxAgeMs] (0 = never expires), a restart, 5 failures in a row, or without a provider: type the master password. */
+    fun decide(
+        provider: QuickUnlockProvider,
+        st: AutofillQuickUnlockState,
+        nowMs: Long,
+        nowElapsedMs: Long,
+        maxAgeMs: Long = MAX_AGE_MS,
+    ): Decision = when {
         !provider.available -> Decision.ASK_PASSWORD
         st.lastMasterAtMs <= 0 -> Decision.ASK_PASSWORD
         st.consecutiveFailures >= MAX_FAILURES -> Decision.ASK_PASSWORD
-        nowMs < st.lastMasterAtMs || nowMs - st.lastMasterAtMs > MAX_AGE_MS -> Decision.ASK_PASSWORD
+        maxAgeMs > 0 && (nowMs < st.lastMasterAtMs || nowMs - st.lastMasterAtMs > maxAgeMs) -> Decision.ASK_PASSWORD
         nowElapsedMs < st.lastMasterElapsedMs -> Decision.ASK_PASSWORD // the phone restarted since
         else -> Decision.USE_QUICK
     }

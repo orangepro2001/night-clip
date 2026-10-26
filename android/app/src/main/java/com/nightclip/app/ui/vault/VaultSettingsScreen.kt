@@ -39,6 +39,7 @@ import com.nightclip.app.ui.SectionTitle
 fun VaultSettingsScreen(vm: VaultViewModel, onMessage: (String) -> Unit) {
     val status by vm.status.collectAsStateWithLifecycle()
     val quick by vm.quickAvailability.collectAsStateWithLifecycle()
+    val quickMaxAge by vm.quickMaxAgeSeconds.collectAsStateWithLifecycle()
     val activity = LocalContext.current.findActivity() as? FragmentActivity
     var askPassword by remember { mutableStateOf(false) }
     val quickOn = quick == QuickUnlockAvailability.AVAILABLE
@@ -73,6 +74,12 @@ fun VaultSettingsScreen(vm: VaultViewModel, onMessage: (String) -> Unit) {
                     })
                 }
                 HintText(stringResource(R.string.vault_settings_quick_hint))
+                ChoiceRow(
+                    stringResource(R.string.vault_settings_quick_max_age),
+                    VaultSettingOptions.quickMaxAgeLabel(quickMaxAge),
+                    VaultSettingOptions.QUICK_MAX_AGE_SECONDS.map { it to VaultSettingOptions.quickMaxAgeLabel(it) },
+                ) { vm.setQuickMaxAge(it) }
+                HintText(stringResource(R.string.vault_settings_quick_max_age_hint))
             }
 
             SectionTitle(stringResource(R.string.vault_sync_title))

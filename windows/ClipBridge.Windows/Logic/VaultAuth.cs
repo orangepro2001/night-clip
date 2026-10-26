@@ -198,14 +198,14 @@ public static class FreeName
 /// <summary>Vault settings (settings.set vault_autolock_s / vault_clip_clear_s).</summary>
 public static class VaultSettingsForm
 {
-    public const int AutolockMin = 30;
+    public const int AutolockMin = 0; // 0 = never lock
     public const int AutolockMax = 86400;
     public const int ClipClearMin = 5;
     public const int ClipClearMax = 300;
 
     public static (int? Value, string? Error) ParseAutolock(string text) =>
         int.TryParse(text.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var v)
-        && v >= AutolockMin && v <= AutolockMax
+        && (v == 0 || v >= 30 && v <= AutolockMax)
             ? (v, null) : (null, Strings.VaultAutolockInvalid(AutolockMin, AutolockMax));
 
     /// <summary>0 turns clearing off.</summary>

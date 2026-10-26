@@ -75,8 +75,9 @@ func validateVaultSetting(key, value string) error {
 	n, err := strconv.Atoi(value)
 	switch key {
 	case settingVaultAutoLock:
-		if err != nil || n < 30 || n > 86400 {
-			return proto.Errorf(proto.CodeInvalid, "invalid value for %s (30 to 86400 seconds)", key)
+		// 0 = never lock. The UI offers it explicitly; the upper bound keeps timers sane.
+		if err != nil || n != 0 && (n < 30 || n > 86400) {
+			return proto.Errorf(proto.CodeInvalid, "invalid value for %s (0, or 30 to 86400 seconds)", key)
 		}
 	case settingVaultClipClear:
 		if err != nil || n != 0 && (n < 5 || n > 300) {
@@ -143,7 +144,7 @@ func (c *Core) vaultOpenFor(method string) (*vault.Vault, error) {
 	}
 	// The idle timer does not tick while a laptop sleeps; the wall clock does.
 	idle := time.Duration(c.vaultIntSetting(settingVaultAutoLock, defaultVaultAutoLock)) * time.Second
-	if !c.vs.lastActive.IsZero() && time.Now().Round(0).Sub(c.vs.lastActive) > idle {
+	if idle > 0 && !c.vs.lastActive.IsZero() && time.Now().Round(0).Sub(c.vs.lastActive) > idle {
 		c.lockLocked("idle")
 		return nil, proto.Errorf(proto.CodeVaultLocked, "the vault is locked")
 	}
@@ -156,6 +157,10 @@ func (c *Core) armIdleLocked() {
 	d := time.Duration(c.vaultIntSetting(settingVaultAutoLock, defaultVaultAutoLock)) * time.Second
 	if c.vs.timer != nil {
 		c.vs.timer.Stop()
+		c.vs.timer = nil
+	}
+	if d <= 0 {
+		return // the user chose "never"
 	}
 	v := c.vs.v
 	c.vs.timer = time.AfterFunc(d, func() { c.lockVaultIf(v, "idle") })

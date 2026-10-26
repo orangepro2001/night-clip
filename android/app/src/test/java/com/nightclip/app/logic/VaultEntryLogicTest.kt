@@ -315,6 +315,7 @@ class VaultSettingOptionsTest {
     fun everyOfferedChoiceIsAcceptedByTheCore() {
         assertTrue(VaultSettingOptions.AUTOLOCK_SECONDS.all(VaultSettingOptions::validAutolock))
         assertTrue(VaultSettingOptions.CLIP_CLEAR_SECONDS.all(VaultSettingOptions::validClipClear))
+        assertTrue(VaultSettingOptions.validAutolock(0))
         assertFalse(VaultSettingOptions.validAutolock(29))
         assertFalse(VaultSettingOptions.validClipClear(4))
         assertFalse(VaultSettingOptions.validClipClear(301))
@@ -322,10 +323,13 @@ class VaultSettingOptionsTest {
 
     @Test
     fun labels() {
+        assertEquals("永不自动锁定", VaultSettingOptions.autolockLabel(0))
         assertEquals("30 秒", VaultSettingOptions.autolockLabel(30))
         assertEquals("5 分钟", VaultSettingOptions.autolockLabel(300))
         assertEquals("1 小时", VaultSettingOptions.autolockLabel(3600))
         assertEquals("不自动清除", VaultSettingOptions.clipClearLabel(0))
         assertEquals("20 秒", VaultSettingOptions.clipClearLabel(20))
+        assertEquals("永不过期", VaultSettingOptions.quickMaxAgeLabel(0))
+        assertEquals("3 天", VaultSettingOptions.quickMaxAgeLabel(72 * 3600))
     }
 }

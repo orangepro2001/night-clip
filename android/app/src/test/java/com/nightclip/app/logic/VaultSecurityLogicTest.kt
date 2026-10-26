@@ -95,6 +95,12 @@ class QuickUnlockPolicyTest {
     }
 
     @Test
+    fun configuredMaxAgeAndNeverExpire() {
+        assertEquals(QuickUnlockAvailability.EXPIRED, QuickUnlockPolicy.check(ready, t0 + 2 * hour, 7, maxAgeMs = hour))
+        assertEquals(QuickUnlockAvailability.AVAILABLE, QuickUnlockPolicy.check(ready, t0 + 100 * hour, 7, maxAgeMs = 0))
+    }
+
+    @Test
     fun fiveFailuresInARowStopIt() {
         assertEquals(QuickUnlockAvailability.TOO_MANY_FAILURES, QuickUnlockPolicy.check(ready.copy(failures = 5), t0 + hour, 7))
     }

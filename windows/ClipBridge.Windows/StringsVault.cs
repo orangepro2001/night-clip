@@ -343,8 +343,8 @@ public static partial class Strings
 
     // ---- settings ---------------------------------------------------------------------
     public const string VaultSettingsTitle = "密码库设置";
-    public const string VaultAutolockLabel = "无操作多少秒后自动锁定";
-    public static string VaultAutolockInvalid(int min, int max) => $"自动锁定时间需要是 {min} 到 {max} 之间的整数（秒）。";
+    public const string VaultAutolockLabel = "无操作多少秒后自动锁定（0 = 永不）";
+    public static string VaultAutolockInvalid(int min, int max) => $"自动锁定时间需要是 {min} 到 {max} 之间的整数（秒）；0 表示永不自动锁定。";
     public const string VaultClipClearLabel = "复制的机密多少秒后清除剪贴板（0 = 不清除）";
     public static string VaultClipClearInvalid(int min, int max) => $"清除时间需要是 0，或 {min} 到 {max} 之间的整数（秒）。";
     public const string VaultPreventCapture = "防止截屏和录屏（密码库页面显示期间）";

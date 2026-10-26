@@ -257,6 +257,8 @@ public class VaultInteropTests : IDisposable
         _api.SettingsSet("vault_autolock_s", "600");
         Assert.Equal(600, _vault.Status().AutolockS);
         Assert.Equal("INVALID", Code(() => _api.SettingsSet("vault_autolock_s", "10")));
+        _api.SettingsSet("vault_autolock_s", "0");
+        Assert.Equal(0, _vault.Status().AutolockS);
         Assert.True(VaultSettingsForm.ParseAutolock("10").Error is not null);
     }
 

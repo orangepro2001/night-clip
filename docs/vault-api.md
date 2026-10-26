@@ -7,7 +7,7 @@
 ## 1. 状态与锁
 
 - 核心同一时刻最多持有一个已解锁的库。**未解锁时除下列方法外一律返回 `VAULT_LOCKED`**：`vault.status`、`vault.create`、`vault.unlock`、`vault.lock`、`vault.verify_master`（需要已解锁）、`vault.generate`、`vault.strength`、`vault.backup_list`、`vault.backup_verify`。
-- **空闲自动锁**：任何 `vault.*`（除 `status` 和 `vault.totp`）调用都会重置计时（轮询一次性验证码**不算**活动，否则无人值守的库永远不会锁）；用户正在输入而没有调用核心时，壳发 `vault.touch`（`{}`）表示“还在”；超过 `vault_autolock_s`（默认 300 秒，范围 30–86400）核心自行锁定并发出事件 `{"type":"vault.locked","reason":"idle"}`。壳在系统锁屏/睡眠/应用进入后台时应调用 `vault.lock`（`reason:"user"`）。
+- **空闲自动锁**：任何 `vault.*`（除 `status` 和 `vault.totp`）调用都会重置计时（轮询一次性验证码**不算**活动，否则无人值守的库永远不会锁）；用户正在输入而没有调用核心时，壳发 `vault.touch`（`{}`）表示“还在”；超过 `vault_autolock_s`（默认 300 秒；范围 0 或 30–86400，0 = 永不自动锁定）核心自行锁定并发出事件 `{"type":"vault.locked","reason":"idle"}`。壳在系统锁屏/睡眠/应用进入后台时应调用 `vault.lock`（`reason:"user"`）。
 - **猜测限速**：所有接受凭据的方法（`unlock`、`verify_master`、`change_master`/`export_*` 的确认、`backup_verify`、`restore`、`restore_preview`、`import_file`、带密码的 `sync_resolve`）**一次只处理一个**，并共用同一个计数；只有“打开库/确认主密码”的成功才会清零计数（用旧密码验证备份成功不会清零）。同一进程内连续 3 次错误凭据后，每次再试等待 1、2、4…秒（上限 5 分钟），期间 `vault.unlock`/`verify_master`/`change_master`/`export_*`/`backup_verify` 返回 `RATE_LIMITED`（`retryable:true`，`details.retry_after_s`）。成功一次清零。这只能挡住对运行中应用的脚本猜测；偷走文件的离线猜测靠 Argon2 成本。
 - 关闭核心（`shutdown`）会先锁库。
 
@@ -141,7 +141,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 
 | 键 | 值 | 默认 |
 | --- | --- | --- |
-| `vault_autolock_s` | 30–86400 | 300 |
+| `vault_autolock_s` | `0` 或 30–86400 | 300 |
 | `vault_clip_clear_s` | `0` 或 5–300 | 20 |
 
 ## 3.8 解码与资源限制（参考）
@@ -159,7 +159,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 3. **显示：** 机密默认遮盖，点“显示”才展开，展开后在若干秒（建议 15 秒）或离开页面时自动再遮盖；`vault.reveal` 的结果用完立即丢弃引用。
 4. **锁定：** 系统锁屏/睡眠/切换用户、应用进入后台超过设定秒数 → `vault.lock`。锁定后清空列表、详情、搜索框、剪贴板中仍是我们写入的那份。
 5. **危险操作再确认：** 导出（KDBX/CSV）、改主密码、清空回收站、永久删除、整库恢复，都要先弹确认；导出还要重新输入主密码（核心也会校验）。
-6. **快速解锁（可选）：** 壳可以把主密码用设备密钥保护后保存（Android：Keystore + `BiometricPrompt`，`setUserAuthenticationRequired(true)`，生物识别变化即失效；Windows：暂不提供），解锁时取出并调用 `vault.unlock`。**每 72 小时、重启后或连续 5 次失败后必须重新输入主密码。** 核心不知道也不保存这个包装。
+6. **快速解锁（可选）：** 壳可以把主密码用设备密钥保护后保存（Android：Keystore + `BiometricPrompt`，`setUserAuthenticationRequired(true)`，生物识别变化即失效；Windows：暂不提供），解锁时取出并调用 `vault.unlock`。**有效期由壳的设置决定（默认 72 小时，可设 0 = 永不过期）；无论有效期多长，重启后或连续 5 次失败后必须重新输入主密码。** 核心不知道也不保存这个包装。
 7. **不要**缓存条目详情或机密到磁盘，不要把库内容放进系统备份（Android `allowBackup="false"` 已满足）。
 8. **文案**中不得出现“忘记主密码可以找回”之类的话：忘记主密码就是永久无法打开，请在创建时明确告知，并引导用户做一份 `vault.export_file` 备份和（可选）密钥文件。
 

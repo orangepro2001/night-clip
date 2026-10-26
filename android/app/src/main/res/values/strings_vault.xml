@@ -209,12 +209,14 @@
     <!-- Settings -->
     <string name="vault_settings_lock">锁定</string>
     <string name="vault_settings_autolock">空闲自动锁定</string>
-    <string name="vault_settings_autolock_hint">久未操作后自动锁定。另外，应用在后台超过 30 秒、屏幕熄灭时也会立即锁定。</string>
+    <string name="vault_settings_autolock_hint">可选“永不自动锁定”，此时核心不会因空闲锁定；但应用切到后台超过 30 秒、屏幕熄灭时仍会锁定，可用生物解锁。后台/熄屏锁定目前固定。</string>
     <string name="vault_settings_clip_clear">复制后清除剪贴板</string>
     <string name="vault_settings_clip_hint">复制的密码会在这段时间后从剪贴板清除（只清除密码库自己复制的那一份）。应用不在前台时，系统可能不让读取剪贴板，这时会直接清空。</string>
     <string name="vault_settings_quick">快速解锁</string>
     <string name="vault_settings_quick_switch">用指纹或面容解锁</string>
-    <string name="vault_settings_quick_hint">每 72 小时、重启手机后、连续失败 5 次后需要重新输入主密码；指纹有变动时自动失效。关闭后会删除保存的密钥。</string>
+    <string name="vault_settings_quick_hint">达到下面的有效期、重启手机后、连续失败 5 次后需要重新输入主密码；指纹有变动时自动失效。关闭后会删除保存的密钥。</string>
+    <string name="vault_settings_quick_max_age">生物解锁有效期</string>
+    <string name="vault_settings_quick_max_age_hint">从上一次输入主密码算起；超过这个时间后必须重新输入主密码才能继续使用生物解锁。设为“永不过期”后，手机重启或连续失败 5 次仍会要求主密码。它和上面的“空闲自动锁定”是两个独立设置。</string>
     <string name="vault_settings_quick_unavailable">这台手机没有可用的强生物识别（指纹或面容），或还没有录入。</string>
     <string name="vault_settings_quick_password">启用前请先输入主密码确认。</string>
     <string name="vault_settings_quick_enable">确认并启用</string>

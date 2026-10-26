@@ -2,8 +2,8 @@ package com.nightclip.app.logic
 
 /**
  * When the biometric quick unlock may be offered (docs/vault-api.md §4 rule 6): only if the user enabled it, a wrapped
- * secret exists, the last master-password unlock is less than 72 hours old, fewer than 5 quick unlocks failed in a row
- * and the phone has not been restarted since that master-password unlock.
+ * secret exists, the last master-password unlock is younger than the configured max age (0 = never expires), fewer
+ * than 5 quick unlocks failed in a row and the phone has not been restarted since that master-password unlock.
  */
 data class QuickUnlockState(
     val enabled: Boolean = false,
@@ -30,7 +30,7 @@ enum class QuickUnlockAvailability {
     /** Text for the locked screen when quick unlock is NOT offered although the user enabled it; null when nothing needs saying. */
     val explanation: String?
         get() = when (this) {
-            EXPIRED -> "距离上次输入主密码已超过 72 小时，请输入主密码。"
+            EXPIRED -> "距离上次输入主密码已超过设定的有效期，请输入主密码。"
             TOO_MANY_FAILURES -> "快速解锁连续失败 5 次，请输入主密码。"
             REBOOTED -> "手机重启过，请输入主密码。"
             else -> null
@@ -43,20 +43,20 @@ object QuickUnlockPolicy {
 
     /**
      * [currentBootCount] is Settings.Global.BOOT_COUNT now, or null if unreadable. When either count is unknown the
-     * reboot rule is skipped (documented limitation: only the 72 hour limit protects then).
+     * reboot rule is skipped. [maxAgeMs] 0 means the age never expires (still bounded by reboot/failures).
      */
-    fun check(state: QuickUnlockState, nowMs: Long, currentBootCount: Int?): QuickUnlockAvailability {
+    fun check(state: QuickUnlockState, nowMs: Long, currentBootCount: Int?, maxAgeMs: Long = MAX_AGE_MS): QuickUnlockAvailability {
         if (!state.enabled) return QuickUnlockAvailability.DISABLED
         if (!state.hasSecret) return QuickUnlockAvailability.NO_SECRET
         val stored = state.bootCountAtMasterUnlock
         if (stored != null && currentBootCount != null && currentBootCount != stored) return QuickUnlockAvailability.REBOOTED
         val age = nowMs - state.lastMasterUnlockAtMs
-        if (state.lastMasterUnlockAtMs <= 0 || age < 0 || age >= MAX_AGE_MS) return QuickUnlockAvailability.EXPIRED
+        if (maxAgeMs > 0 && (state.lastMasterUnlockAtMs <= 0 || age < 0 || age >= maxAgeMs)) return QuickUnlockAvailability.EXPIRED
         if (state.failures >= MAX_FAILURES) return QuickUnlockAvailability.TOO_MANY_FAILURES
         return QuickUnlockAvailability.AVAILABLE
     }
 
-    /** A master-password unlock (or create) succeeded: the 72 hour clock restarts and failures are forgotten. */
+    /** A master-password unlock (or create) succeeded: the max-age clock restarts and failures are forgotten. */
     fun afterMasterUnlock(state: QuickUnlockState, nowMs: Long, bootCount: Int?): QuickUnlockState =
         state.copy(lastMasterUnlockAtMs = nowMs, failures = 0, bootCountAtMasterUnlock = bootCount)
 

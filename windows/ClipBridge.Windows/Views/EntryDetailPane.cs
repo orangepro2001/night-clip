@@ -54,7 +54,7 @@ internal sealed class EntryDetailPane : UserControl
     public int AutolockSeconds
     {
         get => _autolockSeconds;
-        set => _autolockSeconds = Math.Max(30, value);
+        set => _autolockSeconds = Math.Max(0, value);
     }
 
     /// <summary>Called on every mouse move / key press on the vault page.</summary>

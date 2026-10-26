@@ -30,6 +30,7 @@ import com.nightclip.app.logic.autofill.QuickUnlockRegistry
 import com.nightclip.app.logic.autofill.VaultErrors
 import com.nightclip.app.platform.Actions
 import com.nightclip.app.platform.AutofillPrefs
+import com.nightclip.app.platform.VaultPrefs
 import com.nightclip.app.ui.ClipBridgeTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -173,7 +174,10 @@ class AuthViewModel(app: Application) : AndroidViewModel(app) {
         if (triedQuick) return
         triedQuick = true
         val provider = QuickUnlockRegistry.provider
-        val decision = AutofillQuickUnlockPolicy.decide(provider, provider.state(), System.currentTimeMillis(), SystemClock.elapsedRealtime())
+        val decision = AutofillQuickUnlockPolicy.decide(
+            provider, provider.state(), System.currentTimeMillis(), SystemClock.elapsedRealtime(),
+            VaultPrefs(getApplication()).quickMaxAgeMs,
+        )
         if (decision != AutofillQuickUnlockPolicy.Decision.USE_QUICK) return
         viewModelScope.launch {
             val pw = provider.obtainMasterPassword(host)

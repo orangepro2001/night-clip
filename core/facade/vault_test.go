@@ -147,6 +147,12 @@ func TestVaultLocksItselfWhenIdle(t *testing.T) {
 	if code := n.errorCode("settings.set", map[string]any{"key": "vault_clip_clear_s", "value": "2"}); code != "INVALID" {
 		t.Fatalf("clip clear below the minimum accepted: %s", code)
 	}
+	// 0 means "never": the core must not arm a timer and status must expose it.
+	n.call("settings.set", map[string]any{"key": "vault_autolock_s", "value": "0"})
+	if v := n.call("vault.status", nil)["autolock_s"].(float64); v != 0 {
+		t.Fatalf("never autolock status = %v", v)
+	}
+	n.call("vault.list", nil) // must not be locked by a zero timer
 	n.call("settings.set", map[string]any{"key": "vault_autolock_s", "value": "30"})
 	if v := n.call("settings.get", map[string]any{"key": "vault_autolock_s"})["value"]; v != "30" {
 		t.Fatalf("setting = %v", v)
