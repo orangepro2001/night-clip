@@ -304,6 +304,17 @@ func TestPeerManagement(t *testing.T) {
 	pairNodes(t, win, pix)
 	pixID := pix.deviceID()
 
+	if win.call("status", nil)["capture_configured"] != false {
+		t.Fatal("capture_configured must be false before the user chose")
+	}
+	win.call("settings.set", map[string]any{"key": "capture", "value": "off"})
+	if win.call("status", nil)["capture_configured"] != true {
+		t.Fatal("an explicit choice of 'off' must count as configured")
+	}
+	win.call("peers.reconnect", map[string]any{"device_id": pixID})
+	if code := win.errorCode("peers.reconnect", map[string]any{"device_id": "dev_" + strings.Repeat("a", 26)}); code != "NOT_PAIRED" {
+		t.Fatalf("reconnect unknown = %s", code)
+	}
 	win.call("peers.update", map[string]any{"device_id": pixID, "name": "My Phone", "apply_mode": "auto"})
 	p := win.call("peers.list", nil)["peers"].([]any)[0].(map[string]any)
 	if p["name"] != "My Phone" || p["apply_mode"] != "auto" {

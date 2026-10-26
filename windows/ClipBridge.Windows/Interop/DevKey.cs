@@ -4,10 +4,10 @@ using System.Security.Cryptography;
 namespace ClipBridge.Windows.Interop;
 
 /// <summary>
-/// Temporary database-key provider: a random 32-byte key kept as base64 in
-/// <c>devkey.b64</c> inside the per-user data directory. The key is NOT
-/// encrypted at rest and is protected only by the OS file ACL of the user
-/// profile. TODO(WP9: DPAPI): wrap the key with DPAPI instead.
+/// The legacy plaintext database-key provider: a random 32-byte key kept as base64 in
+/// <c>devkey.b64</c>. The app no longer uses it for new installs: <c>DpapiKeyStore</c> keeps the key
+/// protected by Windows DPAPI in <c>devkey.dpapi</c> and migrates an existing <c>devkey.b64</c> into it.
+/// This class remains for the migration (file name and size constants) and for the interop tests.
 /// </summary>
 public static class DevKey
 {

@@ -327,7 +327,7 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | 方法 | 参数 | 结果 / 说明 |
 | --- | --- | --- |
 | `version` | — | `{core, protocol}` |
-| `status` | — | `{device_id, device_name, platform, listen, port, peers[], capture, listening_addrs[], listening_port, events_dropped}`；`peers[]` 见 `peers.list` |
+| `status` | — | `{device_id, device_name, platform, listen, port, peers[], capture, capture_configured, listening_addrs[], listening_port, events_dropped}`；`capture_configured` 在用户第一次设置 `capture`（无论开或关）之前为 `false`，壳据此决定是否弹出首次运行的询问；`peers[]` 见 `peers.list` |
 | `identity.get` | — | `{device_id, fingerprint}` |
 | `diagnostics.get` | — | 版本、监听地址、各对端状态与游标、更新状态；**不含**密钥、psk、数据库密钥 |
 | `settings.get` | `key?` | 有 `key`：`{key, value}`；否则 `{settings:{…}}`（见下表） |
@@ -338,6 +338,7 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | `pair.confirm` | `pair_id`, `accept` | 监听方：接受（保存对端并开始连接）或拒绝；已过期 → `PAIRING_EXPIRED` |
 | `pair.join` | `link`，或 `host`+`port`+`psk`(+`fp`) | 加入方：立即返回 `{join_id}`；过程以事件 `pair.sas`、`pair.result` 报告。同时只能有一个进行中的加入 |
 | `peers.list` | — | `{peers:[{device_id, name, platform, state, tailnet_addrs[], outbox_pending, recv_cursor, next_seq_out, last_seen_at, apply_mode}]}`；`state`：`connected` / `connecting` / `offline` / `unpaired` / `revoked` |
+| `peers.reconnect` | `device_id` | 立即重试连接（`unpaired` 后用户重新确认、或想马上重连时）；未配对 → `NOT_PAIRED` |
 | `peers.update` | `device_id`, `name?`, `apply_mode?`, `role?` | `apply_mode`：`notify` / `manual` / `auto`；`role`：`auto` / `dialer` / `listener` |
 | `peers.remove` | `device_id`, `forget?` | 撤销配对：通知对端、拉黑指纹、断开；`forget` 同时删除记录（指纹仍被拉黑） |
 | `clip.local_changed` | `text` | 壳报告本地复制。结果 `{sent:[{device_id,name,event_id}], suppressed?}`；`suppressed`：`capture_off` / `empty` / `echo` / `duplicate` / `no_peers` / `too_large` / `sensitive_blocked` |
@@ -382,10 +383,11 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 {"type":"pair.request","pair_id":"…","name":"Pixel","platform":"android","device_id":"dev_…","sas":"482913","expires_at":"…"}   // 监听方：等用户确认
 {"type":"pair.sas","join_id":"…","sas":"482913"}                                                                        // 加入方：显示给用户核对
 {"type":"pair.result","state":"accepted|rejected|expired|failed","role":"listener|joiner","pair_id":"…","join_id":"…","code":"PAIRING_FAILED","message":"…"}
-{"type":"file.offered","transfer_id":"tr_…","from":"dev_…","name":"a.pdf","size":123}
+{"type":"file.offered","transfer_id":"tr_…","from":"dev_…","from_name":"Pixel","name":"a.pdf","size":123456,"sha256":"…","mime_type":"application/pdf","expires_at":1790000000}
+{"type":"file.state","transfer_id":"tr_…","state":"transferring"}
 {"type":"file.progress","transfer_id":"tr_…","offset":1048576,"size":123456789,"rate_bps":52428800}
-{"type":"file.done","transfer_id":"tr_…","path":"…","sha256":"…"}
-{"type":"file.failed","transfer_id":"tr_…","code":"HASH_MISMATCH"}
+{"type":"file.done","transfer_id":"tr_…","direction":"in|out","path":"…","name":"a.pdf","size":123456,"sha256":"…"}
+{"type":"file.failed","transfer_id":"tr_…","direction":"in|out","code":"HASH_MISMATCH","message":"…"}   // code 另有 REJECTED、CANCELLED、EXPIRED、NO_SPACE、TOO_LARGE、SOURCE_LOST…
 {"type":"update.available","version_code":12,"version_name":"0.1.12","mandatory":false,"notes":"…"}
 {"type":"update.progress","received":1048576,"total":15000000}
 {"type":"update.ready","version_code":12,"version_name":"0.1.12","path":"…","mandatory":false}

@@ -153,6 +153,15 @@ func (c *Core) networkCall(method, params string) (result any, handled bool, err
 		result, err = c.pairJoin(n, params)
 	case "peers.list":
 		result = map[string]any{"peers": n.eng.PeerStatuses()}
+	case "peers.reconnect":
+		var p struct {
+			DeviceID string `json:"device_id"`
+		}
+		if err = parseParams(params, &p); err == nil {
+			if err = n.eng.Reconnect(p.DeviceID); err == nil {
+				result = map[string]any{}
+			}
+		}
 	case "peers.update":
 		result, err = c.peersUpdate(n, params)
 	case "peers.remove":

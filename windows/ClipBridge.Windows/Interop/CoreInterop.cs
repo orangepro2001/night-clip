@@ -37,11 +37,18 @@ public sealed class CoreException : Exception
     public CoreException(string code, string message) : base($"{code}: {message}") => Code = code;
 }
 
+/// <summary>The one method the shell logic needs from the core; lets tests substitute a fake.</summary>
+public interface ICoreCaller
+{
+    /// <summary>Calls a facade method and returns the "result" element, or throws <see cref="CoreException"/>.</summary>
+    JsonElement Call(string method, object? parameters = null);
+}
+
 /// <summary>
 /// Managed facade over the Go core. Owns a dedicated event-pump thread that
 /// blocks in cb_next_event; there are no Go→C# callbacks.
 /// </summary>
-public sealed class CoreHost : IDisposable
+public sealed class CoreHost : IDisposable, ICoreCaller
 {
     private Thread? _pump;
     private volatile bool _stop;
@@ -96,6 +103,7 @@ public sealed class CoreHost : IDisposable
                 EventReceived?.Invoke(doc.RootElement.Clone());
             }
             catch (JsonException) { /* malformed event: drop, core owns the contract */ }
+            catch (Exception) { /* a faulty subscriber must never kill the only event consumer */ }
         }
     }
 

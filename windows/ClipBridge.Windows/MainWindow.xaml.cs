@@ -1,153 +1,102 @@
-using System.IO;
-using System.Text.Json;
+using System.ComponentModel;
 using System.Windows;
-using ClipBridge.Windows.Interop;
-using ClipBridge.Windows.Update;
+using System.Windows.Controls;
+using System.Windows.Threading;
+using ClipBridge.Windows.Logic;
+using ClipBridge.Windows.Services;
 
 namespace ClipBridge.Windows;
 
-/// <summary>
-/// Scaffold window that proves the DLL boundary works: it starts the core,
-/// prints status and shows every event from the pump thread.
-/// </summary>
+/// <summary>Navigation shell: banners on top, one page at a time, a status line at the bottom. Closing only hides it.</summary>
 public partial class MainWindow : Window
 {
-    private readonly CoreHost _core = new();
+    internal static MainWindow? Instance { get; private set; }
+
+    private readonly ShellController _shell = ShellController.Current;
+    private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(8) };
+    private bool _shownHideHint;
 
     public MainWindow()
     {
         InitializeComponent();
-        Loaded += OnLoaded;
-        Closed += (_, _) => _core.Dispose();
+        Instance = this;
+        Title = Strings.AppName;
+
+        foreach (var label in new[] { Strings.NavDevices, Strings.NavInbox, Strings.NavTransfers, Strings.NavSettings, Strings.NavDiagnostics })
+            Nav.Items.Add(new ListBoxItem { Content = label, Padding = new Thickness(16, 10, 8, 10) });
+
+        DevicesPage.Attach(_shell);
+        InboxPage.Attach(_shell);
+        TransfersPage.Attach(_shell);
+        SettingsPage.Attach(_shell);
+        DiagnosticsPage.Attach(_shell);
+
+        _statusTimer.Tick += (_, _) => { _statusTimer.Stop(); StatusText.Text = ""; };
+        _shell.StateChanged += RefreshChrome;
+        _shell.StatusMessage += ShowStatus;
+        Nav.SelectedIndex = (int)MainPage.Devices;
+        RefreshChrome();
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var dataDir = App.DataDir;
-            Directory.CreateDirectory(dataDir);
-            var dbKey = DevKey.LoadOrCreate(dataDir); // TODO(WP9: DPAPI): temporary, unencrypted key file
+    internal void ShowPage(MainPage page) => Nav.SelectedIndex = (int)page;
 
-            _core.EventReceived += ev => Dispatcher.BeginInvoke(() =>
-            {
-                Append("event  " + ev);
-                if (ev.TryGetProperty("type", out var t) && (t.GetString() ?? "").StartsWith("update."))
-                {
-                    RefreshUpdate();
-                    // A new version (or a finished download) deserves attention even when minimised.
-                    if (t.GetString() is "update.available" or "update.ready") TaskbarFlash.Flash(this);
-                }
-            });
-            _core.Start(new
-            {
-                data_dir = dataDir,
-                db_key_b64 = dbKey,
-                device_name = Environment.MachineName,
-                platform = "windows",
-                listen = true,
-                port = 47821,
-                app_version_code = BuildInfo.VersionCode,
-                app_version_name = BuildInfo.VersionName,
-                update_url = BuildInfo.UpdateUrl,
-            });
-            ShowStatus();
-            RefreshUpdate();
+    private void ShowStatus(string text)
+    {
+        StatusText.Text = text;
+        _statusTimer.Stop();
+        _statusTimer.Start();
+    }
+
+    /// <summary>Banners and the device line follow the shell state.</summary>
+    private void RefreshChrome()
+    {
+        var warning = _shell.Warnings.Banner;
+        WarningBanner.Visibility = warning is null ? Visibility.Collapsed : Visibility.Visible;
+        WarningText.Text = warning ?? "";
+
+        var update = _shell.Update;
+        var actionable = UpdateView.IsActionable(update);
+        UpdateBanner.Visibility = actionable ? Visibility.Visible : Visibility.Collapsed;
+        if (actionable)
+        {
+            UpdateBannerText.Text = update.State == "ready" ? Strings.UpdateBannerReady(update.LatestName) : Strings.UpdateBannerAvailable(update.LatestName);
+            UpdateBannerButton.Content = Strings.NavSettings;
         }
-        catch (Exception ex) when (ex is DllNotFoundException or BadImageFormatException or CoreException
-                                    or DevKeyException or IOException or UnauthorizedAccessException)
+
+        DeviceText.Text = _shell.CoreRunning
+            ? $"{_shell.DeviceName}  ·  {_shell.DeviceId}"
+            : Strings.StatusStarting;
+    }
+
+    private void UpdateBannerButton_Click(object sender, RoutedEventArgs e) => ShowPage(MainPage.Settings);
+
+    private void Nav_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var page = (MainPage)Math.Max(0, Nav.SelectedIndex);
+        DevicesPage.Visibility = page == MainPage.Devices ? Visibility.Visible : Visibility.Collapsed;
+        InboxPage.Visibility = page == MainPage.Inbox ? Visibility.Visible : Visibility.Collapsed;
+        TransfersPage.Visibility = page == MainPage.Transfers ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPage.Visibility = page == MainPage.Settings ? Visibility.Visible : Visibility.Collapsed;
+        DiagnosticsPage.Visibility = page == MainPage.Diagnostics ? Visibility.Visible : Visibility.Collapsed;
+
+        switch (page)
         {
-            StatusLine.Text = "Core failed to start";
-            Append(ex.Message);
-        }
-    }
-
-    private void ShowStatus()
-    {
-        var st = _core.Call("status");
-        StatusLine.Text = $"{st.GetProperty("device_name").GetString()}  ·  {st.GetProperty("device_id").GetString()}";
-        Append("status " + st);
-    }
-
-    // ---- self-update -------------------------------------------------------------
-
-    private UpdateInfo _update = UpdateInfo.FromJson(default);
-
-    private void RefreshUpdate()
-    {
-        try { _update = UpdateInfo.FromJson(_core.Call("update.status")); }
-        catch (CoreException ex) { UpdateText.Text = "Update status unavailable: " + ex.Message; return; }
-
-        UpdateText.Text = _update.Text;
-        UpdateText.Foreground = _update.Mandatory && _update.State is "available" or "ready"
-            ? System.Windows.Media.Brushes.Firebrick : System.Windows.SystemColors.ControlTextBrush;
-        UpdateButton.Content = _update.ButtonText;
-        UpdateButton.IsEnabled = _update.ButtonAction != UpdateInfo.Action.None;
-        UpdateButton.Visibility = _update.Enabled ? Visibility.Visible : Visibility.Collapsed;
-        UpdateProgress.Visibility = _update.State == "downloading" ? Visibility.Visible : Visibility.Collapsed;
-        UpdateProgress.Value = _update.ProgressFraction;
-        AutoUpdateBox.IsEnabled = _update.Enabled;
-        AutoUpdateBox.IsChecked = _update.Auto;
-    }
-
-    private async void UpdateButton_Click(object sender, RoutedEventArgs e)
-    {
-        UpdateButton.IsEnabled = false;
-        try
-        {
-            switch (_update.ButtonAction)
-            {
-                case UpdateInfo.Action.Check:
-                    UpdateText.Text = "Checking for updates…";
-                    await Task.Run(() => _core.Call("update.check")); // up to 30 s: keep the UI free
-                    break;
-                case UpdateInfo.Action.Download:
-                    _core.Call("update.download");
-                    break;
-                case UpdateInfo.Action.Install:
-                    InstallUpdate();
-                    return;
-            }
-        }
-        catch (CoreException ex) { Append("update: " + ex.Message); }
-        finally { RefreshUpdate(); }
-    }
-
-    private void AutoUpdateBox_Click(object sender, RoutedEventArgs e)
-    {
-        try { _core.Call("update.config", new { auto = AutoUpdateBox.IsChecked == true }); }
-        catch (CoreException ex) { Append("update: " + ex.Message); }
-        RefreshUpdate();
-    }
-
-    /// <summary>Stages the verified package, starts the staged exe to swap the files and exits.</summary>
-    private void InstallUpdate()
-    {
-        try
-        {
-            var staged = UpdateApplier.Stage(_update.ReadyPath, App.StagingDir);
-            UpdateApplier.LaunchApplier(staged, AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar), Environment.ProcessId);
-            Close(); // Closed disposes the core; the updater waits for this process to exit
-        }
-        catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException
-                                       or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
-        {
-            Append("update: " + ex.Message);
-            MessageBox.Show(this, "The update could not be prepared:\n\n" + ex.Message, "ClipBridge update",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            RefreshUpdate();
+            case MainPage.Inbox: InboxPage.OnShown(); break;
+            case MainPage.Transfers: TransfersPage.OnShown(); break;
+            case MainPage.Settings: SettingsPage.OnShown(); break;
+            case MainPage.Diagnostics: DiagnosticsPage.OnShown(); break;
         }
     }
 
-    private void RefreshButton_Click(object sender, RoutedEventArgs e)
+    private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        try { ShowStatus(); RefreshUpdate(); }
-        catch (CoreException ex) { Append(ex.Message); }
-    }
-
-    private void Append(string line)
-    {
-        Log.AppendText(line + Environment.NewLine);
-        Log.ScrollToEnd();
+        if (_shell.IsExiting) return;
+        e.Cancel = true;   // the X button hides to the tray; "退出" in the tray menu really exits
+        Hide();
+        if (!_shownHideHint)
+        {
+            _shownHideHint = true;
+            _shell.Balloon(Strings.StillRunningTitle, Strings.StillRunningText);
+        }
     }
 }

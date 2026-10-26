@@ -1,0 +1,30 @@
+<UserControl x:Class="ClipBridge.Windows.Views.DiagnosticsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ClipBridge.Windows">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Row="0" Margin="0,0,0,12">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="{x:Static local:Strings.BtnRefresh}" Click="Refresh_Click" />
+                <Button Content="{x:Static local:Strings.DiagCopy}" Click="Copy_Click" />
+                <Button Content="{x:Static local:Strings.DiagOpenLogs}" Click="Logs_Click" />
+                <Button Content="{x:Static local:Strings.DiagOpenData}" Click="Data_Click" />
+            </StackPanel>
+            <TextBlock Text="{x:Static local:Strings.DiagTitle}" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </DockPanel>
+
+        <Border x:Name="NoTailnetBanner" Grid.Row="1" Background="#FFFFF4CE" BorderBrush="#FFE0B000" BorderThickness="1"
+                Padding="10,6" Margin="0,0,0,10" Visibility="Collapsed">
+            <TextBlock Text="{x:Static local:Strings.NoTailnetBanner}" TextWrapping="Wrap" />
+        </Border>
+
+        <TextBox x:Name="DiagText" Grid.Row="2" IsReadOnly="True" FontFamily="Consolas" TextWrapping="NoWrap"
+                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" />
+    </Grid>
+</UserControl>

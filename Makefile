@@ -100,14 +100,15 @@ cbdist:
 	cd core && $(GO) build -trimpath -ldflags="-s -w" -o dist/host/cbdist ./cmd/cbdist
 
 # Windows release package: the published WPF app (framework-dependent, win-x64) plus
-# clipbridge_core.dll, zipped flat so the updater can copy it over the install folder.
-dist-windows: dll
+# clipbridge_core.dll and the cbridge.exe command line, zipped flat so the updater can copy it over the install folder.
+dist-windows: dll cli
 	rm -rf $(DIST)/publish-win
 	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) publish windows/ClipBridge.Windows -c Release -r win-x64 \
 		--self-contained false -p:EnableWindowsTargeting=true -p:DebugType=None -p:DebugSymbols=false \
 		-p:CbVersionCode=$(CB_VERSION_CODE) -p:CbVersionName=$(CB_VERSION_NAME) -p:CbUpdateUrl=$(CB_UPDATE_URL) \
 		-o $(DIST)/publish-win
-	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/clipbridge-windows.zip ClipBridge.exe clipbridge_core.dll
+	cp $(DIST)/windows-amd64/cbridge.exe $(DIST)/publish-win/cbridge.exe
+	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/clipbridge-windows.zip ClipBridge.exe clipbridge_core.dll cbridge.exe
 
 # Android release APK (versionCode/versionName/update URL stamped from the environment above).
 dist-android: aar

@@ -4,6 +4,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- NotifyIcon and System.Drawing only; no windows are built with WinForms. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <PlatformTarget>x64</PlatformTarget>
@@ -13,6 +15,14 @@
     <RootNamespace>ClipBridge.Windows</RootNamespace>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
   </PropertyGroup>
+
+  <!-- WPF and WinForms both define Application, MessageBox, Button, ...: keep their namespaces
+       out of the implicit usings so that unqualified names mean the WPF ones. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <Using Include="System.IO" />
+  </ItemGroup>
 
   <!-- Stamped by `make dist-windows` (scripts/version.sh); a plain build is a dev build
        (code 0), which keeps self-update off. The update URL is deliberately not in the

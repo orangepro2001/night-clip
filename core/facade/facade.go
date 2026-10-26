@@ -287,6 +287,10 @@ func (c *Core) status() (any, error) {
 	if c.n != nil {
 		st["peers"] = c.n.eng.PeerStatuses()
 		st["capture"] = c.n.clip.Setting("capture")
+		// false until the user has answered the first-run question, so a shell can tell
+		// "never asked" from "asked and said no" (both read as capture = off)
+		_, configured, _ := c.db.GetSetting("capture")
+		st["capture_configured"] = configured
 		addrs := []string{}
 		for _, a := range c.n.eng.ListenAddrs() {
 			addrs = append(addrs, a.String())
