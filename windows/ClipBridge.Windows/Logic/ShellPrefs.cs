@@ -14,6 +14,9 @@ public sealed class ShellPrefs
     public bool FirstRunDone { get; set; }
     public string? DownloadDir { get; set; }
 
+    /// <summary>Exclude the window from screenshots and recordings while the vault page is shown (default on).</summary>
+    public bool PreventCapture { get; set; } = true;
+
     public static ShellPrefs Load(string dataDir)
     {
         try
@@ -25,6 +28,7 @@ public sealed class ShellPrefs
             {
                 FirstRunDone = JsonRead.Bool(doc.RootElement, "first_run_done"),
                 DownloadDir = JsonRead.Str(doc.RootElement, "download_dir") is { Length: > 0 } d ? d : null,
+                PreventCapture = JsonRead.Bool(doc.RootElement, "prevent_capture", true),
             };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -42,6 +46,7 @@ public sealed class ShellPrefs
             {
                 ["first_run_done"] = FirstRunDone,
                 ["download_dir"] = DownloadDir,
+                ["prevent_capture"] = PreventCapture,
             });
             var path = Path.Combine(dataDir, FileName);
             var tmp = path + ".tmp";

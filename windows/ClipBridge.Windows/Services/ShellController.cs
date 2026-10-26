@@ -8,7 +8,7 @@ using ClipBridge.Windows.Views;
 
 namespace ClipBridge.Windows.Services;
 
-public enum MainPage { Devices, Inbox, Transfers, Settings, Diagnostics }
+public enum MainPage { Devices, Inbox, Transfers, Vault, Settings, Diagnostics }
 
 internal enum ApplyOutcome { Written, Downgraded, Failed }
 
@@ -91,6 +91,7 @@ internal sealed partial class ShellController : IDisposable
         _tray.CheckUpdateRequested += () => _ = CheckUpdateFromTrayAsync();
         _tray.ExitRequested += ExitApp;
         _tray.SetAutoStartChecked(AutoStartRegistry.IsEnabled());
+        InitVault();
         UpdateTray();
     }
 
@@ -146,6 +147,7 @@ internal sealed partial class ShellController : IDisposable
         if (_disposed) return;
         _disposed = true;
         _tray.Dispose();      // first, so the icon disappears at once
+        DisposeVault();       // session hooks off, our secret off the clipboard (needs the monitor's window)
         _monitor.Dispose();   // RemoveClipboardFormatListener + RemoveHook
         _clipQueue.Dispose();
         _core.Dispose();
@@ -251,6 +253,12 @@ internal sealed partial class ShellController : IDisposable
                     break;
                 case UpdateEvent u:
                     HandleUpdateEvent(u);
+                    break;
+                case VaultLockedEvent v:
+                    OnVaultLockedEvent(v);
+                    break;
+                case VaultChangedEvent:
+                    VaultChanged?.Invoke();
                     break;
             }
         }

@@ -20,6 +20,7 @@ internal sealed class TrayService : IDisposable
     private readonly WinForms.ToolStripMenuItem _pauseItem;
     private readonly WinForms.ToolStripMenuItem _resumeItem;
     private readonly WinForms.ToolStripMenuItem _undoItem;
+    private readonly WinForms.ToolStripMenuItem _lockVaultItem;
     private readonly Dictionary<TrayState, Drawing.Icon> _icons = new();
     private readonly List<IntPtr> _iconHandles = new();
 
@@ -34,6 +35,7 @@ internal sealed class TrayService : IDisposable
     /// <summary>Minutes to pause sync for; 0 = resume now.</summary>
     public event Action<int>? PauseRequested;
     public event Action? UndoRequested;
+    public event Action? LockVaultRequested;
     public event Action<bool>? AutoStartToggled;
     public event Action? CheckUpdateRequested;
     public event Action? ExitRequested;
@@ -45,6 +47,8 @@ internal sealed class TrayService : IDisposable
 
         _menu.Items.Add(Item(Strings.TrayOpen, () => OpenRequested?.Invoke()));
         _menu.Items.Add(Item(Strings.TrayPair, () => PairRequested?.Invoke()));
+        _lockVaultItem = Item(Strings.TrayLockVault, () => LockVaultRequested?.Invoke());
+        _menu.Items.Add(_lockVaultItem);
         _menu.Items.Add(new WinForms.ToolStripSeparator());
         _syncItem = new WinForms.ToolStripMenuItem(Strings.TraySync) { CheckOnClick = true };
         _syncItem.Click += (_, _) => SyncToggled?.Invoke(_syncItem.Checked);

@@ -54,6 +54,16 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DestroyIcon(IntPtr hIcon);
 
+    // ---- window capture exclusion (user32) -------------------------------------------
+    public const uint WDA_NONE = 0x0;
+    public const uint WDA_MONITOR = 0x1;
+    /// <summary>Windows 10 2004 and later: the window is left out of screenshots and recordings.</summary>
+    public const uint WDA_EXCLUDEFROMCAPTURE = 0x11;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
     /// <summary>Lets the already running instance take the foreground (<c>dwProcessId</c> -1 = ASFW_ANY).</summary>
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

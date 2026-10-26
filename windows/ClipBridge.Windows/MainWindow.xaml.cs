@@ -22,12 +22,13 @@ public partial class MainWindow : Window
         Instance = this;
         Title = Strings.AppName;
 
-        foreach (var label in new[] { Strings.NavDevices, Strings.NavInbox, Strings.NavTransfers, Strings.NavSettings, Strings.NavDiagnostics })
+        foreach (var label in new[] { Strings.NavDevices, Strings.NavInbox, Strings.NavTransfers, Strings.NavVault, Strings.NavSettings, Strings.NavDiagnostics })
             Nav.Items.Add(new ListBoxItem { Content = label, Padding = new Thickness(16, 10, 8, 10) });
 
         DevicesPage.Attach(_shell);
         InboxPage.Attach(_shell);
         TransfersPage.Attach(_shell);
+        VaultPage.Attach(_shell);
         SettingsPage.Attach(_shell);
         DiagnosticsPage.Attach(_shell);
 
@@ -76,11 +77,15 @@ public partial class MainWindow : Window
         DevicesPage.Visibility = page == MainPage.Devices ? Visibility.Visible : Visibility.Collapsed;
         InboxPage.Visibility = page == MainPage.Inbox ? Visibility.Visible : Visibility.Collapsed;
         TransfersPage.Visibility = page == MainPage.Transfers ? Visibility.Visible : Visibility.Collapsed;
+        VaultPage.Visibility = page == MainPage.Vault ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = page == MainPage.Settings ? Visibility.Visible : Visibility.Collapsed;
         DiagnosticsPage.Visibility = page == MainPage.Diagnostics ? Visibility.Visible : Visibility.Collapsed;
 
+        if (page != MainPage.Vault) VaultPage.OnHidden(); // screen-capture exclusion only while the vault page shows
+
         switch (page)
         {
+            case MainPage.Vault: VaultPage.OnShown(); break;
             case MainPage.Inbox: InboxPage.OnShown(); break;
             case MainPage.Transfers: TransfersPage.OnShown(); break;
             case MainPage.Settings: SettingsPage.OnShown(); break;

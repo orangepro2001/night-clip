@@ -141,6 +141,12 @@ public sealed record UpdateEvent : CoreEvent
     public string Code { get; init; } = "";
 }
 
+/// <summary>The core locked the vault (<c>reason</c>: idle / user / ...). Everything the UI holds must be dropped.</summary>
+public sealed record VaultLockedEvent : CoreEvent { public string Reason { get; init; } = ""; }
+
+/// <summary>The vault changed behind the UI's back (<c>reason</c>: "sync"): reload the list.</summary>
+public sealed record VaultChangedEvent : CoreEvent { public string Reason { get; init; } = ""; }
+
 public sealed record UnknownEvent : CoreEvent;
 
 public static class CoreEventParser
@@ -240,6 +246,12 @@ public static class CoreEventParser
             case "file.failed":
                 ev = new FileFailedEvent { TransferId = Id("transfer_id"), Code = Id("code"), Message = Id("message") };
                 id = Id("transfer_id");
+                break;
+            case "vault.changed":
+                ev = new VaultChangedEvent { Reason = Id("reason") };
+                break;
+            case "vault.locked":
+                ev = new VaultLockedEvent { Reason = Id("reason") };
                 break;
             default:
                 if (type.StartsWith("update.", StringComparison.Ordinal))
