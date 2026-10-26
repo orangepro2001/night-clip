@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -168,9 +169,16 @@ func TestBadLinesGetAnErrorAndTheConnectionSurvives(t *testing.T) {
 func TestAnOversizedLineIsRefused(t *testing.T) {
 	addr, _ := start(t)
 	c := dial(t, addr)
+	written := make(chan struct{})
 	go func() {
+		defer close(written)
 		_, _ = io.WriteString(c.c, `{"id":1,"method":"status","params":{"p":"`+strings.Repeat("a", MaxLine+10)+`"}}`+"\n")
 	}()
+	if runtime.GOOS == "windows" {
+		// A pipe handle is synchronous: a read cannot overlap a write that is still pending
+		// on the same handle, so let the write fail (the server hangs up) before reading.
+		<-written
+	}
 	r := c.read()
 	if !strings.Contains(string(r["error"]), "too long") {
 		t.Fatalf("reply = %v", r)

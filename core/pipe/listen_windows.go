@@ -156,12 +156,43 @@ type pipeConn struct {
 	h syscall.Handle
 }
 
+// Close ends the connection even when another goroutine is blocked reading from it.
+//
+// The handle is synchronous, so a pending ReadFile holds the file object: File.Close
+// would wait for it forever (the read only returns when the client sends or leaves), and
+// so would DisconnectNamedPipe. CancelIoEx aborts the pending call from outside; it is
+// repeated until the file is closed because a read can start between two attempts.
+// DisconnectNamedPipe is deliberately not used: it discards data the client has not read
+// yet, which would lose the reply that precedes a close. Closing the server's handle lets
+// the client read what is buffered and then see end of file.
 func (c *pipeConn) Close() error {
-	_ = disconnect(c.h)
-	return c.File.Close()
+	stop := make(chan struct{})
+	go func() {
+		t := time.NewTicker(5 * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop: // the handle may be gone (and its number reused): never touch it again
+				return
+			default:
+			}
+			procCancelIoEx.Call(uintptr(c.h), 0)
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+			}
+		}
+	}()
+	err := c.File.Close()
+	close(stop)
+	return err
 }
 
-var procDisconnect = kernel32.NewProc("DisconnectNamedPipe")
+var (
+	procCancelIoEx = kernel32.NewProc("CancelIoEx")
+	procDisconnect = kernel32.NewProc("DisconnectNamedPipe")
+)
 
 func disconnect(h syscall.Handle) error {
 	r, _, e := procDisconnect.Call(uintptr(h))
