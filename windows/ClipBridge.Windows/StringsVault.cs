@@ -257,7 +257,7 @@ public static partial class Strings
     public const string BackupOtherPassword = "这份备份的主密码（留空 = 当前主密码）";
     public const string RestoreNothingSelected = "请至少勾选一个条目。";
     public const string BackupVerifyTitle = "验证备份";
-    public const string BackupVerifyPrompt = "验证需要这份备份拍摄时用的主密码。默认是现在的主密码，如果之后改过主密码，请填旧的。";
+    public const string BackupVerifyPrompt = "验证需要这份备份拍摄时用的主密码。没改过主密码的话就是现在的主密码；改过的话请填旧的。";
     public static string BackupVerified(int entries, int groups, int trash, string time) =>
         $"可以恢复：{entries} 个条目，{groups} 个分组，回收站 {trash} 个，最近修改 {time}。";
     public const string ReasonSave = "保存之前";
@@ -318,6 +318,7 @@ public static partial class Strings
         "CSV 文件里的所有密码、API 密钥和笔记都是没有加密的明文。\n" +
         "任何能拿到这个文件的人（包括云盘、备份软件、恶意程序）都能直接看到全部内容。\n" +
         "只在必须迁移到别的软件时使用，导出后请立刻导入并安全删除这个文件。";
+    public const string ExportCsvAreYouSure = "真的要导出没有加密的 CSV 文件吗？";
     public const string ExportCsvConfirmWord = "明文";
     public static string ExportCsvConfirmPrompt => $"我明白文件是明文的。请输入“{ExportCsvConfirmWord}”确认：";
     public const string ExportCsvNotConfirmed = "请输入确认字样。";

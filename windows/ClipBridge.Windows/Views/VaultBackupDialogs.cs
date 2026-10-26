@@ -46,8 +46,10 @@ internal static class BackupsWindow
         DockPanel.SetDock(bottom, Dock.Bottom);
         dock.Children.Add(top);
         dock.Children.Add(bottom);
-        dock.Children.Add(list);
-        dock.Children.Add(empty);
+        var center = new Grid();   // the last child of a DockPanel fills the rest: list and "no backups" text share it
+        center.Children.Add(list);
+        center.Children.Add(empty);
+        dock.Children.Add(center);
 
         var w = DialogKit.Create(shell, owner, Strings.BackupsTitle, 600, dock, height: 560);
         close.Click += (_, _) => w.Close();
@@ -361,6 +363,8 @@ internal static class ExportWindow
                 ? ExportForm.CheckKdbx(master.Password, filePw.Password, filePwConfirm.Password)
                 : ExportForm.CheckCsv(master.Password) ?? (ExportForm.CsvConfirmed(confirmWord.Text) ? null : Strings.ExportCsvNotConfirmed);
             if (problem is not null) { error.Text = problem; return; }
+            // A last, separate warning dialog for the plain-text file (No is the default button).
+            if (!isKdbx && !VaultUi.Confirm(w, Strings.ExportCsvWarning + "\n\n" + Strings.ExportCsvAreYouSure, Strings.ExportCsvWarningTitle, warning: true)) return;
 
             var path = VaultUi.PickSaveFile(w, Strings.ExportTitle, isKdbx ? Strings.FilterKdbx : Strings.FilterCsv, ExportForm.DefaultFileName(isKdbx ? "kdbx" : "csv", DateTimeOffset.Now));
             if (path is null) return;

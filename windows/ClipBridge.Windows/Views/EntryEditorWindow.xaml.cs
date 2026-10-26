@@ -50,7 +50,12 @@ public partial class EntryEditorWindow : Window
 
         PwdBox.TextChanged += () => { _strengthTimer.Stop(); _strengthTimer.Start(); };
         _strengthTimer.Tick += async (_, _) => { _strengthTimer.Stop(); await UpdateStrengthAsync(); };
-        PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) Close(); };
+        PreviewKeyDown += (_, e) =>
+        {
+            _shell.NoteVaultActivity(); // typing a long note is activity: keep the core's idle timer from locking mid-edit
+            if (e.Key == System.Windows.Input.Key.Escape) Close();
+        };
+        PreviewMouseDown += (_, _) => _shell.NoteVaultActivity();
         Closing += OnClosing;
         Closed += (_, _) => WipeSecrets();
         _ready = true;

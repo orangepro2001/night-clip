@@ -30,13 +30,15 @@ public partial class VaultMainPanel : UserControl
     public VaultMainPanel()
     {
         InitializeComponent();
+        _suppress = true; // the selection handlers need the shell, which is attached later
         foreach (var f in QuickFilters.All)
             FilterList.Items.Add(new ListBoxItem { Tag = f, Content = QuickFilters.Label(f), Padding = new Thickness(8, 5, 6, 5) });
         FilterList.SelectedIndex = 0;
+        _suppress = false;
         _searchTimer.Tick += async (_, _) => { _searchTimer.Stop(); await ReloadAsync(); };
-        PreviewMouseMove += (_, _) => Detail.MarkActivity();
-        PreviewMouseDown += (_, _) => Detail.MarkActivity();
-        PreviewKeyDown += (_, _) => Detail.MarkActivity();
+        PreviewMouseMove += (_, _) => NoteActivity();
+        PreviewMouseDown += (_, _) => NoteActivity();
+        PreviewKeyDown += (_, _) => NoteActivity();
         UpdateToolbar();
     }
 
@@ -49,11 +51,18 @@ public partial class VaultMainPanel : UserControl
 
     private Window? OwnerWindow => Window.GetWindow(this);
 
+    private void NoteActivity()
+    {
+        Detail.MarkActivity();
+        _shell?.NoteVaultActivity();
+    }
+
     // ---- lifecycle -----------------------------------------------------------------------------
 
     public async Task OnUnlockedAsync(VaultStatus status)
     {
         Detail.AutolockSeconds = status.AutolockS;
+        _shell.VaultAutolockSeconds = status.AutolockS;
         ResetFilters();
         await ReloadAsync();
     }
@@ -343,6 +352,7 @@ public partial class VaultMainPanel : UserControl
         if (st.Ok)
         {
             Detail.AutolockSeconds = st.Value!.AutolockS;
+            _shell.VaultAutolockSeconds = st.Value.AutolockS;
             AutolockChanged?.Invoke(st.Value.AutolockS);
         }
     }

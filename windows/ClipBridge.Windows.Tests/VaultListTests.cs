@@ -235,6 +235,22 @@ public class SmallVaultLogicTests
     }
 
     [Fact]
+    public void IdleKeepAlive_PingsOnlyWithFreshInput_AndNotTooOften()
+    {
+        var t = DateTimeOffset.UtcNow;
+        Assert.Equal(TimeSpan.FromSeconds(100), IdleKeepAlive.Interval(300));
+        Assert.Equal(TimeSpan.FromSeconds(10), IdleKeepAlive.Interval(30));
+        Assert.Equal(TimeSpan.FromSeconds(120), IdleKeepAlive.Interval(86400));
+        // typing now, last ping long ago: ping
+        Assert.True(IdleKeepAlive.ShouldPing(t, t.AddMinutes(-10), t, 300));
+        // typing, but pinged a moment ago
+        Assert.False(IdleKeepAlive.ShouldPing(t, t.AddSeconds(-20), t, 300));
+        // no input since the last ping: never ping, so an unattended window still locks
+        Assert.False(IdleKeepAlive.ShouldPing(t.AddMinutes(-5), t.AddMinutes(-1), t, 300));
+        Assert.False(IdleKeepAlive.ShouldPing(DateTimeOffset.MinValue, DateTimeOffset.MinValue, t, 300));
+    }
+
+    [Fact]
     public void AttachmentRules_Limit5MiB()
     {
         Assert.Null(AttachmentRules.Check(5L << 20));

@@ -123,3 +123,19 @@
 - `make check` 通过（含新增的 C# / Kotlin 单元测试）。
 - 报告里单独列出：**无法在这台机器上验证的行为**（真实剪贴板、托盘、通知、相机、MediaStore、前台服务）和你对其正确性的依据（文档/API 的哪一条）。
 - 不要宣称“已验证”未被测试或编译覆盖的东西。
+
+## 6. Windows：密码库页面（`vault.*`，接口见 [vault-api.md](vault-api.md)）
+
+文件：`windows/ClipBridge.Windows/` 下的 `Views/Vault*.xaml(.cs)`、`Views/EntryDetailPane.cs`、`Views/EntryEditorWindow.*`、`Views/PasswordGeneratorWindow.*`、`Views/VaultDialogs.cs`、`Views/VaultBackupDialogs.cs`、`Views/VaultControls.cs`（`SecretBox`、`CredsBox`、`StrengthBar`、`TotpRing`）、`Services/ShellController.Vault.cs`、`Services/DisplayAffinity.cs`；纯逻辑（无 WPF 依赖，有单元测试）在 `Logic/Vault*.cs`、`Logic/EntryDraft.cs`。
+
+结构与规则：
+
+- **所有决定放在 `Logic/`**：`VaultApi`（带类型的 `vault.*` 封装，`ICoreCaller` 可替换成假的）、`EntryDraft` / `EntryValidator`（和核心 `validate()` 一致的客户端校验：标题必填、单项 256 KiB（按 UTF-8 字节）、字段名保留字/重复/128 字节、最多 100 个字段和标签）、`KindTemplate` / `FormVisibility`（四种类型的表单）、`QuickFilters` / `GroupTree`（筛选与分组，分组在客户端过滤并包含子分组）、`DetailRows` / `RevealState`（遮盖与 15 秒自动再遮盖）、`TotpCountdown`（倒计时与圆环）、`ClipboardClearPolicy` / `ClipboardClearGuard`（“序号没变才清除”）、`LockPolicy`、`RateLimitCountdown`、`RestoreSelection`、`HealthView`、`ErrorMessages.ForVault`。视图只做绑定。
+- **线程**：所有核心调用经 `ShellController.VaultCallAsync`（`Task.Run`，不阻塞 UI）。结果是 `VaultResult<T>`：成功值，或错误码 + 友好文本 + `RATE_LIMITED` 的等待秒数（`CoreException.RetryAfterSeconds` 取自 `error.details.retry_after_s`）。日志只记错误码，**从不**记参数或值。
+- **剪贴板（§4 规则 1）**：`CopyVaultSecretAsync` = `vault.copy` → 在剪贴板工作线程里用 `ClipboardAccess.WriteText(owner, text, sensitive: true)`：同一次打开剪贴板的会话里写入文本和三个格式 `ExcludeClipboardContentFromMonitorProcessing`、`CanIncludeInClipboardHistory=0`、`CanUploadToCloudClipboard=0`，任何一个失败就清空并报错（机密不会无保护地留在剪贴板）→ 写完立刻记下 `GetClipboardSequenceNumber` 既作为 `_ownWriteSeq`（`ClipboardMonitor` 不会把它当成用户复制），也交给 `ClipboardClearGuard`。`clear_after_s` 秒后在剪贴板线程里比较序号：没变才 `EmptyClipboard`；变了、未知（0）或设置为 0 都不动。锁定时（`vault.locked` 事件、托盘、会话事件、退出）同样按“序号没变才清”处理。
+- **屏幕（规则 2）**：`DisplayAffinity.Set` 用 `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE=0x11)`，失败回退 `WDA_MONITOR`；只在密码库页显示期间设置（`MainWindow` 切页时调用 `VaultPage.OnShown/OnHidden`）；开关 `ShellPrefs.PreventCapture`（`shell.json` 的 `prevent_capture`，默认开）；所有密码库对话框用 `ProtectDialog`。
+- **锁定（规则 4）**：`SystemEvents.SessionSwitch`（锁屏、注销、切换用户、远程断开）和 `PowerModeChanged`（挂起）→ 在事件线程里**同步**调用 `vault.lock`（不能等 UI 线程，挂起不会等）；核心发出 `vault.locked` 事件（`CoreEventParser` → `VaultLockedEvent`）→ `ShellController` 触发 `VaultLocked` → `VaultPage` 关闭所有已登记的密码库对话框（`VaultUi.Track`/`CloseAll`）、清空列表/详情/搜索框/密码框、显示解锁页。
+- **空闲计时的两个细节**：核心的空闲计时只被 `vault.*` 调用（`status` 除外）重置。① 详情里的 TOTP 每个周期调用一次 `vault.totp`，所以用户一段时间没有操作后（`TotpActivityPolicy`）就暂停刷新，否则永远不会自动锁定；② 反过来，用户在编辑器里打很长的字时核心看不到“操作”，所以 `IdleKeepAlive` 在有新的键盘/鼠标输入时每隔 autolock/3 秒（10–120 秒）调用一次 `vault.groups` 作为心跳；没有新输入就不发。
+- **没有做**：Windows 快速解锁（规则 6，按文档“暂不提供”）。
+- **测试**：`Vault*Tests.cs`（逻辑）+ `VaultInteropTests.cs`（用真实核心走完创建→增删改→锁定→限速→备份→恢复→导出导入→改主密码，并在有 `keepassxc-cli` 时交叉检查导出文件）。注意：原生核心在一个进程里只能启动一次，所有用到它的测试共享 `NativeCoreFixture`，测试串行，并关闭并发 GC（在 Linux 上并发 GC 线程和 Go 核心的信号处理会让测试宿主偶尔崩溃）。
+- **无法在这台机器上验证**：真实的剪贴板标志与清除、`SetWindowDisplayAffinity` 的实际效果、`SystemEvents` 的触发、托盘菜单、所有窗口的布局与交互。

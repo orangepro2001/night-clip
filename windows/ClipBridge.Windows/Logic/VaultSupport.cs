@@ -23,6 +23,20 @@ public static class TotpActivityPolicy
         now - lastActivity <= ActiveWindow(autolockSeconds);
 }
 
+/// <summary>
+/// The core's idle timer only counts vault.* calls, but a person typing a long note in the editor (or reading one) is not
+/// idle. While the user keeps using the vault windows the shell pings the core now and then (a cheap vault.groups) so the
+/// auto-lock measures real inactivity. It never pings without fresh input, so an unattended window still locks.
+/// </summary>
+public static class IdleKeepAlive
+{
+    /// <summary>Time between pings: a third of the auto-lock time, 10 to 120 seconds.</summary>
+    public static TimeSpan Interval(int autolockSeconds) => TimeSpan.FromSeconds(Math.Clamp(autolockSeconds / 3, 10, 120));
+
+    public static bool ShouldPing(DateTimeOffset lastActivity, DateTimeOffset lastPing, DateTimeOffset now, int autolockSeconds) =>
+        lastActivity > lastPing && now - lastPing >= Interval(autolockSeconds);
+}
+
 /// <summary>Attachments: one file up to 5 MiB (core/vault MaxAttachmentBytes).</summary>
 public static class AttachmentRules
 {

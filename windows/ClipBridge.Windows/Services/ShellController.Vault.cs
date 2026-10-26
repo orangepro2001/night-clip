@@ -20,7 +20,13 @@ internal sealed partial class ShellController
     private DispatcherTimer? _vaultClipTimer;
     private bool _systemEventsHooked;
     private bool _vaultPageVisible;
-    private string? _lockReasonOverride;
+    private volatile string? _lockReasonOverride;
+    private DispatcherTimer? _keepAliveTimer;
+    private DateTimeOffset _lastVaultActivity = DateTimeOffset.MinValue;
+    private DateTimeOffset _lastKeepAlive = DateTimeOffset.MinValue;
+
+    /// <summary>The core's auto-lock time in seconds (read from vault.status by the vault page).</summary>
+    public int VaultAutolockSeconds { get; set; } = 300;
 
     public VaultApi Vault => _vault ??= new VaultApi(_core);
 
@@ -56,6 +62,7 @@ internal sealed partial class ShellController
     private void InitVault()
     {
         _tray.LockVaultRequested += () => _ = LockVaultAsync();
+        _keepAliveTimer = new DispatcherTimer(TimeSpan.FromSeconds(5), DispatcherPriority.Background, (_, _) => KeepAliveTick(), _ui);
         try
         {
             SystemEvents.SessionSwitch += OnSessionSwitch;
@@ -68,8 +75,24 @@ internal sealed partial class ShellController
         }
     }
 
+    /// <summary>The user touched a vault window (key, click, mouse move). UI thread.</summary>
+    public void NoteVaultActivity() => _lastVaultActivity = DateTimeOffset.UtcNow;
+
+    private void KeepAliveTick()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (!IdleKeepAlive.ShouldPing(_lastVaultActivity, _lastKeepAlive, now, VaultAutolockSeconds)) return;
+        _lastKeepAlive = now;
+        _ = Task.Run(() =>
+        {
+            try { Vault.Groups(); }   // any vault.* call except status restarts the core's idle timer
+            catch (CoreException) { /* locked meanwhile: the vault.locked event handles the UI */ }
+        });
+    }
+
     private void DisposeVault()
     {
+        _keepAliveTimer?.Stop();
         if (_systemEventsHooked)
         {
             SystemEvents.SessionSwitch -= OnSessionSwitch;
@@ -134,9 +157,16 @@ internal sealed partial class ShellController
     private void LockFromSystemEvent(LockTrigger trigger)
     {
         if (_disposed || !LockPolicy.ShouldLock(trigger)) return;
-        _lockReasonOverride = "session";
-        try { Vault.Lock(); }
-        catch (CoreException ex) { AppLog.Write("lock on session event failed: " + ex.Code); }
+        _lockReasonOverride = "session"; // set before the call: the vault.locked event can reach the UI thread first
+        try
+        {
+            if (!Vault.Lock()) _lockReasonOverride = null; // it was not unlocked: no event will come
+        }
+        catch (CoreException ex)
+        {
+            _lockReasonOverride = null;
+            AppLog.Write("lock on session event failed: " + ex.Code);
+        }
         UiPost(ClearVaultClipboardForLock);
     }
 
