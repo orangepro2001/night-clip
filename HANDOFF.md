@@ -1,7 +1,7 @@
 # night-clip 交接文档
 
 > 写于 2026-10-26。读完这一份就能接着干活，不需要翻聊天记录。  
-> **2026-10-26 增量**：`store` 数据层已完成并**已接进门面**（`device_id` 重启不变），细节、验证结果见 [HANDOFF-STORE.md](HANDOFF-STORE.md)。仓库已推到 `git@github.com:orangepro2001/night-clip.git`（`main`）。  
+> **2026-10-26 增量**：`store` 数据层已完成并**已接进门面**（`device_id` 重启不变），见 [HANDOFF-STORE.md](HANDOFF-STORE.md)。**自动更新与本机分发**已完成（核心 + 两端壳 + 发布脚本），见 [docs/update.md](docs/update.md) 与本文 §12。仓库已推到 `git@github.com:orangepro2001/night-clip.git`（`main`）。  
 > 设计文档在 [`docs/`](docs)（`README.md` → `adr/005-go-core-and-tailnet-p2p.md` → `architecture.md` → `api-spec.md` → `development-plan.md`）。  
 > 本文只讲：**现在是什么状态、怎么验证、为什么这么做、下一步做什么、哪些事要等用户拍板。**
 
@@ -280,6 +280,20 @@ android/app/src/main/{AndroidManifest.xml,java/com/nightclip/app/{CoreHost,DevKe
 ```
 
 构建产物（均被 `.gitignore` 忽略）：`core/dist/`（各平台 DLL/.so/.h/exe/smoke）、`android/app/libs/*.aar|*.jar`、`android/**/build/`、`windows/**/bin|obj`。
+
+## 12. 自动更新与本机分发（2026-10-26）
+
+- 逻辑在 Go 核心 `core/update`（签名清单、可续传下载、状态机、后台检查），门面方法 `update.status/check/download/config`；两端壳只显示状态并调起安装。详见 [docs/update.md](docs/update.md)。
+- 发布：`scripts/release-local.sh`（版本号 = 提交数；工作区必须干净）→ `cbdist publish` → `~/.local/share/clipbridge/releases`。已用真实密钥发布过一次 0.1.7（两个平台），并用**真实公钥**走通了「旧版本设备 → 检查 → 自动下载 → SHA-256 一致」，以及「已是最新 → up_to_date」。
+- 密钥只在本机 `~/.config/clipbridge/`（Ed25519 发布密钥、Android JKS）。**请备份**。更新地址在被忽略的 `release.local.env`（仓库公开，不能写 tailnet 名）。
+- 测试：`core/update` 55 个、`facade/update_test.go` 7 个、Windows `UpdateApplier`/`UpdateModel` 20 个、Android `UpdateStateTest` 6 个。`make check` 全绿。
+- **尚未做 / 待用户批准**：
+  1. 常驻服务 `scripts/install-dist-service.sh`（systemd 用户服务）被权限策略拒绝，**未安装**；
+  2. `tailscale serve --set-path /clipbridge http://127.0.0.1:18780` **未执行**（全局规则：只添加用户指定的路径）；在此之前设备访问不到本机分发地址；
+  3. `gh auth login`（用户本人操作），之后才能读 CI 日志、创建 Release；
+  4. GitHub `nightly` Release：全部功能完成后再做（docs/update.md §9：CI 需要同一把 Android 密钥与 Ed25519 密钥作为仓库密钥）。
+- **未在真机验证**：Android 系统安装器与「安装未知应用」跳转；Windows 上真实的文件占用/杀毒干扰与 `--apply-update` 重启；`tailscale serve` 的路径前缀行为（若保留前缀，给 `cbdist serve` 加 `-prefix /clipbridge`）。
+- **CI**：自首次推送起 linux/android/windows 三个任务全部失败，**原因未知**（日志需要登录）。已知步骤：linux 在 `make vet test dll-smoke dll-wine …`；android 在 `android-actions/setup-android@v3`；windows 在 `go test ./...`。在本机用 Wine 跑 Windows 版 Go 测试（proto/identity/store/update/facade）全部通过。
 
 ## 11. 与 `development-plan.md` Phase 0 清单的对照
 
