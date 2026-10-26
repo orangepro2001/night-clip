@@ -7,8 +7,8 @@
 ## 1. 状态与锁
 
 - 核心同一时刻最多持有一个已解锁的库。**未解锁时除下列方法外一律返回 `VAULT_LOCKED`**：`vault.status`、`vault.create`、`vault.unlock`、`vault.lock`、`vault.verify_master`（需要已解锁）、`vault.generate`、`vault.strength`、`vault.backup_list`、`vault.backup_verify`。
-- **空闲自动锁**：任何 `vault.*`（除 `status`）调用都会重置计时；超过 `vault_autolock_s`（默认 300 秒，范围 30–86400）核心自行锁定并发出事件 `{"type":"vault.locked","reason":"idle"}`。壳在系统锁屏/睡眠/应用进入后台时应调用 `vault.lock`（`reason:"user"`）。
-- **猜测限速**：同一进程内连续 3 次错误凭据后，每次再试等待 1、2、4…秒（上限 5 分钟），期间 `vault.unlock`/`verify_master`/`change_master`/`export_*`/`backup_verify` 返回 `RATE_LIMITED`（`retryable:true`，`details.retry_after_s`）。成功一次清零。这只能挡住对运行中应用的脚本猜测；偷走文件的离线猜测靠 Argon2 成本。
+- **空闲自动锁**：任何 `vault.*`（除 `status` 和 `vault.totp`）调用都会重置计时（轮询一次性验证码**不算**活动，否则无人值守的库永远不会锁）；用户正在输入而没有调用核心时，壳发 `vault.touch`（`{}`）表示“还在”；超过 `vault_autolock_s`（默认 300 秒，范围 30–86400）核心自行锁定并发出事件 `{"type":"vault.locked","reason":"idle"}`。壳在系统锁屏/睡眠/应用进入后台时应调用 `vault.lock`（`reason:"user"`）。
+- **猜测限速**：所有接受凭据的方法（`unlock`、`verify_master`、`change_master`/`export_*` 的确认、`backup_verify`、`restore`、`restore_preview`、`import_file`、带密码的 `sync_resolve`）**一次只处理一个**，并共用同一个计数；只有“打开库/确认主密码”的成功才会清零计数（用旧密码验证备份成功不会清零）。同一进程内连续 3 次错误凭据后，每次再试等待 1、2、4…秒（上限 5 分钟），期间 `vault.unlock`/`verify_master`/`change_master`/`export_*`/`backup_verify` 返回 `RATE_LIMITED`（`retryable:true`，`details.retry_after_s`）。成功一次清零。这只能挡住对运行中应用的脚本猜测；偷走文件的离线猜测靠 Argon2 成本。
 - 关闭核心（`shutdown`）会先锁库。
 
 ## 2. 错误码
@@ -18,6 +18,8 @@
 | `VAULT_LOCKED` | 库未解锁 | 跳到解锁界面 |
 | `VAULT_WRONG_CREDENTIALS` | 主密码/密钥文件错误**或文件损坏**（故意不区分） | “主密码或密钥文件不对，或文件已损坏。可以从备份恢复。” |
 | `VAULT_NOT_FOUND` | 条目/分组/备份不存在 | |
+| `VAULT_NOT_EMPTY` | 删除的分组还有条目或子分组 | 提示先删条目 |
+| `VAULT_REVIEW` | 需要用户批准（同步：不是同一个库、一批会删除/覆盖很多条目；批准时没有给出或给错了要批准的文件的 `sha256`） | 重新读取 `vault.sync_status` 后让用户确认 |
 | `VAULT_EXISTS` | 库已存在 / 导出目标文件已存在 | |
 | `VAULT_UNSUPPORTED` | 文件的密钥派生参数不被接受（过大或不支持的 KDF） | “这个库的加密参数不受支持或不安全。” |
 | `VAULT_BROKEN` | 内存状态不一致 | 提示锁定后重新解锁 |
@@ -33,11 +35,11 @@
 | 方法 | 参数 | 结果 |
 | --- | --- | --- |
 | `vault.status` | — | `{exists, unlocked, autolock_s, clip_clear_s, retry_after_s, key_file?, entries?, kdf?{memory_mib,iterations,parallelism}, backups?, last_manual_backup_at?}`；`key_file` 表示这台设备上次使用的凭据是否含密钥文件（KDBX 文件本身不说明；通过同步加入的库在首次解锁前没有这个字段） |
-| `vault.create` | `credParams` + `kdf?`（`low`/`standard`/`high`，默认 `standard`），`name?` | `{unlocked:true, create_ms}`；创建后已解锁。`exists` 时 `VAULT_EXISTS` |
+| `vault.create` | `credParams`（主密码**至少 8 个字符**，否则 `INVALID`）+ `kdf?`（`low`/`standard`/`high`，默认 `standard`），`name?` | `{unlocked:true, create_ms}`；创建后已解锁。`exists` 时 `VAULT_EXISTS` |
 | `vault.unlock` | `credParams` | `{unlocked:true, unlock_ms}` |
 | `vault.lock` | — | `{was_unlocked}` |
 | `vault.verify_master` | `credParams` | `{ok:true}` 或 `VAULT_WRONG_CREDENTIALS`；用于“再次确认主密码”类操作 |
-| `vault.change_master` | `credParams`（当前）+ `new: {password, key_file_b64?}` + `kdf?` | `{}`；整个库用新的随机值重新加密；**旧快照仍需要旧密码** |
+| `vault.change_master` | `credParams`（当前）+ `new: {password(≥8 字符), key_file_b64?}` + `kdf?` + `purge_backups?` | `{purged}`；整个库用新的随机值重新加密；**旧快照仍需要旧密码**，怀疑泄露时传 `purge_backups:true` 删除全部快照和上一代文件（不可撤销） |
 
 KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 MiB×4。壳可以用 `unlock_ms` 判断设备是否太慢（> 3 秒时建议降级）。
 
@@ -60,9 +62,11 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `vault.get` | `id` | 详情：同上加 `notes`、`fields[{name,value,protected,has_value}]`（保护字段的 `value` 为空）、`has_password`、`has_totp`、`attachments[{name,size}]`、`history`（版本数）、`created_at`、`password_strength{bits,label}` |
 | `vault.reveal` | `id`, `field` | `{value}`。`field`：`password`、`username`、`url`、`notes`、`totp`（当前验证码）、`totp_secret`、`field:<名字>`。**只用于在屏幕上显示**（用完立刻丢弃）；要复制到剪贴板请用 `vault.copy` |
 | `vault.copy` | 同上 | `{value, clear_after_s}`。除返回值外，核心把该文本登记为“来自密码库”：随后的剪贴板变化**不会被自动广播**（`clip.local_changed` 返回 `suppressed: "vault_origin"`）。壳必须按 §4 写入剪贴板并在 `clear_after_s` 秒后清除（0 = 不清除） |
+| `vault.touch` | — | `{}`：只重置空闲计时 |
 | `vault.totp` | `id` | `{code, seconds_left}`（RFC 6238；SHA1/256/512，6–8 位，周期 1–3600 秒） |
 | `vault.add` | `entry` | `{id}` |
 | `vault.update` | `id`, `entry` | `{}`；内容有变化才写入历史并更新修改时间；附件、所在分组、历史保持 |
+| `vault.patch` | `id` + 要改的字段（`title/username/password/url/notes/totp/kind/tags/fields/expires_at`，没给的保持不变；给了 `fields` 则整体替换自定义字段） | `{}`；改一个密码不必读出所有保护字段 |
 | `vault.delete` | `id` | `{permanent}`；第一次移入回收站，回收站里再删一次才永久删除 |
 | `vault.restore_entry` | `id` | `{}`：从回收站放回原分组 |
 | `vault.empty_trash` | — | `{removed}` |
@@ -76,7 +80,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | --- | --- | --- |
 | `vault.match` | `url?`（网页地址或主机名）, `package?`（Android 应用包名） | `{matches:[{…列表摘要字段, score}]}`，最好的在前。**不含机密**；要填入时再对选中的条目调用 `vault.reveal`（用户确认/生物识别之后） |
 
-匹配**严格**：只在“可注册域名”（公共后缀 + 一个标签）相同时才命中（`score` 3 = 主机完全相同，2 = 同一可注册域名），绝不因为一个名字包含另一个就命中（`example.com.evil.net`、`evil-example.com` 都不会匹配 `example.com`）；IP 与单标签主机名要完全相同。应用匹配（`score` 4）：条目的自定义字段 `AndroidApp` 等于包名，或条目 URL 为 `androidapp://<包名>`（Keepass2Android/KeePassDroid 的约定）。回收站与笔记不参与。条目可以用以 `URL`/`KP2A_URL` 开头的自定义字段登记更多网址。
+匹配**严格**：先看协议和端口——只接受 http/https；https 页面可以用保存为 http 或 https 的条目，http 页面只能用保存为 http 的条目（本机/内网地址除外）；条目网址里写明的非默认端口必须与页面一致；然后只在“可注册域名”（公共后缀 + 一个标签）相同时才命中（`score` 3 = 主机完全相同，2 = 同一可注册域名），绝不因为一个名字包含另一个就命中（`example.com.evil.net`、`evil-example.com` 都不会匹配 `example.com`）；IP 与单标签主机名要完全相同。应用匹配（`score` 4）：条目的自定义字段 `AndroidApp` 等于包名，或条目 URL 为 `androidapp://<包名>`（Keepass2Android/KeePassDroid 的约定）。回收站与笔记不参与。条目可以用以 `URL`/`KP2A_URL` 开头的自定义字段登记更多网址。
 
 ### 3.3 分组与附件
 
@@ -122,16 +126,16 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 
 | 方法 | 参数 | 结果 |
 | --- | --- | --- |
-| `vault.sync_status` | — | `{vault_exists, peers:[{device_id, name, enabled, connected, state, detail, last_ok_at, pending_incoming}]}` |
+| `vault.sync_status` | — | `{vault_exists, peers:[{device_id, name, enabled, connected, state, detail, last_ok_at, pending_incoming, incoming_sha256?}]}` |
 | `vault.sync_enable` | `device_id`, `enabled` | `{}`；关闭时丢弃已收到但未合并的文件 |
-| `vault.sync_resolve` | `device_id`, `approve?`, `credParams?` | `{}`：为 `needs_password` 输入对方库的主密码，或为 `review` 点“批准”。库必须已解锁，否则 `VAULT_LOCKED` |
+| `vault.sync_resolve` | `device_id`, `approve?`, `sha256?`, `credParams?` | `{}`：为 `needs_password` 输入对方库的主密码，或为 `review` 点“批准”。**`approve` 必须同时给出 `sha256`**（取自 `vault.sync_status` 的 `incoming_sha256`，即用户看到的那个文件），文件在此期间变了就 `VAULT_REVIEW`。库必须已解锁，否则 `VAULT_LOCKED` |
 | `vault.sync_now` | — | `{}` |
 
 `state`：`idle`（正常）、`pending_unlock`（对方的修改已收到，等你解锁后合并）、`needs_password`（对方改了主密码，需要输入新密码才能合并）、`review`（需要批准：对方的文件**不是同一个库**，或这一批会**删除 5 个以上条目**）、`peer_off`（对方没有为本机开启）、`error`。
 
 - **加入：** 一台还没有库的设备，在两边都开启后会直接收到对方的库文件（事件 `vault.joined`），库显示为“已存在、已锁定”，用**那个库的主密码**解锁即可。
 - **事件：** `vault.sync {device_id, name, state, detail}`（状态变化）、`vault.changed {reason:"sync", device_id, stats}`（同步合并改动了本机库，壳应刷新列表）、`vault.joined {device_id, name}`。
-- **限制：** 单个文件 ≤64 MiB；每个对端每 2 秒最多上传一次；收到的文件必须有 KDBX 签名，否则 400。
+- **保护：** 单个文件 ≤64 MiB；同一时刻只处理一个上传（其余 429），每个对端每 2 秒最多上传一次；文件头的密钥派生成本超过“来自对端的文件”上限（Argon2 内存 > 128 MiB、迭代 > 16 等）直接拒绝，不会进行任何派生；收到的文件必须是结构正确的 KDBX，否则 400；一次同步将**删除超过 5 个或覆盖超过 50 个**条目，或 24 小时内累计删除超过 15 个，都需要批准（`review`）；比较“谁更新”时，对端晚于当前时间 10 分钟以上的时间戳按“现在 + 10 分钟”处理；同一个已经失败的文件不会重复尝试（直到新文件、输入密码或批准）；同步产生的快照至少间隔 60 秒，用户主动做的（手动/改主密码/升级/恢复/导入）快照单独保留最多 50 份，不会被例行快照挤掉。
 
 ### 3.7 设置（`settings.get`/`settings.set`）
 
@@ -139,6 +143,10 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | --- | --- | --- |
 | `vault_autolock_s` | 30–86400 | 300 |
 | `vault_clip_clear_s` | `0` 或 5–300 | 20 |
+
+## 3.8 解码与资源限制（参考）
+
+读取任何 KDBX 文件（打开、同步、导入、备份）都会先检查结构：条目 ≤ 20000、分组 ≤ 2000 且嵌套 ≤ 16 层、每个条目的附件 ≤ 64 个、历史 ≤ 100 项、单个文本字段 ≤ 4 MiB、全部文本 ≤ 64 MiB、解压后 ≤ 192 MiB；附件名里的路径字符会被替换（`/`、`\`、`:`、控制字符、开头的点）。不符合的文件整体拒绝（`VAULT_UNSUPPORTED`）。密钥派生成本低于下限（Argon2d 16 MiB × 2 次，或旧式 AES-KDF）的库在打开时**自动升级**为标准成本并重新保存（原文件进快照）。CSV 导出对文本列里以 `=`、`+`、`-`、`@`、制表符开头的值加一个前导 `'`（密码列和 TOTP 列不改），导入时去掉；CSV 导入的分组路径最多 15 层。
 
 ## 4. 壳层必须遵守的规则
 

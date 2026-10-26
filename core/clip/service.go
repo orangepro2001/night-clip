@@ -53,7 +53,7 @@ type Service struct {
 	secretRing map[string]time.Time
 }
 
-const secretTTL = time.Hour
+const secretTTL = 2 * time.Minute // a copy from the vault is cleared after 20 s; this covers copies made by hand
 
 // MarkSecret registers text that the shell is about to put on the clipboard from the password
 // vault, so the clipboard notification that follows is not broadcast to the paired devices.
@@ -70,8 +70,15 @@ func (s *Service) MarkSecret(text string) {
 			delete(s.secretRing, k)
 		}
 	}
-	if len(s.secretRing) >= 64 {
-		s.secretRing = map[string]time.Time{}
+	for len(s.secretRing) >= 64 { // full of live marks: drop the oldest, never all of them
+		var oldest string
+		var ot time.Time
+		for k, t := range s.secretRing {
+			if oldest == "" || t.Before(ot) {
+				oldest, ot = k, t
+			}
+		}
+		delete(s.secretRing, oldest)
 	}
 	s.secretRing[h] = now
 }

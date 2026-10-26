@@ -419,7 +419,7 @@ func TestMergeGuardedStopsUnrelatedVaultsAndMassDeletion(t *testing.T) {
 		_, _ = b.Delete(id)
 	}
 	bFile, _ := os.ReadFile(b.path())
-	if _, err := a.MergeGuarded(bFile, Creds{}, "sync", MergeOptions{RequireSameVault: true, MaxRemoved: 5}); !errors.Is(err, ErrReview) {
+	if _, err := a.MergeGuarded(bFile, Creds{}, "sync", MergeOptions{RequireSameVault: true, LimitRemoved: true, MaxRemoved: 5}); !errors.Is(err, ErrReview) {
 		t.Fatalf("mass deletion: %v", err)
 	}
 	if l, _ := a.List(Filter{}); len(l) != 8 {

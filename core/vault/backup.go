@@ -18,6 +18,8 @@ const (
 	keepWeeks  = 4
 
 	snapshotMinGap = 10 * time.Second // routine saves do not snapshot more often than this
+	syncMinGap     = 60 * time.Second // snapshots made by device sync: a chatty or hostile peer cannot push the real ones out
+	keepProtected  = 50               // snapshots the user asked for or that mark a re-key / restore / upgrade are kept apart from the rolling ones
 )
 
 var backupNameRe = regexp.MustCompile(`^vault-(\d{8}T\d{6}Z)-([a-z0-9-]{1,24})\.kdbx$`)
@@ -58,6 +60,9 @@ func (v *Vault) snapshotLocked(old []byte, reason string) {
 	if reason == "save" && !v.lastSnapshot.IsZero() && now.Sub(v.lastSnapshot) < snapshotMinGap {
 		return
 	}
+	if reason == "sync" && !v.lastSyncSnapshot.IsZero() && now.Sub(v.lastSyncSnapshot) < syncMinGap {
+		return
+	}
 	dir := filepath.Join(v.dir, BackupDir)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return
@@ -72,6 +77,9 @@ func (v *Vault) snapshotLocked(old []byte, reason string) {
 		return
 	}
 	v.lastSnapshot = now
+	if reason == "sync" {
+		v.lastSyncSnapshot = now
+	}
 	pruneBackups(dir, now)
 }
 
@@ -131,23 +139,35 @@ func ListBackups(dir string) []BackupInfo {
 func pruneBackups(dir string, now time.Time) {
 	entries, _ := os.ReadDir(dir)
 	type item struct {
-		name string
-		t    time.Time
+		name   string
+		t      time.Time
+		reason string
 	}
 	var items []item
 	for _, e := range entries {
 		if m := backupNameRe.FindStringSubmatch(e.Name()); m != nil {
 			if t, err := time.Parse("20060102T150405Z", m[1]); err == nil {
-				items = append(items, item{e.Name(), t})
+				items = append(items, item{e.Name(), t, strings.TrimRight(m[2], "0123456789")})
 			}
 		}
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].t.After(items[j].t) })
 	keep := map[string]bool{}
 	days, weeks := map[string]bool{}, map[string]bool{}
-	for i, it := range items {
-		if i < keepNewest {
-			keep[it.name] = true
+	rolling, protected := 0, 0
+	for _, it := range items {
+		switch it.reason {
+		case "manual", "rekey", "upgrade", "restore", "import", "create":
+			// what the user did on purpose is not pushed out by the stream of routine saves and syncs
+			if protected < keepProtected {
+				keep[it.name] = true
+			}
+			protected++
+		default:
+			if rolling < keepNewest {
+				keep[it.name] = true
+			}
+			rolling++
 		}
 		age := now.Sub(it.t)
 		day := it.t.Format("2006-01-02")
@@ -165,6 +185,30 @@ func pruneBackups(dir string, now time.Time) {
 			_ = os.Remove(filepath.Join(dir, it.name))
 		}
 	}
+}
+
+// PurgeBackups deletes every snapshot and the previous generation of the file. After a suspected
+// compromise or a master password change this is how old copies (still readable with the old
+// password) go away; it cannot be undone. It returns how many files were removed.
+func (v *Vault) PurgeBackups() (int, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if err := v.usable(); err != nil {
+		return 0, err
+	}
+	n := 0
+	entries, _ := os.ReadDir(filepath.Join(v.dir, BackupDir))
+	for _, e := range entries {
+		if backupNameRe.MatchString(e.Name()) {
+			if os.Remove(filepath.Join(v.dir, BackupDir, e.Name())) == nil {
+				n++
+			}
+		}
+	}
+	if os.Remove(filepath.Join(v.dir, PrevName)) == nil {
+		n++
+	}
+	return n, nil
 }
 
 // backupPath resolves a backup name to a file, refusing anything that is not one of ours.

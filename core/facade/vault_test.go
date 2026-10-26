@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -25,8 +26,11 @@ func TestVaultLifecycleThroughTheFacade(t *testing.T) {
 	if code := n.errorCode("vault.list", nil); code != "VAULT_LOCKED" {
 		t.Fatalf("list while there is no vault: %s", code)
 	}
+	if code := n.errorCode("vault.create", map[string]any{"password": "short"}); code != "INVALID" {
+		t.Fatalf("a 5 character master password: %s", code)
+	}
 	vcreate(t, n)
-	if code := n.errorCode("vault.create", map[string]any{"password": "x"}); code != "VAULT_EXISTS" {
+	if code := n.errorCode("vault.create", map[string]any{"password": "another long password"}); code != "VAULT_EXISTS" {
 		t.Fatalf("second create: %s", code)
 	}
 	st := n.call("vault.status", nil)
@@ -324,5 +328,178 @@ func TestVaultMatchForAutofill(t *testing.T) {
 	n.call("vault.lock", nil)
 	if code := n.errorCode("vault.match", map[string]any{"url": "https://github.com"}); code != "VAULT_LOCKED" {
 		t.Fatalf("match while locked: %s", code)
+	}
+}
+
+func TestVaultTotpDoesNotKeepAnUnattendedVaultUnlocked(t *testing.T) {
+	n := startNode(t, "Desk", "windows", false)
+	vcreate(t, n)
+	id := n.call("vault.add", map[string]any{"entry": map[string]any{"title": "t", "totp": "JBSWY3DPEHPK3PXP"}})["id"].(string)
+	_ = n.c.db.SetSetting(settingVaultAutoLock, "1")
+	n.call("vault.list", nil) // re-arm with 1 s
+	deadline := time.Now().Add(900 * time.Millisecond)
+	for time.Now().Before(deadline) { // polling the one-time code must not postpone the lock
+		n.call("vault.totp", map[string]any{"id": id})
+		time.Sleep(100 * time.Millisecond)
+	}
+	n.waitEvent("vault.locked", map[string]any{"reason": "idle"})
+
+	n.call("vault.unlock", map[string]any{"password": vpw})
+	n.call("vault.list", nil)
+	for i := 0; i < 8; i++ { // "still here" does
+		time.Sleep(250 * time.Millisecond)
+		n.call("vault.touch", nil)
+	}
+	if st := n.call("vault.status", nil); st["unlocked"] != true {
+		t.Fatalf("vault.touch must keep the vault open: %v", st)
+	}
+}
+
+func TestVaultGroupDeleteNotEmptyCode(t *testing.T) {
+	n := startNode(t, "Desk", "windows", false)
+	vcreate(t, n)
+	gid := n.call("vault.group_add", map[string]any{"name": "G"})["id"].(string)
+	n.call("vault.add", map[string]any{"entry": map[string]any{"title": "x", "group_id": gid}})
+	if code := n.errorCode("vault.group_delete", map[string]any{"id": gid}); code != "VAULT_NOT_EMPTY" {
+		t.Fatalf("code = %s", code)
+	}
+}
+
+func TestVaultPatchChangesOnlyWhatIsGiven(t *testing.T) {
+	n := startNode(t, "Desk", "windows", false)
+	vcreate(t, n)
+	id := n.call("vault.add", map[string]any{"entry": map[string]any{
+		"title": "site", "username": "me", "password": "old", "totp": "JBSWY3DPEHPK3PXP",
+		"fields": []map[string]any{{"name": "Key", "value": "keep-me", "protected": true}},
+	}})["id"].(string)
+	n.call("vault.patch", map[string]any{"id": id, "password": "new"})
+	if r := n.call("vault.reveal", map[string]any{"id": id, "field": "password"}); r["value"] != "new" {
+		t.Fatalf("password = %v", r)
+	}
+	if r := n.call("vault.reveal", map[string]any{"id": id, "field": "field:Key"}); r["value"] != "keep-me" {
+		t.Fatalf("a patch wiped a protected field: %v", r)
+	}
+	if r := n.call("vault.reveal", map[string]any{"id": id, "field": "totp_secret"}); r["value"] != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("a patch wiped the totp secret: %v", r)
+	}
+	got := n.call("vault.get", map[string]any{"id": id})
+	if got["username"] != "me" || got["history"].(float64) != 1 {
+		t.Fatalf("get = %v", got)
+	}
+	n.call("vault.patch", map[string]any{"id": id, "tags": []string{"a"}, "title": "renamed"})
+	if code := n.errorCode("vault.patch", map[string]any{"id": id, "title": ""}); code != "INVALID" {
+		t.Fatalf("empty title: %s", code)
+	}
+}
+
+// ---- regression tests for the adversarial review ---------------------------------------------
+
+func TestVaultStatusDoesNotKeepTheVaultOpenAndAWallClockGapLocks(t *testing.T) {
+	n := startNode(t, "Desk", "windows", false)
+	vcreate(t, n)
+	_ = n.c.db.SetSetting(settingVaultAutoLock, "1")
+	n.call("vault.list", nil)
+	deadline := time.Now().Add(900 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		n.call("vault.status", nil) // polling the status is not activity
+		time.Sleep(100 * time.Millisecond)
+	}
+	n.waitEvent("vault.locked", map[string]any{"reason": "idle"})
+
+	// a laptop that slept: the timer did not fire, the wall clock says the time is up
+	_ = n.c.db.SetSetting(settingVaultAutoLock, "30")
+	n.call("vault.unlock", map[string]any{"password": vpw})
+	n.c.vs.mu.Lock()
+	n.c.vs.lastActive = time.Now().Add(-time.Hour).Round(0)
+	n.c.vs.mu.Unlock()
+	if code := n.errorCode("vault.list", nil); code != "VAULT_LOCKED" {
+		t.Fatalf("after an hour without activity: %s", code)
+	}
+}
+
+func TestVaultGuessingCannotBeParallelisedOrResetByOtherCalls(t *testing.T) {
+	n := startNode(t, "Desk", "windows", false)
+	vcreate(t, n)
+	n.call("vault.backup_now", nil)
+	name := n.call("vault.backup_list", nil)["backups"].([]any)[0].(map[string]any)["name"].(string)
+	n.call("vault.lock", nil)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	codes := map[string]int{}
+	for i := 0; i < 24; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r := n.try("vault.unlock", map[string]any{"password": "wrong password " + time.Now().String()})
+			mu.Lock()
+			codes[r.Error.Code]++
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	if codes["VAULT_WRONG_CREDENTIALS"] > 3 || codes["RATE_LIMITED"] < 20 {
+		t.Fatalf("24 parallel guesses got through: %v", codes)
+	}
+	// a known-good call on the side must not reset the counter
+	if chk := n.try("vault.backup_verify", map[string]any{"name": name, "password": vpw}); chk.OK || chk.Error.Code != "RATE_LIMITED" {
+		t.Fatalf("backup_verify while blocked: %+v", chk)
+	}
+	n.c.vs.mu.Lock()
+	n.c.vs.blockTil = time.Time{}
+	n.c.vs.mu.Unlock()
+	n.call("vault.backup_verify", map[string]any{"name": name, "password": vpw}) // succeeds, but ...
+	n.c.vs.mu.Lock()
+	fails := n.c.vs.fails
+	n.c.vs.mu.Unlock()
+	if fails < 3 {
+		t.Fatalf("a successful backup_verify reset the failure counter (%d)", fails)
+	}
+}
+
+func TestVaultSyncResolveRefusesInventedDeviceIDs(t *testing.T) {
+	n := startNode(t, "Desk", "windows", true)
+	n2 := startNode(t, "Other", "android", false)
+	pairNodes(t, n, n2)
+	vcreate(t, n)
+	file := filepath.Join(n.c.vaultDir(), "vault.kdbx")
+	for _, id := range []string{"../vault", "..\\vault", "dev_x", "", "dev_aaaaaaaaaaaaaaaaaaaaaaaaaa/../../vault"} {
+		r := n.try("vault.sync_resolve", map[string]any{"device_id": id, "approve": true, "sha256": "x"})
+		if r.OK {
+			t.Fatalf("device_id %q was accepted", id)
+		}
+	}
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("the vault file is gone: %v", err)
+	}
+}
+
+func TestEverythingTheVaultHandsOutIsKeptOffTheClipboardSync(t *testing.T) {
+	win := startNode(t, "Tony-PC", "windows", true)
+	pix := startNode(t, "Pixel", "android", false)
+	pairNodes(t, win, pix)
+	vcreate(t, win)
+	id := win.call("vault.add", map[string]any{"entry": map[string]any{"title": "x", "username": "admin-user", "password": "Rev3aled-pass-word", "notes": "secret note text", "totp": "JBSWY3DPEHPK3PXP"}})["id"].(string)
+	suppressed := func(text string) bool {
+		return win.call("clip.local_changed", map[string]any{"text": text})["suppressed"] == "vault_origin"
+	}
+	win.call("vault.reveal", map[string]any{"id": id, "field": "password"})
+	if !suppressed("Rev3aled-pass-word") {
+		t.Fatal("a revealed password that the user copies by hand was broadcast")
+	}
+	gen := win.call("vault.generate", map[string]any{"type": "password", "length": 20})["value"].(string)
+	if !suppressed(gen) {
+		t.Fatal("a generated password was broadcast")
+	}
+	code := win.call("vault.totp", map[string]any{"id": id})["code"].(string)
+	if !suppressed(code) {
+		t.Fatal("a one-time code was broadcast")
+	}
+	win.call("vault.get", map[string]any{"id": id})
+	if !suppressed("secret note text") {
+		t.Fatal("the notes of an open entry were broadcast")
+	}
+	time.Sleep(150 * time.Millisecond)
+	if pix.find("clip.received", nil) != nil {
+		t.Fatal("the other device received something from the vault")
 	}
 }

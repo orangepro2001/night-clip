@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"nightclip/core/proto"
 	"nightclip/core/vault"
@@ -29,11 +30,13 @@ const (
 )
 
 type vaultState struct {
-	mu       sync.Mutex
-	v        *vault.Vault
-	timer    *time.Timer
-	fails    int
-	blockTil time.Time
+	mu         sync.Mutex
+	v          *vault.Vault
+	timer      *time.Timer
+	lastActive time.Time // wall clock (no monotonic part): a machine that slept unlocked still counts the time
+	fails      int
+	blockTil   time.Time
+	attemptMu  sync.Mutex // password guesses and unlocks run one at a time
 }
 
 func (c *Core) vaultDir() string { return filepath.Join(c.cfg.DataDir, "vault") }
@@ -106,6 +109,10 @@ func vaultErr(err error) error {
 		return proto.Errorf(proto.CodeVaultExists, "already exists")
 	case errors.Is(err, vault.ErrUnsupported):
 		return proto.Errorf(proto.CodeVaultUnsupported, "%v", err)
+	case errors.Is(err, vault.ErrReview), errors.Is(err, vault.ErrDifferentVault):
+		return proto.Errorf(proto.CodeVaultReview, "this needs your approval")
+	case errors.Is(err, vault.ErrNotEmpty):
+		return proto.Errorf(proto.CodeVaultNotEmpty, "the group is not empty")
 	case errors.Is(err, vault.ErrBroken):
 		return proto.Errorf(proto.CodeVaultBroken, "the vault state is inconsistent; lock and unlock again")
 	case errors.Is(err, vault.ErrTooLarge):
@@ -119,10 +126,25 @@ func vaultErr(err error) error {
 // ---- state helpers ------------------------------------------------------------------------------
 
 // open returns the unlocked vault and restarts the idle timer.
-func (c *Core) vaultOpen() (*vault.Vault, error) {
+func (c *Core) vaultOpen() (*vault.Vault, error) { return c.vaultOpenFor("") }
+
+// vaultOpenFor is vaultOpen, except that background polling (the live one-time code of an entry that
+// is open on screen) must not keep an unattended vault unlocked: vault.totp does not count as activity.
+// A shell that sees the user typing sends vault.touch to say "still here".
+func (c *Core) vaultOpenFor(method string) (*vault.Vault, error) {
 	c.vs.mu.Lock()
 	defer c.vs.mu.Unlock()
 	if c.vs.v == nil {
+		return nil, proto.Errorf(proto.CodeVaultLocked, "the vault is locked")
+	}
+	if method == "vault.totp" || method == "vault.status" {
+		// passive: neither polling the code nor the status keeps an unattended vault open
+		return c.vs.v, nil
+	}
+	// The idle timer does not tick while a laptop sleeps; the wall clock does.
+	idle := time.Duration(c.vaultIntSetting(settingVaultAutoLock, defaultVaultAutoLock)) * time.Second
+	if !c.vs.lastActive.IsZero() && time.Now().Round(0).Sub(c.vs.lastActive) > idle {
+		c.lockLocked("idle")
 		return nil, proto.Errorf(proto.CodeVaultLocked, "the vault is locked")
 	}
 	c.armIdleLocked()
@@ -130,6 +152,7 @@ func (c *Core) vaultOpen() (*vault.Vault, error) {
 }
 
 func (c *Core) armIdleLocked() {
+	c.vs.lastActive = time.Now().Round(0)
 	d := time.Duration(c.vaultIntSetting(settingVaultAutoLock, defaultVaultAutoLock)) * time.Second
 	if c.vs.timer != nil {
 		c.vs.timer.Stop()
@@ -157,8 +180,11 @@ func (c *Core) lockLocked(reason string) bool {
 		c.vs.timer.Stop()
 		c.vs.timer = nil
 	}
-	c.vs.v.Close()
+	// Close waits for whatever the vault is doing right now (a merge can take a while); the lock must not
+	// wait with vs.mu held, or every vault call would hang behind it. The vault is unreachable from here on.
+	v := c.vs.v
 	c.vs.v = nil
+	go v.Close()
 	c.emit(map[string]any{"type": "vault.locked", "reason": reason})
 	return true
 }
@@ -206,6 +232,26 @@ func (c *Core) vaultAttempt(ok bool) {
 		}
 		c.vs.blockTil = time.Now().Add(d)
 	}
+}
+
+// credAttempt runs fn, which checks credentials, as one guessing attempt. Attempts are serialized, so
+// 40 parallel calls cannot all start before the first failure is counted; a success only clears the
+// counter when resetOnSuccess is set (opening the vault or re-confirming the master password, not
+// opening a backup with an old password).
+func (c *Core) credAttempt(resetOnSuccess bool, fn func() error) error {
+	c.vs.attemptMu.Lock()
+	defer c.vs.attemptMu.Unlock()
+	if err := c.vaultGuard(); err != nil {
+		return err
+	}
+	err := fn()
+	switch {
+	case errors.Is(err, vault.ErrWrongCredentials):
+		c.vaultAttempt(false)
+	case err == nil && resetOnSuccess:
+		c.vaultAttempt(true)
+	}
+	return err
 }
 
 type credParams struct {
@@ -299,7 +345,7 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 	case "vault.change_master":
 		return c.vaultChangeMaster(params)
 	case "vault.generate":
-		return vaultGenerate(params)
+		return c.vaultGenerate(params)
 	case "vault.strength":
 		var p struct {
 			Password string `json:"password"`
@@ -315,11 +361,13 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 	case "vault.sync_status", "vault.sync_enable", "vault.sync_resolve", "vault.sync_now":
 		return c.vaultSyncCall(method, params)
 	}
-	v, err := c.vaultOpen()
+	v, err := c.vaultOpenFor(method)
 	if err != nil {
 		return nil, err
 	}
 	switch method {
+	case "vault.touch":
+		return map[string]any{}, nil // the call itself restarted the idle timer
 	case "vault.list":
 		var p struct {
 			Query, GroupID, Kind, Tag string
@@ -342,6 +390,9 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		if len(e.Notes) <= 8192 { // notes often hold secrets and are shown on screen
+			c.markSecret(e.Notes)
+		}
 		return entryView(e), nil
 	case "vault.match":
 		var p struct {
@@ -363,6 +414,9 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 			return nil, err
 		}
 		code, left, err := v.TOTP(p.ID)
+		if err == nil {
+			c.markSecret(code)
+		}
 		return map[string]any{"code": code, "seconds_left": left}, err
 	case "vault.add":
 		var p struct {
@@ -382,6 +436,49 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 			return nil, err
 		}
 		return map[string]any{}, v.UpdateEntry(p.ID, p.Entry)
+	case "vault.patch":
+		var p struct {
+			ID        string         `json:"id"`
+			Kind      *string        `json:"kind"`
+			Title     *string        `json:"title"`
+			Username  *string        `json:"username"`
+			Password  *string        `json:"password"`
+			URL       *string        `json:"url"`
+			Notes     *string        `json:"notes"`
+			TOTP      *string        `json:"totp"`
+			Tags      *[]string      `json:"tags"`
+			Fields    *[]vault.Field `json:"fields"`
+			ExpiresAt *int64         `json:"expires_at"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		e, err := v.Get(p.ID)
+		if err != nil {
+			return nil, err
+		}
+		set := func(dst *string, src *string) {
+			if src != nil {
+				*dst = *src
+			}
+		}
+		set(&e.Kind, p.Kind)
+		set(&e.Title, p.Title)
+		set(&e.Username, p.Username)
+		set(&e.Password, p.Password)
+		set(&e.URL, p.URL)
+		set(&e.Notes, p.Notes)
+		set(&e.TOTP, p.TOTP)
+		if p.Tags != nil {
+			e.Tags = *p.Tags
+		}
+		if p.Fields != nil {
+			e.Fields = *p.Fields
+		}
+		if p.ExpiresAt != nil {
+			e.ExpiresAt = *p.ExpiresAt
+		}
+		return map[string]any{}, v.UpdateEntry(p.ID, e)
 	case "vault.delete":
 		var p struct {
 			ID string `json:"id"`
@@ -534,7 +631,13 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return v.PreviewRestore(p.Name, cr)
+		var diff vault.RestoreDiff
+		err = c.credAttempt(false, func() error {
+			var rerr error
+			diff, rerr = v.PreviewRestore(p.Name, cr)
+			return rerr
+		})
+		return diff, err
 	case "vault.restore":
 		var p struct {
 			Name string   `json:"name"`
@@ -549,7 +652,12 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		st, err := v.Restore(p.Name, cr, vault.RestoreMode(p.Mode), p.IDs)
+		var st vault.MergeStats
+		err = c.credAttempt(false, func() error {
+			var rerr error
+			st, rerr = v.Restore(p.Name, cr, vault.RestoreMode(p.Mode), p.IDs)
+			return rerr
+		})
 		return map[string]any{"stats": st}, err
 	case "vault.import_file":
 		var p struct {
@@ -563,7 +671,12 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		st, err := v.ImportFile(p.Path, cr)
+		var st vault.MergeStats
+		err = c.credAttempt(false, func() error {
+			var rerr error
+			st, rerr = v.ImportFile(p.Path, cr)
+			return rerr
+		})
 		return map[string]any{"stats": st}, err
 	case "vault.import_csv":
 		var p struct {
@@ -663,7 +776,7 @@ func (c *Core) vaultStatus() (any, error) {
 		st["backups"] = len(bs)
 	}
 	if unlocked {
-		if v, err := c.vaultOpen(); err == nil {
+		if v, err := c.vaultOpenFor("vault.status"); err == nil {
 			l, _ := v.List(vault.Filter{})
 			st["entries"] = len(l)
 			if k, err := v.KDFInfo(); err == nil {
@@ -685,6 +798,9 @@ func (c *Core) vaultCreate(params string) (any, error) {
 	}
 	cr, err := p.creds()
 	if err != nil {
+		return nil, err
+	}
+	if err := checkNewMaster(cr); err != nil {
 		return nil, err
 	}
 	kdf, err := kdfPreset(p.KDF)
@@ -717,32 +833,33 @@ func (c *Core) vaultUnlock(params string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.vaultGuard(); err != nil {
-		return nil, err
-	}
-	c.vs.mu.Lock()
-	already := c.vs.v != nil
-	c.vs.mu.Unlock()
-	start := time.Now()
-	v, err := vault.Open(c.vaultDir(), cr)
-	if err != nil {
-		if errors.Is(err, vault.ErrWrongCredentials) {
-			c.vaultAttempt(false)
+	var unlockMS int64
+	err = c.credAttempt(true, func() error {
+		c.vs.mu.Lock()
+		already := c.vs.v != nil
+		c.vs.mu.Unlock()
+		start := time.Now()
+		v, err := vault.Open(c.vaultDir(), cr)
+		if err != nil {
+			return err
 		}
+		unlockMS = time.Since(start).Milliseconds()
+		c.noteKeyFile(cr)
+		c.vs.mu.Lock()
+		defer c.vs.mu.Unlock()
+		if already && c.vs.v != nil { // a second unlock: keep the first, drop this copy
+			v.Close()
+		} else {
+			c.vs.v = v
+			go c.vaultAfterOpen(v)
+		}
+		c.armIdleLocked()
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	c.vaultAttempt(true)
-	c.noteKeyFile(cr)
-	c.vs.mu.Lock()
-	defer c.vs.mu.Unlock()
-	if already && c.vs.v != nil { // a second unlock: keep the first, drop this copy
-		v.Close()
-	} else {
-		c.vs.v = v
-		go c.vaultAfterOpen(v)
-	}
-	c.armIdleLocked()
-	return map[string]any{"unlocked": true, "unlock_ms": time.Since(start).Milliseconds()}, nil
+	return map[string]any{"unlocked": true, "unlock_ms": unlockMS}, nil
 }
 
 func (c *Core) vaultVerifyMaster(params string) (any, error) {
@@ -754,17 +871,17 @@ func (c *Core) vaultVerifyMaster(params string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.vaultGuard(); err != nil {
-		return nil, err
-	}
 	v, err := c.vaultOpen()
 	if err != nil {
 		return nil, err
 	}
-	ok := v.VerifyCredentials(cr)
-	c.vaultAttempt(ok)
-	if !ok {
-		return nil, vault.ErrWrongCredentials
+	if err := c.credAttempt(true, func() error {
+		if !v.VerifyCredentials(cr) {
+			return vault.ErrWrongCredentials
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	return map[string]any{"ok": true}, nil
 }
@@ -775,15 +892,12 @@ func (c *Core) vaultConfirm(v *vault.Vault, p credParams) error {
 	if err != nil {
 		return err
 	}
-	if err := c.vaultGuard(); err != nil {
-		return err
-	}
-	ok := v.VerifyCredentials(cr)
-	c.vaultAttempt(ok)
-	if !ok {
-		return vault.ErrWrongCredentials
-	}
-	return nil
+	return c.credAttempt(true, func() error {
+		if !v.VerifyCredentials(cr) {
+			return vault.ErrWrongCredentials
+		}
+		return nil
+	})
 }
 
 func (c *Core) vaultChangeMaster(params string) (any, error) {
@@ -793,7 +907,8 @@ func (c *Core) vaultChangeMaster(params string) (any, error) {
 			Password string `json:"password"`
 			KeyFile  string `json:"key_file_b64"`
 		} `json:"new"`
-		KDF string `json:"kdf"`
+		KDF          string `json:"kdf"`
+		PurgeBackups bool   `json:"purge_backups"` // delete every snapshot and the previous file (they still open with the old password)
 	}
 	if err := parseParams(params, &p); err != nil {
 		return nil, err
@@ -809,6 +924,9 @@ func (c *Core) vaultChangeMaster(params string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := checkNewMaster(nc); err != nil {
+		return nil, err
+	}
 	var kdf vault.KDF
 	if p.KDF != "" {
 		if kdf, err = kdfPreset(p.KDF); err != nil {
@@ -819,7 +937,20 @@ func (c *Core) vaultChangeMaster(params string) (any, error) {
 		return nil, err
 	}
 	c.noteKeyFile(nc)
-	return map[string]any{}, nil
+	purged := 0
+	if p.PurgeBackups {
+		purged, _ = v.PurgeBackups()
+	}
+	return map[string]any{"purged": purged}, nil
+}
+
+// checkNewMaster: a master password chosen now must be at least 8 characters (the UI also shows its
+// strength; this is the floor the core insists on).
+func checkNewMaster(cr vault.Creds) error {
+	if utf8.RuneCount(cr.Password) < 8 {
+		return proto.Errorf(proto.CodeInvalid, "the master password must be at least 8 characters")
+	}
+	return nil
 }
 
 // noteKeyFile remembers (in the settings table, not secret) whether the credentials in use include a
@@ -844,19 +975,16 @@ func (c *Core) vaultBackupVerify(params string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := c.vaultGuard(); err != nil {
-		return nil, err
-	}
-	chk, err := vault.VerifyBackup(c.vaultDir(), p.Name, cr)
-	if errors.Is(err, vault.ErrWrongCredentials) {
-		c.vaultAttempt(false)
-	} else if err == nil {
-		c.vaultAttempt(true)
-	}
+	var chk vault.BackupCheck
+	err = c.credAttempt(false, func() error {
+		var verr error
+		chk, verr = vault.VerifyBackup(c.vaultDir(), p.Name, cr)
+		return verr
+	})
 	return chk, err
 }
 
-func vaultGenerate(params string) (any, error) {
+func (c *Core) vaultGenerate(params string) (any, error) {
 	var p struct {
 		Type string `json:"type"`
 		vault.PasswordOpts
@@ -890,6 +1018,7 @@ func vaultGenerate(params string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.markSecret(s) // a generated password the user copies by hand is not broadcast either
 	return map[string]any{"value": s, "strength": vault.Strength(s)}, nil
 }
 
@@ -898,6 +1027,15 @@ func vaultGenerate(params string) (any, error) {
 // vaultReveal hands one secret to the shell. With copy set the text is also registered with the
 // clipboard service, so the clipboard change it is about to cause is never broadcast, and the answer
 // says when to clear it again.
+func (c *Core) markSecret(value string) {
+	if value == "" {
+		return
+	}
+	if n := c.net(); n != nil {
+		n.clip.MarkSecret(value)
+	}
+}
+
 func (c *Core) vaultReveal(v *vault.Vault, copyIt bool, params string) (any, error) {
 	var p struct {
 		ID    string `json:"id"`
@@ -943,10 +1081,9 @@ func (c *Core) vaultReveal(v *vault.Vault, copyIt bool, params string) (any, err
 		return nil, proto.Errorf(proto.CodeInvalid, "unknown field %q", p.Field)
 	}
 	out := map[string]any{"value": value}
+	// Whatever leaves the vault may land on the clipboard by hand (select, Ctrl+C): never broadcast it.
+	c.markSecret(value)
 	if copyIt {
-		if n := c.net(); n != nil {
-			n.clip.MarkSecret(value)
-		}
 		out["clear_after_s"] = c.vaultIntSetting(settingVaultClipClear, defaultVaultClipClear)
 	}
 	return out, nil
@@ -1014,15 +1151,7 @@ func (c *Core) vaultSyncCall(method, params string) (any, error) {
 		if err := parseParams(params, &p); err != nil {
 			return nil, err
 		}
-		rec, found, err := c.db.GetPeer(p.DeviceID)
-		if err != nil {
-			return nil, err
-		}
-		if !found || rec.State != "paired" {
-			return nil, proto.Errorf(proto.CodeNotPaired, "no paired device %s", p.DeviceID)
-		}
-		rec.VaultSync = p.Enabled
-		if err := c.db.PutPeer(rec); err != nil {
+		if err := c.db.SetPeerVaultSync(p.DeviceID, p.Enabled); err != nil {
 			return nil, err
 		}
 		if p.Enabled {
@@ -1035,6 +1164,7 @@ func (c *Core) vaultSyncCall(method, params string) (any, error) {
 		var p struct {
 			DeviceID string `json:"device_id"`
 			Approve  bool   `json:"approve"`
+			SHA256   string `json:"sha256"` // required with approve: the file the user reviewed (vault.sync_status incoming_sha256)
 			credParams
 		}
 		if err := parseParams(params, &p); err != nil {
@@ -1047,6 +1177,12 @@ func (c *Core) vaultSyncCall(method, params string) (any, error) {
 				return nil, err
 			}
 		}
-		return map[string]any{}, n.sync.Resolve(p.DeviceID, cr, p.Approve)
+		var rerr error
+		if len(cr.Password) > 0 {
+			rerr = c.credAttempt(false, func() error { return n.sync.Resolve(p.DeviceID, cr, p.Approve, p.SHA256) })
+		} else {
+			rerr = n.sync.Resolve(p.DeviceID, cr, p.Approve, p.SHA256)
+		}
+		return map[string]any{}, rerr
 	}
 }

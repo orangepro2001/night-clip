@@ -11,6 +11,22 @@ import (
 // confirm and must say so.
 var csvHeader = []string{"Group", "Title", "Username", "Password", "URL", "Notes", "TOTP", "Tags", "Kind"}
 
+// csvSafe stops a spreadsheet from running a cell: a value starting with = + - @ tab or CR gets a
+// leading apostrophe. ImportCSV removes exactly that apostrophe again.
+func csvSafe(s string) string {
+	if s != "" && strings.ContainsRune("=+-@\t\r", rune(s[0])) {
+		return "'" + s
+	}
+	return s
+}
+
+func csvUnsafe(s string) string {
+	if len(s) > 1 && s[0] == '\'' && strings.ContainsRune("=+-@\t\r", rune(s[1])) {
+		return s[1:]
+	}
+	return s
+}
+
 // ExportCSV writes the vault (without the recycle bin) as CSV.
 func (v *Vault) ExportCSV(out io.Writer) error {
 	v.mu.Lock()
@@ -39,7 +55,10 @@ func (v *Vault) ExportCSV(out io.Writer) error {
 			return
 		}
 		e := fromLib(v.db, le, gid, false)
-		err = w.Write([]string{paths[gid], e.Title, e.Username, e.Password, e.URL, e.Notes, e.TOTP, strings.Join(e.Tags, ";"), e.Kind})
+		// Text columns that other devices or imports could have filled get a leading quote when a
+		// spreadsheet would read them as a formula; the password and TOTP columns are written as they
+		// are, they are secrets the user will paste, not open in Excel.
+		err = w.Write([]string{csvSafe(paths[gid]), csvSafe(e.Title), csvSafe(e.Username), e.Password, csvSafe(e.URL), csvSafe(e.Notes), e.TOTP, csvSafe(strings.Join(e.Tags, ";")), e.Kind})
 	}, nil)
 	if err != nil {
 		return err
@@ -105,6 +124,7 @@ func (v *Vault) ImportCSV(in io.Reader) (added, skipped int, err error) {
 		return ""
 	}
 	groups := map[string]string{}
+	groupCount := v.countGroups()
 	groupFor := func(path string) string {
 		if path == "" {
 			return ""
@@ -118,6 +138,9 @@ func (v *Vault) ImportCSV(in io.Reader) (added, skipped int, err error) {
 			part = strings.TrimSpace(part)
 			if part == "" {
 				continue
+			}
+			if len(cur) >= maxGroupDepth-1 || groupCount >= maxGroups { // too deep or too many: file the rest in the last group
+				break
 			}
 			cur = append(cur, part)
 			key := strings.Join(cur, "/")
@@ -137,8 +160,9 @@ func (v *Vault) ImportCSV(in io.Reader) (added, skipped int, err error) {
 				}
 			}
 			if found == "" {
-				ng := newGroup(part)
+				ng := v.newGroupNamed(part)
 				pg.Groups = append(pg.Groups, ng)
+				groupCount++
 				found = uuidHex(ng.UUID)
 			}
 			groups[key] = found
@@ -158,8 +182,8 @@ func (v *Vault) ImportCSV(in io.Reader) (added, skipped int, err error) {
 			return added, skipped, fmt.Errorf("%w: CSV line: %v", ErrInvalid, rerr)
 		}
 		e := Entry{
-			Title: get(rec, "title"), Username: get(rec, "username"), Password: get(rec, "password"), URL: get(rec, "url"),
-			Notes: get(rec, "notes"), TOTP: get(rec, "totp"), Kind: get(rec, "kind"),
+			Title: csvUnsafe(get(rec, "title")), Username: csvUnsafe(get(rec, "username")), Password: get(rec, "password"),
+			URL: csvUnsafe(get(rec, "url")), Notes: csvUnsafe(get(rec, "notes")), TOTP: get(rec, "totp"), Kind: get(rec, "kind"),
 		}
 		if e.Title == "" {
 			e.Title = e.URL

@@ -2,6 +2,7 @@ package vault
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"os"
@@ -31,8 +32,9 @@ type Vault struct {
 	broken bool
 	now    func() time.Time
 
-	lastSnapshot time.Time
-	onSaved      func()
+	lastSnapshot     time.Time
+	lastSyncSnapshot time.Time
+	onSaved          func()
 }
 
 // SetOnSaved registers a function called (in its own goroutine) after every successful save. The
@@ -100,7 +102,13 @@ func Open(dir string, c Creds) (*Vault, error) {
 		return nil, err
 	}
 	v := &Vault{dir: dir, db: db, creds: c.clone(), now: time.Now}
-	if upgraded {
+	weak := !upgraded && weakKDF(db)
+	if weak {
+		// A file whose key derivation is below our floor (made by another program, or by a peer that
+		// chose a cheap one) is written back with the standard cost on the spot.
+		raiseKDF(v.db)
+	}
+	if upgraded || weak {
 		// An older KDBX 3.x file (for instance one made by KeePassXC's defaults): write it as KDBX 4
 		// right away; the original is kept as a snapshot and as the previous generation.
 		if err := v.saveLocked("upgrade"); err != nil {
@@ -303,5 +311,7 @@ func (v *Vault) VerifyCredentials(c Creds) bool {
 	if v.usable() != nil || len(c.Password) == 0 {
 		return false
 	}
-	return string(c.Password) == string(v.creds.Password) && string(c.KeyFile) == string(v.creds.KeyFile)
+	okPw := subtle.ConstantTimeCompare(c.Password, v.creds.Password) == 1
+	okKey := subtle.ConstantTimeCompare(c.KeyFile, v.creds.KeyFile) == 1
+	return okPw && okKey
 }

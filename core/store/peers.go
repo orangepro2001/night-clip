@@ -192,3 +192,16 @@ func boolInt(b bool) int {
 	}
 	return 0
 }
+
+// SetPeerVaultSync switches vault sync for one peer without rewriting the rest of its row (a
+// read-modify-write of the whole record could undo a concurrent change such as an unpairing).
+func (db *DB) SetPeerVaultSync(deviceID string, on bool) error {
+	res, err := db.sql.Exec(`UPDATE peers SET vault_sync = ? WHERE device_id = ? AND state = 'paired'`, boolInt(on), deviceID)
+	if err != nil {
+		return dbErr("set vault sync", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return proto.Errorf(proto.CodeNotPaired, "no paired device %s", deviceID)
+	}
+	return nil
+}
