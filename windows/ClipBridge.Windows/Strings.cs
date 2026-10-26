@@ -5,7 +5,7 @@ namespace ClipBridge.Windows;
 /// code base carries UI literals, so an English table can be added later by swapping this class.
 /// Pure C#: it is linked into the unit-test project.
 /// </summary>
-public static class Strings
+public static partial class Strings
 {
     public const string AppName = "ClipBridge";
 

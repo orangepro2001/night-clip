@@ -29,8 +29,27 @@ public static class ErrorMessages
         "INTERNAL" => Strings.ErrInternal,
         "INIT_FAILED" => Strings.ErrInitFailed,
         "NOT_FOUND" => Strings.ErrNotFound,
+        "VAULT_LOCKED" or "VAULT_WRONG_CREDENTIALS" or "VAULT_NOT_FOUND" or "VAULT_EXISTS" or "VAULT_UNSUPPORTED" or "VAULT_BROKEN" => ForVault(code),
         null or "" => Strings.ErrorGeneric,
         _ => Strings.ErrorUnknown(code),
+    };
+
+    /// <summary>
+    /// Message for a vault.* failure (docs/vault-api.md §2). <paramref name="retryAfterSeconds"/> is
+    /// <c>details.retry_after_s</c> of a RATE_LIMITED error.
+    /// </summary>
+    public static string ForVault(string? code, int retryAfterSeconds = 0) => code switch
+    {
+        "VAULT_LOCKED" => Strings.ErrVaultLocked,
+        "VAULT_WRONG_CREDENTIALS" => Strings.ErrVaultWrongCredentials,
+        "VAULT_NOT_FOUND" => Strings.ErrVaultNotFound,
+        "VAULT_EXISTS" => Strings.ErrVaultExists,
+        "VAULT_UNSUPPORTED" => Strings.ErrVaultUnsupported,
+        "VAULT_BROKEN" => Strings.ErrVaultBroken,
+        "RATE_LIMITED" => retryAfterSeconds > 0 ? Strings.ErrVaultRateLimited(retryAfterSeconds) : Strings.ErrRateLimited,
+        "TOO_LARGE" => Strings.ErrVaultTooLarge,
+        "INVALID" => Strings.ErrVaultInvalid,
+        _ => ForCode(code),
     };
 
     /// <summary>Message for a failed file transfer; checksum failures get the dedicated wording.</summary>

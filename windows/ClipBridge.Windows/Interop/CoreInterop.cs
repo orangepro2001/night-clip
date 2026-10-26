@@ -34,7 +34,15 @@ internal static class Native
 public sealed class CoreException : Exception
 {
     public string Code { get; }
-    public CoreException(string code, string message) : base($"{code}: {message}") => Code = code;
+
+    /// <summary>The error's <c>details.retry_after_s</c> (RATE_LIMITED), or 0 when absent.</summary>
+    public int RetryAfterSeconds { get; }
+
+    public CoreException(string code, string message, int retryAfterSeconds = 0) : base($"{code}: {message}")
+    {
+        Code = code;
+        RetryAfterSeconds = Math.Max(0, retryAfterSeconds);
+    }
 }
 
 /// <summary>The one method the shell logic needs from the core; lets tests substitute a fake.</summary>
@@ -85,8 +93,12 @@ public sealed class CoreHost : IDisposable, ICoreCaller
         if (root.GetProperty("ok").GetBoolean())
             return root.GetProperty("result").Clone();
         var e = root.GetProperty("error");
+        var retry = 0;
+        if (e.TryGetProperty("details", out var details) && details.ValueKind == JsonValueKind.Object
+            && details.TryGetProperty("retry_after_s", out var ra) && ra.ValueKind == JsonValueKind.Number && ra.TryGetInt32(out var secs))
+            retry = secs;
         throw new CoreException(e.GetProperty("code").GetString() ?? "INTERNAL",
-                                e.GetProperty("message").GetString() ?? "");
+                                e.GetProperty("message").GetString() ?? "", retry);
     }
 
     private void PumpLoop()
