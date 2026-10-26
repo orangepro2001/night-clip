@@ -1,0 +1,111 @@
+<UserControl x:Class="ClipBridge.Windows.Views.VaultMainPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:ClipBridge.Windows"
+             xmlns:views="clr-namespace:ClipBridge.Windows.Views">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <WrapPanel Grid.Row="0" Margin="0,0,0,8">
+            <Button x:Name="NewButton" Content="{x:Static local:Strings.BtnNewEntry}" Margin="0,0,0,4" Click="New_Click" />
+            <Button x:Name="EditButton" Content="{x:Static local:Strings.BtnEditEntry}" Margin="6,0,0,4" Click="Edit_Click" />
+            <Button x:Name="DeleteButton" Content="{x:Static local:Strings.BtnDeleteEntry}" Margin="6,0,0,4" Click="Delete_Click" />
+            <Button x:Name="RestoreButton" Content="{x:Static local:Strings.BtnRestoreEntry}" Margin="6,0,0,4" Click="RestoreEntry_Click" />
+            <Button x:Name="EmptyTrashButton" Content="{x:Static local:Strings.BtnEmptyTrash}" Margin="6,0,0,4" Click="EmptyTrash_Click" />
+            <Button x:Name="HealthButton" Content="{x:Static local:Strings.BtnHealth}" Margin="18,0,0,4" Click="Health_Click" />
+            <Button x:Name="BackupsButton" Content="{x:Static local:Strings.BtnBackups}" Margin="6,0,0,4" Click="Backups_Click" />
+            <Button x:Name="MoreButton" Content="{x:Static local:Strings.BtnMore}" Margin="6,0,0,4" Click="More_Click">
+                <Button.ContextMenu>
+                    <ContextMenu x:Name="MoreMenu">
+                        <MenuItem Header="{x:Static local:Strings.BtnImport}" Click="Import_Click" />
+                        <MenuItem Header="{x:Static local:Strings.BtnExport}" Click="Export_Click" />
+                        <Separator />
+                        <MenuItem Header="{x:Static local:Strings.BtnChangeMaster}" Click="ChangeMaster_Click" />
+                        <MenuItem Header="{x:Static local:Strings.BtnVaultSettings}" Click="Settings_Click" />
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
+            <Button x:Name="LockButton" Content="{x:Static local:Strings.BtnLockNow}" Margin="18,0,0,4" Click="Lock_Click" />
+        </WrapPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="180" MinWidth="130" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="300" MinWidth="200" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="*" MinWidth="240" />
+            </Grid.ColumnDefinitions>
+
+            <!-- quick filters and groups -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <ListBox x:Name="FilterList" Grid.Row="0" BorderThickness="0" SelectionChanged="FilterList_SelectionChanged" />
+                <TextBlock Grid.Row="1" Text="{x:Static local:Strings.GroupsTitle}" FontWeight="SemiBold" Foreground="#FF555555" Margin="6,14,0,4" />
+                <WrapPanel Grid.Row="2" Margin="0,0,0,4">
+                    <Button Content="{x:Static local:Strings.BtnNewGroup}" Margin="0,0,4,4" Padding="6,2" Click="NewGroup_Click" />
+                    <Button x:Name="RenameGroupButton" Content="{x:Static local:Strings.BtnRenameGroup}" Margin="0,0,4,4" Padding="6,2" Click="RenameGroup_Click" />
+                    <Button x:Name="DeleteGroupButton" Content="{x:Static local:Strings.BtnDeleteGroup}" Margin="0,0,4,4" Padding="6,2" Click="DeleteGroup_Click" />
+                </WrapPanel>
+                <ListBox x:Name="GroupList" Grid.Row="3" BorderThickness="0" DisplayMemberPath="Display" SelectionChanged="GroupList_SelectionChanged" />
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="Transparent" />
+
+            <!-- search and the entry list -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0">
+                    <TextBox x:Name="SearchBox" MaxLength="200" TextChanged="SearchBox_TextChanged" Padding="4,4" />
+                    <TextBlock x:Name="SearchHint" Text="{x:Static local:Strings.SearchHint}" Foreground="#FF999999" IsHitTestVisible="False"
+                               Margin="8,0,0,0" VerticalAlignment="Center" />
+                </Grid>
+                <TextBlock x:Name="CountText" Grid.Row="1" Foreground="#FF777777" FontSize="12" Margin="4,6,0,4" />
+                <ListBox x:Name="EntryList" Grid.Row="2" BorderThickness="0" HorizontalContentAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="EntryList_SelectionChanged">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="2,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Glyph, Mode=OneWay}" FontSize="20" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Subtitle, Mode=OneWay}" Foreground="#FF777777" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="6,0,0,0">
+                                    <TextBlock Text="{Binding TotpBadge, Mode=OneWay}" Foreground="#FF1A73E8" FontSize="11" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding ExpiryBadge, Mode=OneWay}" Foreground="#FFB36B00" FontSize="11" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding AttachBadge, Mode=OneWay}" FontSize="11" HorizontalAlignment="Right" />
+                                </StackPanel>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock x:Name="EmptyText" Grid.Row="2" Foreground="#FF777777" TextWrapping="Wrap" HorizontalAlignment="Center"
+                           VerticalAlignment="Center" Margin="12" Visibility="Collapsed" />
+            </Grid>
+
+            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Stretch" Background="Transparent" />
+
+            <Border Grid.Column="4" BorderBrush="#FFD5D5D5" BorderThickness="1" CornerRadius="4" Background="White">
+                <views:EntryDetailPane x:Name="Detail" />
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

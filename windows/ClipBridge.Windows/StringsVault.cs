@@ -19,6 +19,7 @@ public static partial class Strings
     public const string LabelNotes = "备注";
     public const string LabelTotp = "一次性验证码（TOTP）";
     public const string LabelTags = "标签（用逗号分隔）";
+    public const string LabelTagsShort = "标签";
     public const string LabelExpiry = "到期日期";
     public const string LabelGroup = "分组";
     public const string LabelKind = "类型";
@@ -48,6 +49,7 @@ public static partial class Strings
     public const string KeyFileTooBig = "密钥文件太大（上限 1 MiB）。";
     public const string KeyFileMissing = "找不到这个密钥文件。";
     public const string KeyFileUnreadable = "无法读取这个密钥文件。";
+    public const string KeyFileRequiredNote = "如果选择了密钥文件，以后每次解锁都需要同一个文件；丢失它同样会让密码库永远无法打开。";
     public static string KeyFileChosen(string name) => $"密钥文件：{name}";
 
     // ---- locked screen ----------------------------------------------------------------
@@ -88,6 +90,8 @@ public static partial class Strings
     public const string BtnNewEntry = "新建";
     public const string BtnEditEntry = "编辑";
     public const string BtnDeleteEntry = "删除";
+    public const string BtnDeletePermanent = "永久删除";
+    public const string BtnViewEntry = "查看";
     public const string BtnRestoreEntry = "还原";
     public const string BtnEmptyTrash = "清空回收站";
     public const string BtnLockNow = "立即锁定";
@@ -249,6 +253,9 @@ public static partial class Strings
     public const string ColReason = "原因";
     public const string ColSize = "大小";
     public const string BackupCreated = "已创建备份";
+    public const string BackupPreviewPrompt = "预览会用当前的主密码打开这份备份。如果它是用别的主密码做的（比如改主密码之前），请在下面填那个密码；留空就是用当前的。";
+    public const string BackupOtherPassword = "这份备份的主密码（留空 = 当前主密码）";
+    public const string RestoreNothingSelected = "请至少勾选一个条目。";
     public const string BackupVerifyTitle = "验证备份";
     public const string BackupVerifyPrompt = "验证需要这份备份拍摄时用的主密码。默认是现在的主密码，如果之后改过主密码，请填旧的。";
     public static string BackupVerified(int entries, int groups, int trash, string time) =>

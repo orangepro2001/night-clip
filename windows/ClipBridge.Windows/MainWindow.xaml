@@ -37,6 +37,7 @@
                 <views:DevicesPage x:Name="DevicesPage" />
                 <views:InboxPage x:Name="InboxPage" Visibility="Collapsed" />
                 <views:TransfersPage x:Name="TransfersPage" Visibility="Collapsed" />
+                <views:VaultPage x:Name="VaultPage" Visibility="Collapsed" />
                 <views:SettingsPage x:Name="SettingsPage" Visibility="Collapsed" />
                 <views:DiagnosticsPage x:Name="DiagnosticsPage" Visibility="Collapsed" />
             </Grid>

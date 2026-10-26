@@ -96,6 +96,30 @@ public sealed class EntryDraft
     }
 }
 
+/// <summary>Builds the editor's draft from the vault: vault.get plus one vault.reveal per secret (get never returns them).</summary>
+public static class EntryDraftLoader
+{
+    /// <summary>Blocking: several core calls. Run off the UI thread.</summary>
+    public static EntryDraft Load(VaultApi api, string id)
+    {
+        var d = api.Get(id);
+        var draft = new EntryDraft
+        {
+            Id = d.Id, GroupId = d.Summary.GroupId, Kind = EntryKinds.Normalize(d.Summary.Kind), Title = d.Summary.Title,
+            Username = d.Summary.Username, Url = d.Summary.Url, Notes = d.Notes, TagsText = string.Join(", ", d.Summary.Tags),
+            ExpiresAt = d.Summary.ExpiresAt,
+        };
+        if (d.HasPassword) draft.Password = api.Reveal(id, "password");
+        if (d.Summary.HasTotp) draft.Totp = api.Reveal(id, "totp_secret");
+        foreach (var f in d.Fields)
+        {
+            var value = f.Protected ? (f.HasValue ? api.Reveal(id, DetailRows.FieldKey(f.Name)) : "") : f.Value;
+            draft.Fields.Add(new DraftField { Name = f.Name, Value = value, Protected = f.Protected });
+        }
+        return draft;
+    }
+}
+
 public static class EntryKinds
 {
     public const string Login = "login";

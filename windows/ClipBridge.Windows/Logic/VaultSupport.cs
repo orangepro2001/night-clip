@@ -23,6 +23,25 @@ public static class TotpActivityPolicy
         now - lastActivity <= ActiveWindow(autolockSeconds);
 }
 
+/// <summary>Attachments: one file up to 5 MiB (core/vault MaxAttachmentBytes).</summary>
+public static class AttachmentRules
+{
+    public const long MaxBytes = 5L << 20;
+
+    public static string? Check(long length) => length > MaxBytes ? Strings.AttachTooBig : null;
+}
+
+/// <summary>Group names as the core accepts them: trimmed, 1 to 128 bytes, no control line breaks or NUL.</summary>
+public static class GroupNames
+{
+    public static string? Normalize(string? name)
+    {
+        var n = (name ?? "").Trim();
+        if (n.Length == 0 || System.Text.Encoding.UTF8.GetByteCount(n) > 128) return null;
+        return n.IndexOfAny(new[] { '\0', '\r', '\n' }) >= 0 ? null : n;
+    }
+}
+
 /// <summary>Search box debouncing and the length cap of a query.</summary>
 public static class SearchInput
 {

@@ -168,6 +168,21 @@ public sealed class EntryRow
         entries.Select(e => new EntryRow(e, now)).ToList();
 }
 
+/// <summary>Which toolbar buttons make sense for the current filter and selection.</summary>
+public readonly record struct ToolbarState(bool CanEdit, bool CanDelete, bool CanRestore, bool CanEmptyTrash, string DeleteLabel)
+{
+    public static ToolbarState For(QuickFilter filter, bool hasSelection)
+    {
+        var trash = filter == QuickFilter.Trash;
+        return new ToolbarState(
+            CanEdit: hasSelection && !trash,
+            CanDelete: hasSelection,
+            CanRestore: hasSelection && trash,
+            CanEmptyTrash: trash,
+            DeleteLabel: trash ? Strings.BtnDeletePermanent : Strings.BtnDeleteEntry);
+    }
+}
+
 public static class UrlText
 {
     /// <summary>The host of a web address ("https://a.b/c" gives "a.b"); anything else is shortened as is.</summary>
