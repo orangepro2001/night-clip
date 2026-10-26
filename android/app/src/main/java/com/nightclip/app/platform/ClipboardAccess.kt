@@ -23,6 +23,7 @@ object ClipboardAccess {
         val cm = context.getSystemService(ClipboardManager::class.java) ?: return null
         val clip = cm.primaryClip ?: return null
         if (clip.itemCount == 0) return null
+        if (clip.description?.label == VaultClipboard.MARKER_LABEL) return null // a vault copy is never a user copy (auto send, manual send)
         val text = clip.getItemAt(0).coerceToText(context)?.toString()?.takeIf { it.isNotEmpty() } ?: return null
         return ClipRead(text, clip.description?.timestamp ?: 0L)
     }

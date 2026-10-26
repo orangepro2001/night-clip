@@ -6,6 +6,7 @@ import com.nightclip.app.core.CoreHost
 import com.nightclip.app.platform.ForegroundTracker
 import com.nightclip.app.platform.Notifications
 import com.nightclip.app.platform.ShellPrefs
+import com.nightclip.app.platform.VaultSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,6 +27,7 @@ class ClipBridgeApp : Application() {
         prefs = ShellPrefs(this)
         Notifications.createChannels(this)
         registerActivityLifecycleCallbacks(ForegroundTracker)
+        VaultSession.install(this)
         CoreHost.start(this)
         EventRouter(this).start()
     }
