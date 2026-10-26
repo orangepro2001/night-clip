@@ -98,6 +98,12 @@ public partial class DevicesPage : UserControl
             Tell(await _shell.SetPeerModeAsync(peer, mode));
     }
 
+    private async void Send_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { DataContext: PeerItem peer } box)
+            Tell(await _shell.SetPeerSendAsync(peer, box.IsChecked == true));
+    }
+
     private async void Rename_Click(object sender, RoutedEventArgs e)
     {
         if (PeerOf(sender) is not { } peer) return;

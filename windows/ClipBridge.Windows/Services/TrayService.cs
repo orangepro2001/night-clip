@@ -17,6 +17,9 @@ internal sealed class TrayService : IDisposable
     private readonly WinForms.ContextMenuStrip _menu = new();
     private readonly WinForms.ToolStripMenuItem _syncItem;
     private readonly WinForms.ToolStripMenuItem _autoStartItem;
+    private readonly WinForms.ToolStripMenuItem _pauseItem;
+    private readonly WinForms.ToolStripMenuItem _resumeItem;
+    private readonly WinForms.ToolStripMenuItem _undoItem;
     private readonly Dictionary<TrayState, Drawing.Icon> _icons = new();
     private readonly List<IntPtr> _iconHandles = new();
 
@@ -28,6 +31,9 @@ internal sealed class TrayService : IDisposable
     public event Action? PairRequested;
     public event Action<bool>? SyncToggled;
     public event Action? SendNowRequested;
+    /// <summary>Minutes to pause sync for; 0 = resume now.</summary>
+    public event Action<int>? PauseRequested;
+    public event Action? UndoRequested;
     public event Action<bool>? AutoStartToggled;
     public event Action? CheckUpdateRequested;
     public event Action? ExitRequested;
@@ -43,6 +49,20 @@ internal sealed class TrayService : IDisposable
         _syncItem = new WinForms.ToolStripMenuItem(Strings.TraySync) { CheckOnClick = true };
         _syncItem.Click += (_, _) => SyncToggled?.Invoke(_syncItem.Checked);
         _menu.Items.Add(_syncItem);
+        _pauseItem = new WinForms.ToolStripMenuItem(Strings.TrayPause);
+        foreach (var minutes in new[] { 15, 60, 240 })
+        {
+            var m = minutes;
+            var label = m == 15 ? Strings.TrayPause15 : m == 60 ? Strings.TrayPause60 : Strings.TrayPause240;
+            _pauseItem.DropDownItems.Add(Item(label, () => PauseRequested?.Invoke(m)));
+        }
+        _menu.Items.Add(_pauseItem);
+        _resumeItem = Item("", () => PauseRequested?.Invoke(0));
+        _resumeItem.Visible = false;
+        _menu.Items.Add(_resumeItem);
+        _undoItem = Item(Strings.TrayUndo, () => UndoRequested?.Invoke());
+        _undoItem.Enabled = false;
+        _menu.Items.Add(_undoItem);
         _menu.Items.Add(Item(Strings.TraySendNow, () => SendNowRequested?.Invoke()));
         _autoStartItem = new WinForms.ToolStripMenuItem(Strings.TrayAutoStart) { CheckOnClick = true };
         _autoStartItem.Click += (_, _) => AutoStartToggled?.Invoke(_autoStartItem.Checked);
@@ -81,6 +101,16 @@ internal sealed class TrayService : IDisposable
 
     public void SetSyncChecked(bool on) => _syncItem.Checked = on;
     public void SetAutoStartChecked(bool on) => _autoStartItem.Checked = on;
+
+    /// <summary>Shows "resume" instead of "pause" while sync is paused; <paramref name="until"/> is local time, null = not paused.</summary>
+    public void SetPaused(DateTime? until)
+    {
+        _pauseItem.Visible = until is null;
+        _resumeItem.Visible = until is not null;
+        if (until is { } u) _resumeItem.Text = Strings.TrayResume(u.ToString("HH:mm"));
+    }
+
+    public void SetUndoAvailable(bool available) => _undoItem.Enabled = available;
 
     /// <summary>
     /// Shows a balloon. <paramref name="onClick"/> runs if the user clicks it within 30 seconds; a

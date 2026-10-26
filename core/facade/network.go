@@ -296,7 +296,7 @@ func orEmpty[T any](in []T) []T {
 
 // ---- settings ------------------------------------------------------------------
 
-var settingKeys = []string{clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingApplyMode,
+var settingKeys = []string{clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingApplyMode, clip.SettingPausedUntil,
 	xfer.SettingDownloadDir, xfer.SettingMaxFileBytes}
 
 func isFileSetting(key string) bool {
@@ -453,7 +453,7 @@ func (c *Core) pairJoin(n *netState, params string) (any, error) {
 			c.emit(map[string]any{"type": "pair.result", "join_id": id, "state": "failed", "role": "joiner", "code": code, "message": msg})
 			return
 		}
-		peerRec.ApplyMode = n.clip.Setting(clip.SettingApplyMode)
+		peerRec.ApplyMode = c.db.NewPeerApplyMode()
 		// Pairing with a device we unpaired earlier is the user's explicit choice now.
 		_ = c.db.RemoveRevokedFP(peerRec.CertFP)
 		if err := c.db.PutPeer(peerRec); err != nil {
@@ -481,10 +481,11 @@ func manualLink(host string, port int, psk, fp string) string {
 
 func (c *Core) peersUpdate(n *netState, params string) (any, error) {
 	var p struct {
-		DeviceID  string  `json:"device_id"`
-		Name      *string `json:"name"`
-		ApplyMode *string `json:"apply_mode"`
-		Role      *string `json:"role"`
+		DeviceID    string  `json:"device_id"`
+		Name        *string `json:"name"`
+		ApplyMode   *string `json:"apply_mode"`
+		Role        *string `json:"role"`
+		SendEnabled *bool   `json:"send_enabled"`
 	}
 	if err := parseParams(params, &p); err != nil {
 		return nil, err
@@ -510,6 +511,9 @@ func (c *Core) peersUpdate(n *netState, params string) (any, error) {
 			return nil, err
 		}
 		rec.ApplyMode = *p.ApplyMode
+	}
+	if p.SendEnabled != nil {
+		rec.SendDisabled = !*p.SendEnabled
 	}
 	if p.Role != nil {
 		switch *p.Role {

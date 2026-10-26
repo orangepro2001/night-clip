@@ -39,11 +39,22 @@ class ShellPrefs(context: Context) {
     @Synchronized
     fun wasSaved(transferId: String): Boolean = prefs.getStringSet(KEY_SAVED, emptySet()).orEmpty().contains(transferId)
 
+    /**
+     * SHA-256 of the clipboard text the focus-triggered auto send last looked at (never the text itself),
+     * so opening the app twice with the same clipboard sends once. Null until the first look.
+     */
+    var lastClipHash: String?
+        get() = prefs.getString(KEY_LAST_CLIP, null)
+        set(value) {
+            prefs.edit().apply { if (value == null) remove(KEY_LAST_CLIP) else putString(KEY_LAST_CLIP, value) }.apply()
+        }
+
     val realtimeNow: Boolean get() = _realtime.value
 
     private companion object {
         const val KEY_REALTIME = "realtime_mode"
         const val KEY_SAVED = "saved_transfers"
         const val KEY_ONBOARDED = "onboarded"
+        const val KEY_LAST_CLIP = "last_clip_hash"
     }
 }

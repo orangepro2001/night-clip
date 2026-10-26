@@ -30,6 +30,8 @@ object CoreApi {
     suspend fun peers() = run("peers.list", parse = ModelParsers::peers)
     suspend fun renamePeer(id: String, name: String) =
         run("peers.update", JSONObject().put("device_id", id).put("name", name)) { }
+    suspend fun setPeerSend(id: String, enabled: Boolean) =
+        run("peers.update", JSONObject().put("device_id", id).put("send_enabled", enabled)) { }
     suspend fun setPeerMode(id: String, mode: String) =
         run("peers.update", JSONObject().put("device_id", id).put("apply_mode", mode)) { }
     suspend fun removePeer(id: String) = run("peers.remove", JSONObject().put("device_id", id)) { }
@@ -44,6 +46,9 @@ object CoreApi {
 
     suspend fun sendClip(text: String, to: List<String>? = null) =
         run("clip.send", JSONObject().put("text", text).apply { if (!to.isNullOrEmpty()) put("to", JSONArray(to)) }, ModelParsers::sendResult)
+    /** The user copied something (automatic path): the core applies capture, pause, echo and duplicate rules. */
+    suspend fun localChanged(text: String) =
+        run("clip.local_changed", JSONObject().put("text", text), ModelParsers::sendResult)
     suspend fun markApplied(eventId: String) = run("clip.mark_applied", JSONObject().put("event_id", eventId)) { }
     suspend fun dismiss(eventId: String) = run("clip.dismiss", JSONObject().put("event_id", eventId)) { }
 

@@ -1,7 +1,9 @@
 package clip
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -55,15 +57,23 @@ func received(d *testnet.Device) []map[string]any {
 	return out
 }
 
-func TestCaptureIsOffUntilTheUserTurnsItOn(t *testing.T) {
+func TestCaptureIsOnByDefaultAndAnExplicitOffIsKept(t *testing.T) {
 	r := newRig(t, "notify", "notify")
+	if err := r.win.DB.SetSetting(SettingCapture, "off"); err != nil {
+		t.Fatal(err)
+	}
 	res, err := r.winSvc.LocalChanged("copied text")
 	if err != nil || res.Suppressed != SuppressCaptureOff || len(res.Sent) != 0 {
-		t.Fatalf("LocalChanged with capture unset = %+v, %v", res, err)
+		t.Fatalf("LocalChanged with capture off = %+v, %v", res, err)
 	}
 	time.Sleep(60 * time.Millisecond)
 	if len(received(r.pix)) != 0 {
 		t.Fatal("something was sent with capture off")
+	}
+	// nothing chosen at all: copying just works
+	other := newRig(t, "notify", "notify")
+	if got, err := other.winSvc.LocalChanged("never asked"); err != nil || len(got.Sent) != 1 {
+		t.Fatalf("unset capture must send: %+v, %v", got, err)
 	}
 	r.captureOn(t, r.win)
 	res, err = r.winSvc.LocalChanged("copied text")
@@ -124,14 +134,23 @@ func TestAppliedTextIsNotSentBackAsAnEcho(t *testing.T) {
 	if res, _ := r.pixSvc.LocalChanged("from the pc"); res.Suppressed != SuppressEcho || len(res.Sent) != 0 {
 		t.Fatalf("echo not recognised: %+v", res)
 	}
-	// even when the phone's clipboard reports the other line-ending spelling
+	// a late notification (slow phone, wake from sleep) is still an echo: no time limit
+	r.clock.Advance(10 * time.Minute)
+	if res, _ := r.pixSvc.LocalChanged("from the pc"); res.Suppressed != SuppressEcho || len(res.Sent) != 0 {
+		t.Fatalf("late echo: %+v", res)
+	}
+	// text that differs (here: a trailing newline) is not the echo; it is a genuine copy
 	if res, _ := r.pixSvc.LocalChanged("from the pc\r\n"); res.Suppressed == SuppressEcho {
 		t.Fatal("different text (a trailing newline) must not be treated as the echo")
 	}
-	// after the window, copying the same text again is a deliberate act and goes out
+	// the user really copied something else, so the echo memory is gone and copying
+	// the old text again afterwards is a deliberate act and goes out
+	if res, _ := r.pixSvc.LocalChanged("something else"); len(res.Sent) != 1 {
+		t.Fatalf("genuine copy: %+v", res)
+	}
 	r.clock.Advance(10 * time.Second)
 	if res, _ := r.pixSvc.LocalChanged("from the pc"); res.Suppressed != "" || len(res.Sent) != 1 {
-		t.Fatalf("deliberate re-copy after the window: %+v", res)
+		t.Fatalf("deliberate re-copy: %+v", res)
 	}
 	// the sender hears that it was applied
 	testnet.WaitUntil(t, "applied ack on the pc", func() bool {
@@ -324,8 +343,8 @@ func TestEventsForAnOfflinePeerExpireInsteadOfArrivingLate(t *testing.T) {
 func TestSettingsDefaultsAndOverrides(t *testing.T) {
 	r := newRig(t, "notify", "notify")
 	s := r.winSvc
-	if s.Setting(SettingCapture) != "off" || s.Setting(SettingTTL) != "900" || s.Setting(SettingHistoryLimit) != "200" ||
-		s.Setting(SettingSendSensitive) != "on" || s.Setting(SettingApplyMode) != "notify" || s.Setting("nope") != "" {
+	if s.Setting(SettingCapture) != "on" || s.Setting(SettingTTL) != "900" || s.Setting(SettingHistoryLimit) != "200" ||
+		s.Setting(SettingSendSensitive) != "on" || s.Setting(SettingApplyMode) != "auto" || s.Setting(SettingPausedUntil) != "0" || s.Setting("nope") != "" {
 		t.Fatal("defaults changed")
 	}
 	_ = r.win.DB.SetSetting(SettingTTL, "120")
@@ -373,5 +392,158 @@ func TestSendReachesEveryPairedPeer(t *testing.T) {
 	res, err := winSvc.LocalChanged("copied on the pc")
 	if err != nil || len(res.Sent) != 2 {
 		t.Fatalf("LocalChanged reached %d devices (%v)", len(res.Sent), err)
+	}
+}
+
+// ---- automatic broadcast (docs/plan-auto-broadcast.md) ----------------------------------
+
+func (r *rig) feed(t *testing.T, d *testnet.Device, svc *Service, from *testnet.Device, id, text string, age time.Duration) {
+	t.Helper()
+	payload, _ := json.Marshal(map[string]any{"mime_type": proto.MimeText, "content": text, "size": len(text)})
+	svc.OnEvent(from.ID.DeviceID, &proto.Envelope{
+		EventID: id, Kind: proto.KindClipboard, CreatedAt: r.clock.Now().Add(-age), Payload: payload,
+	})
+}
+
+func lastReceived(t *testing.T, d *testnet.Device) map[string]any {
+	t.Helper()
+	got := received(d)
+	if len(got) == 0 {
+		t.Fatal("no clip.received event")
+	}
+	return got[len(got)-1]
+}
+
+func TestOnlyFreshEventsAreAppliedAutomatically(t *testing.T) {
+	r := newRig(t, "auto", "auto")
+	r.feed(t, r.pix, r.pixSvc, r.win, "fresh", "just copied", 2*time.Second)
+	if ev := lastReceived(t, r.pix); ev["decision"] != DecisionAuto || ev["live"] != true {
+		t.Fatalf("fresh event: %v", ev)
+	}
+	// it waited in an outbox while the phone was offline: offered, never written on its own
+	r.feed(t, r.pix, r.pixSvc, r.win, "stale", "copied ten minutes ago", 10*time.Minute)
+	if ev := lastReceived(t, r.pix); ev["decision"] != DecisionManual || ev["live"] != false {
+		t.Fatalf("stale event must be downgraded to manual: %v", ev)
+	}
+	// a peer set to notify stays at notify either way
+	r2 := newRig(t, "auto", "notify")
+	r2.feed(t, r2.pix, r2.pixSvc, r2.win, "n", "x", 0)
+	if ev := lastReceived(t, r2.pix); ev["decision"] != DecisionNotify {
+		t.Fatalf("notify peer: %v", ev)
+	}
+}
+
+func TestPauseStopsSendingAndAutomaticApply(t *testing.T) {
+	r := newRig(t, "auto", "auto")
+	until := r.clock.Now().Add(30 * time.Minute).Unix()
+	if err := r.win.DB.SetSetting(SettingPausedUntil, strconv.FormatInt(until, 10)); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := r.winSvc.LocalChanged("while paused"); res.Suppressed != SuppressPaused || len(res.Sent) != 0 {
+		t.Fatalf("paused send: %+v", res)
+	}
+	// explicit sends are the user's own act and still work
+	if _, err := r.winSvc.Send("explicit", nil); err != nil {
+		t.Fatalf("explicit send while paused: %v", err)
+	}
+	// incoming text is offered, not written
+	_ = r.pix.DB.SetSetting(SettingPausedUntil, strconv.FormatInt(until, 10))
+	r.feed(t, r.pix, r.pixSvc, r.win, "p1", "arrives while paused", 0)
+	if ev := lastReceived(t, r.pix); ev["decision"] != DecisionManual {
+		t.Fatalf("paused receive: %v", ev)
+	}
+	// the pause ends by itself
+	r.clock.Advance(31 * time.Minute)
+	if res, _ := r.winSvc.LocalChanged("after the pause"); res.Suppressed != "" || len(res.Sent) != 1 {
+		t.Fatalf("after pause: %+v", res)
+	}
+	r.feed(t, r.pix, r.pixSvc, r.win, "p2", "arrives after the pause", 0)
+	if ev := lastReceived(t, r.pix); ev["decision"] != DecisionAuto {
+		t.Fatalf("after pause receive: %v", ev)
+	}
+	for _, bad := range []string{"-1", "soon", "99999999999"} {
+		if ValidateSetting(SettingPausedUntil, bad) == nil {
+			t.Errorf("paused_until %q accepted", bad)
+		}
+	}
+}
+
+func TestSendDisabledPeersAreLeftOutOfBroadcasts(t *testing.T) {
+	r := newRig(t, "notify", "notify")
+	p, _, _ := r.win.DB.GetPeer(r.pix.ID.DeviceID)
+	p.SendDisabled = true
+	if err := r.win.DB.PutPeer(p); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := r.winSvc.LocalChanged("copied"); res.Suppressed != SuppressNoPeers || len(res.Sent) != 0 {
+		t.Fatalf("broadcast reached a switched-off device: %+v", res)
+	}
+	if _, err := r.winSvc.Send("to everyone", nil); err == nil {
+		t.Fatal("send to everyone must not reach a switched-off device")
+	}
+	// naming the device is an explicit choice
+	if sent, err := r.winSvc.Send("to the phone", []string{r.pix.ID.DeviceID}); err != nil || len(sent) != 1 {
+		t.Fatalf("explicit send to a switched-off device: %v, %v", sent, err)
+	}
+}
+
+// Three devices A, B, C all paired with each other. A copies; B and C each apply it. Their
+// own clipboard notifications arrive late (well after the old 3 s window) and must not make
+// them broadcast it again: nothing may bounce.
+func TestNothingBouncesBetweenThreeDevices(t *testing.T) {
+	clock := testnet.NewClock()
+	mk := func(name string) (*testnet.Device, *Service) {
+		d := testnet.New(t, name, "windows", true, clock, nil)
+		svc := New(d.Engine, d.DB, d.Emit, clock.Now)
+		d.Proxy.Set(handler{svc})
+		return d, svc
+	}
+	a, aSvc := mk("a")
+	b, bSvc := mk("b")
+	c, cSvc := mk("c")
+	devs := []*testnet.Device{a, b, c}
+	for _, d := range devs {
+		d.Start(true)
+	}
+	for _, x := range devs { // a full mesh: everyone is paired with everyone
+		for _, y := range devs {
+			if x != y {
+				x.Engine.PeerAdded(x.Know(y, y.Engine.ListenPort(), "auto"))
+			}
+		}
+	}
+	for _, x := range devs {
+		for _, y := range devs {
+			if x != y {
+				x.WaitState(y, peer.StateConnected)
+			}
+		}
+	}
+
+	if res, err := aSvc.LocalChanged("from a"); err != nil || len(res.Sent) != 2 {
+		t.Fatalf("a broadcast = %+v, %v", res, err)
+	}
+	testnet.WaitUntil(t, "b and c receive", func() bool { return len(received(b)) == 1 && len(received(c)) == 1 })
+	for _, x := range []struct {
+		d   *testnet.Device
+		svc *Service
+	}{{b, bSvc}, {c, cSvc}} {
+		ev := received(x.d)[0]
+		if ev["decision"] != DecisionAuto {
+			t.Fatalf("decision on %s = %v", x.d.ID.DeviceID, ev["decision"])
+		}
+		if err := x.svc.MarkApplied(ev["event_id"].(string)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clock.Advance(2 * time.Minute) // the shells read their clipboards very late
+	for _, svc := range []*Service{bSvc, cSvc} {
+		if res, _ := svc.LocalChanged("from a"); res.Suppressed != SuppressEcho || len(res.Sent) != 0 {
+			t.Fatalf("a late echo was broadcast again: %+v", res)
+		}
+	}
+	time.Sleep(100 * time.Millisecond)
+	if len(received(a)) != 0 || len(received(b)) != 1 || len(received(c)) != 1 {
+		t.Fatalf("events bounced: a=%d b=%d c=%d", len(received(a)), len(received(b)), len(received(c)))
 	}
 }

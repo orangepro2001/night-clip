@@ -1009,7 +1009,7 @@ func TestMigrationV2UpgradesAV1Database(t *testing.T) {
 	for _, stmt := range []string{
 		`DROP INDEX idx_transfers_state`, `ALTER TABLE transfers DROP COLUMN mode`,
 		`ALTER TABLE transfers DROP COLUMN mime_type`, `ALTER TABLE transfers DROP COLUMN save_dir`,
-		`ALTER TABLE inbox DROP COLUMN sensitive`,
+		`ALTER TABLE inbox DROP COLUMN sensitive`, `ALTER TABLE peers DROP COLUMN send_disabled`,
 	} {
 		if _, err := db.sql.Exec(stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -1171,6 +1171,7 @@ func TestMigrationV3AddsTransferColumns(t *testing.T) {
 	for _, stmt := range []string{
 		`DROP INDEX idx_transfers_state`,
 		`ALTER TABLE transfers DROP COLUMN mode`, `ALTER TABLE transfers DROP COLUMN mime_type`, `ALTER TABLE transfers DROP COLUMN save_dir`,
+		`ALTER TABLE peers DROP COLUMN send_disabled`,
 		`UPDATE schema_version SET version = 2`,
 		`INSERT INTO transfers (transfer_id, peer_id, direction, name, size, sha256, path, "offset", state, error, created_at, expires_at)
 		 VALUES ('old', 'dev_a', 'in', 'f', 1, '', '', 0, 'offered', '', 1, 2)`,
@@ -1184,5 +1185,36 @@ func TestMigrationV3AddsTransferColumns(t *testing.T) {
 	got, found, err := db2.GetTransfer("old")
 	if err != nil || !found || got.Mode != "pull" || got.MimeType != "" || got.SaveDir != "" {
 		t.Fatalf("old row after v3 = %+v, %v, %v", got, found, err)
+	}
+}
+
+func TestMigrationV4KeepsExistingPeersReceivingBroadcasts(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(dir, testKey(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE peers DROP COLUMN send_disabled`,
+		`UPDATE schema_version SET version = 3`,
+		`INSERT INTO peers (device_id, name, platform, cert_fp, state, apply_mode, paired_at)
+		 VALUES ('dev_old', 'Old', 'android', 'fp_old', 'paired', 'notify', 1)`,
+	} {
+		if _, err := db.sql.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	_ = db.Close()
+	db2 := openAt(t, dir, testKey(1))
+	got, found, err := db2.GetPeer("dev_old")
+	if err != nil || !found || got.SendDisabled || got.ApplyMode != "notify" {
+		t.Fatalf("old peer after v4 = %+v, %v, %v (apply mode must stay as the user had it)", got, found, err)
+	}
+	got.SendDisabled = true
+	if err := db2.PutPeer(got); err != nil {
+		t.Fatal(err)
+	}
+	if again, _, _ := db2.GetPeer("dev_old"); !again.SendDisabled {
+		t.Fatal("SendDisabled was not stored")
 	}
 }

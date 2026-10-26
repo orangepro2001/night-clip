@@ -25,6 +25,17 @@ public static class Strings
     public const string TrayPair = "配对新设备…";
     public const string TraySync = "同步我复制的内容";
     public const string TraySendNow = "立即发送当前剪贴板";
+    public const string TrayPause = "暂停同步";
+    public const string TrayPause15 = "暂停 15 分钟";
+    public const string TrayPause60 = "暂停 1 小时";
+    public const string TrayPause240 = "暂停 4 小时";
+    public static string TrayResume(string until) => "恢复同步（已暂停到 " + until + "）";
+    public const string TrayUndo = "撤销上次自动写入";
+    public const string DeviceAutoSend = "自动发送";
+    public const string DeviceAutoSendTip = "复制时自动把内容发到这台设备；关闭后仍可手动发送";
+    public const string AutoSyncOnTitle = "ClipBridge 自动同步已开启";
+    public const string AutoSyncOnText = "在这台电脑上复制的文字会自动发到所有已配对的设备。右键托盘图标可以暂停或关闭。";
+    public const string UndoDone = "已恢复到自动写入之前的内容";
     public const string TrayAutoStart = "开机自启";
     public const string TrayCheckUpdate = "检查更新";
     public const string TrayExit = "退出";
@@ -251,11 +262,6 @@ public static class Strings
     public static string DurationHoursMinutes(int h, int m) => $"{h} 小时 {m} 分钟";
 
     // ---- first run ------------------------------------------------------------------
-    public const string FirstRunTitle = "欢迎使用 ClipBridge";
-    public const string FirstRunText = "ClipBridge 可以把你在这台电脑上复制的文本同步到已配对的设备，设备之间通过 Tailscale 直连，不经过任何服务器。\n\n是否现在开启“同步我复制的内容”？之后可以随时在托盘菜单或设置里更改。";
-    public const string FirstRunTailscale = "使用前请确认本机已安装并登录 Tailscale。";
-    public const string FirstRunEnable = "开启同步";
-    public const string FirstRunLater = "暂不开启";
 
     // ---- diagnostics ----------------------------------------------------------------
     public const string DiagTitle = "诊断";

@@ -54,6 +54,7 @@ public sealed class CoreApi
     // ---- peers ------------------------------------------------------------------------
     public JsonElement PeersList() => _core.Call("peers.list");
     public void PeerRename(string deviceId, string name) => _core.Call("peers.update", new { device_id = deviceId, name });
+    public void PeerSetSend(string deviceId, bool enabled) => _core.Call("peers.update", new { device_id = deviceId, send_enabled = enabled });
     public void PeerSetMode(string deviceId, string applyMode) => _core.Call("peers.update", new { device_id = deviceId, apply_mode = applyMode });
     public void PeerRemove(string deviceId, bool forget = false) => _core.Call("peers.remove", new { device_id = deviceId, forget });
 

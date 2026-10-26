@@ -335,7 +335,7 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | 方法 | 参数 | 结果 / 说明 |
 | --- | --- | --- |
 | `version` | — | `{core, protocol}` |
-| `status` | — | `{device_id, device_name, platform, listen, port, peers[], capture, capture_configured, listening_addrs[], listening_port, events_dropped}`；`capture_configured` 在用户第一次设置 `capture`（无论开或关）之前为 `false`，壳据此决定是否弹出首次运行的询问；`peers[]` 见 `peers.list` |
+| `status` | — | `{device_id, device_name, platform, listen, port, peers[], capture, capture_configured, listening_addrs[], listening_port, events_dropped}`；`capture_configured` 在用户第一次显式设置 `capture` 之前为 `false`（`capture` 默认 `on`，所以壳**不再**为此弹出询问；它只用于区分“从未设置”与“用户明确选择”）；`peers[]` 见 `peers.list` |
 | `identity.get` | — | `{device_id, fingerprint}` |
 | `diagnostics.get` | — | 版本、监听地址、各对端状态与游标、更新状态；**不含**密钥、psk、数据库密钥 |
 | `settings.get` | `key?` | 有 `key`：`{key, value}`；否则 `{settings:{…}}`（见下表） |
@@ -345,11 +345,11 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | `pair.pending` | — | `{pending:[{pair_id, name, platform, device_id, sas, expires_at}]}` |
 | `pair.confirm` | `pair_id`, `accept` | 监听方：接受（保存对端并开始连接）或拒绝；已过期 → `PAIRING_EXPIRED` |
 | `pair.join` | `link`，或 `host`+`port`+`psk`(+`fp`) | 加入方：立即返回 `{join_id}`；过程以事件 `pair.sas`、`pair.result` 报告。同时只能有一个进行中的加入 |
-| `peers.list` | — | `{peers:[{device_id, name, platform, state, tailnet_addrs[], outbox_pending, recv_cursor, next_seq_out, last_seen_at, apply_mode}]}`；`state`：`connected` / `connecting` / `offline` / `unpaired` / `revoked` |
+| `peers.list` | — | `{peers:[{device_id, name, platform, state, tailnet_addrs[], outbox_pending, recv_cursor, next_seq_out, last_seen_at, apply_mode, send_enabled}]}`；`state`：`connected` / `connecting` / `offline` / `unpaired` / `revoked` |
 | `peers.reconnect` | `device_id` | 立即重试连接（`unpaired` 后用户重新确认、或想马上重连时）；未配对 → `NOT_PAIRED` |
-| `peers.update` | `device_id`, `name?`, `apply_mode?`, `role?` | `apply_mode`：`notify` / `manual` / `auto`；`role`：`auto` / `dialer` / `listener` |
+| `peers.update` | `device_id`, `name?`, `apply_mode?`, `role?`, `send_enabled?` | `apply_mode`：`notify` / `manual` / `auto`；`role`：`auto` / `dialer` / `listener`；`send_enabled=false` 让自动广播（`clip.local_changed`、不带 `to` 的 `clip.send`）跳过该设备，显式指定 `to` 仍可发送 |
 | `peers.remove` | `device_id`, `forget?` | 撤销配对：通知对端、拉黑指纹、断开；`forget` 同时删除记录（指纹仍被拉黑） |
-| `clip.local_changed` | `text` | 壳报告本地复制。结果 `{sent:[{device_id,name,event_id}], suppressed?}`；`suppressed`：`capture_off` / `empty` / `echo` / `duplicate` / `no_peers` / `too_large` / `sensitive_blocked` |
+| `clip.local_changed` | `text` | 壳报告本地复制。结果 `{sent:[{device_id,name,event_id}], suppressed?}`；`suppressed`：`capture_off` / `paused` / `empty` / `echo` / `duplicate` / `no_peers` / `too_large` / `sensitive_blocked`。`echo`：该文本是本机刚替某个对端写入剪贴板的内容（无时间上限的记忆，直到用户真正复制了别的内容）。自动广播对所有未被 `send_enabled=false` 关闭的已配对设备各发一个事件 |
 | `clip.send` | `text`, `to[]?` | 用户显式发送，忽略捕获开关与回声检查；`{sent:[…]}` |
 | `clip.mark_applied` | `event_id` | 壳已把文本写入剪贴板：记录回声抑制窗口，并向发送方回 `applied` |
 | `clip.dismiss` | `event_id` | 用户忽略：向发送方回 `ignored/user_dismissed` |
@@ -367,15 +367,16 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 
 | 键 | 取值 | 默认 | 含义 |
 | --- | --- | --- | --- |
-| `capture` | `on` / `off` | `off` | 是否把本机复制的内容同步出去（首次启动由用户选择） |
+| `capture` | `on` / `off` | `on` | 是否把本机复制的内容自动同步出去；没有已配对设备时什么都不发 |
+| `paused_until` | unix 秒 | `0` | 当前时间小于该值时：不自动发送（`suppressed: paused`），收到的内容不自动写入（`auto` 降级为 `manual`）；显式 `clip.send` 不受影响；到点自动恢复 |
 | `clip_ttl_s` | 30–86400 | `900` | 事件在对端离线时最多等待的秒数，过期则丢弃并由 `skip` 越过 |
 | `history_limit` | 10–5000 | `200` | 收件箱保留条数 |
 | `send_sensitive` | `on` / `off` | `on` | 看起来像口令/令牌的内容是否允许发送 |
-| `default_apply_mode` | `notify` / `manual` / `auto` | `notify` | 新配对设备的初始策略 |
+| `default_apply_mode` | `notify` / `manual` / `auto` | `auto` | 新配对设备的初始策略（已有设备保持原策略） |
 | `download_dir` | 绝对路径 | Windows `%USERPROFILE%\Downloads\ClipBridge`；Android `data_dir/received` | 接收文件的默认目录 |
 | `max_file_bytes` | 1 MiB – 1 TiB | `4294967296` | 超过则自动拒绝 |
 
-策略（`clip.received.decision`）：`notify`（只通知）、`manual`（通知，用户操作后才写剪贴板）、`auto`（壳做完自己的安全检查后写入）。敏感内容永不为 `auto`。
+策略（`clip.received.decision`）：`notify`（只通知）、`manual`（通知，用户操作后才写剪贴板）、`auto`（壳做完自己的安全检查后写入）。敏感内容永不为 `auto`。`live` 为 `false` 表示事件在发送 20 秒之后才到达（对端离线补发、休眠唤醒、慢链路），核心已把 `auto` 降级为 `manual`：过期内容只提供，不自动覆盖剪贴板。`paused_until` 未到期时 `auto` 同样降级为 `manual`。
 
 ### 7.4 事件（`NextEvent`）
 
@@ -385,7 +386,7 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 {"type":"core.warning","code":"NO_TAILNET"}            // 另有 LISTEN_FAILED、FINGERPRINT_MISMATCH
 {"type":"peer.state","device_id":"dev_…","state":"connected"}
 {"type":"peer.revoked","device_id":"dev_…","name":"Pixel"}   // 对端撤销了与我们的配对
-{"type":"clip.received","event_id":"…","from":"dev_…","from_name":"Tony-PC","text":"…","sensitive":false,"decision":"notify|manual|auto","received_at":1790000000}
+{"type":"clip.received","event_id":"…","from":"dev_…","from_name":"Tony-PC","text":"…","sensitive":false,"decision":"notify|manual|auto","live":true,"received_at":1790000000}
 {"type":"clip.ack","event_id":"…","from":"dev_…","result":"received|applied|ignored|expired|error","reason":"user_dismissed"}
 {"type":"outbox.expired","count":2}
 {"type":"pair.request","pair_id":"…","name":"Pixel","platform":"android","device_id":"dev_…","sas":"482913","previously_removed":false,"expires_at":"…"}   // 监听方：等用户确认

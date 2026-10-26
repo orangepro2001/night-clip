@@ -110,6 +110,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // ---- devices ---------------------------------------------------------------------------
 
     fun rename(id: String, name: String) = peerCall { CoreApi.renamePeer(id, name.trim()) }
+    fun setSend(id: String, enabled: Boolean) = peerCall { CoreApi.setPeerSend(id, enabled) }
     fun setMode(id: String, mode: String) = peerCall { CoreApi.setPeerMode(id, mode) }
     fun remove(id: String) = peerCall { CoreApi.removePeer(id) }
 

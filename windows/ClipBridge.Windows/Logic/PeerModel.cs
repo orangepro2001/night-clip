@@ -5,14 +5,15 @@ namespace ClipBridge.Windows.Logic;
 /// <summary>One entry of <c>peers.list</c> in display form (immutable; the page replaces the whole list on refresh).</summary>
 public sealed record PeerItem(
     string DeviceId, string Name, string Platform, string State, int Pending, long LastSeenAt,
-    string ApplyMode, IReadOnlyList<string> Addrs, DateTimeOffset Now)
+    string ApplyMode, IReadOnlyList<string> Addrs, DateTimeOffset Now, bool SendEnabled = true)
 {
     public const int MaxNameLength = 64;
 
     public static PeerItem FromJson(JsonElement p, DateTimeOffset now) => new(
         JsonRead.Str(p, "device_id"), JsonRead.Str(p, "name"), JsonRead.Str(p, "platform"), JsonRead.Str(p, "state"),
         (int)Math.Clamp(JsonRead.Long(p, "outbox_pending"), 0, int.MaxValue), JsonRead.Long(p, "last_seen_at"),
-        JsonRead.Str(p, "apply_mode", "notify"), JsonRead.StrArr(p, "tailnet_addrs"), now);
+        JsonRead.Str(p, "apply_mode", "notify"), JsonRead.StrArr(p, "tailnet_addrs"), now,
+        JsonRead.Bool(p, "send_enabled", true));
 
     public static IReadOnlyList<PeerItem> ListFromJson(JsonElement result, DateTimeOffset now) =>
         JsonRead.Arr(result, "peers").Select(p => FromJson(p, now)).Where(p => p.DeviceId.Length > 0).ToList();

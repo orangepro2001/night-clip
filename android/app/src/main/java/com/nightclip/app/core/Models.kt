@@ -13,6 +13,8 @@ data class PeerInfo(
     val outboxPending: Int = 0,
     val lastSeenAt: Long = 0,
     val applyMode: String = "notify",
+    /** False when the user keeps automatic broadcasts away from this device. */
+    val sendEnabled: Boolean = true,
 ) {
     /** Clipboard/file sending only makes sense to peers that still trust us. */
     val canSend: Boolean get() = state != "revoked" && state != "unpaired"
@@ -66,12 +68,16 @@ data class TransferInfo(
 
 /** `settings.get` (all keys) in typed form. Values keep the core's defaults when a key is missing. */
 data class CoreSettings(
-    val capture: Boolean = false,
+    val capture: Boolean = true,
     val clipTtlS: Int = 900,
     val historyLimit: Int = 200,
     val sendSensitive: Boolean = true,
-    val defaultApplyMode: String = "notify",
-)
+    val defaultApplyMode: String = "auto",
+    /** Unix seconds; sending and automatic writing are paused until then (0 = not paused). */
+    val pausedUntil: Long = 0,
+) {
+    fun isPaused(nowSeconds: Long): Boolean = pausedUntil > nowSeconds
+}
 
 /** `clip.send` / `clip.local_changed` result. */
 data class SendResult(val sentCount: Int, val suppressed: String = "")
@@ -104,6 +110,7 @@ object ModelParsers {
         outboxPending = o.optInt("outbox_pending", 0),
         lastSeenAt = o.optLong("last_seen_at", 0),
         applyMode = o.optString("apply_mode", "notify"),
+        sendEnabled = o.optBoolean("send_enabled", true),
     )
 
     /** Parses the `result` of `peers.list`. */
@@ -148,11 +155,12 @@ object ModelParsers {
         val s = result.optJSONObject("settings") ?: result
         val d = CoreSettings()
         return CoreSettings(
-            capture = s.optString("capture", "off") == "on",
+            capture = s.optString("capture", "on") != "off",
             clipTtlS = s.optString("clip_ttl_s", "").toIntOrNull() ?: d.clipTtlS,
             historyLimit = s.optString("history_limit", "").toIntOrNull() ?: d.historyLimit,
             sendSensitive = s.optString("send_sensitive", "on") != "off",
             defaultApplyMode = s.optString("default_apply_mode", d.defaultApplyMode),
+            pausedUntil = s.optString("paused_until", "").toLongOrNull() ?: 0L,
         )
     }
 
@@ -164,7 +172,7 @@ object ModelParsers {
         deviceName = result.optString("device_name", ""),
         platform = result.optString("platform", ""),
         peers = peers(result),
-        capture = result.optString("capture", "off") == "on",
+        capture = result.optString("capture", "on") != "off",
         eventsDropped = result.optLong("events_dropped", 0),
     )
 }

@@ -135,6 +135,8 @@ type PeerStatus struct {
 	NextSeqOut int64    `json:"next_seq_out"`
 	LastSeenAt int64    `json:"last_seen_at"`
 	ApplyMode  string   `json:"apply_mode"`
+	// SendEnabled is false when the user keeps automatic broadcasts away from this device.
+	SendEnabled bool `json:"send_enabled"`
 }
 
 // PeerStatuses lists every known peer, revoked ones included.
@@ -147,7 +149,7 @@ func (e *Engine) PeerStatuses() []PeerStatus {
 	for _, p := range peers {
 		st := PeerStatus{
 			DeviceID: p.DeviceID, Name: p.Name, Platform: p.Platform, State: StateOffline,
-			Addrs: p.TailnetAddrs, LastSeenAt: p.LastSeenAt, ApplyMode: p.ApplyMode,
+			Addrs: p.TailnetAddrs, LastSeenAt: p.LastSeenAt, ApplyMode: p.ApplyMode, SendEnabled: !p.SendDisabled,
 		}
 		if st.Addrs == nil {
 			st.Addrs = []string{}

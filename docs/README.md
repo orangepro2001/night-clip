@@ -91,6 +91,8 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | [architecture.md](architecture.md) | 组件、DLL/AAR 边界、配对与信任、事件与序号、文件传输、故障降级 |
 | [api-spec.md](api-spec.md) | 信封、配对/WebSocket/文件端点、核心门面方法与事件、命名管道、CLI |
 | [development-plan.md](development-plan.md) | 阶段、PoC Go/No-Go、验收、测试矩阵、风险 |
+| [plan-vault.md](plan-vault.md) | **计划**：集成密码/凭证管理（KDBX 4、备份/恢复、多设备同步、自动填充）可行性评估与分阶段方案 |
+| [plan-auto-broadcast.md](plan-auto-broadcast.md) | **计划**：复制即自动广播到所有已配对设备（可行性、Android 限制、分阶段方案）与 Syncthing 评估 |
 | [schemas/event.schema.json](schemas/event.schema.json) | 事件信封 JSON Schema |
 | [adr/005-go-core-and-tailnet-p2p.md](adr/005-go-core-and-tailnet-p2p.md) | **当前核心决策** |
 | [adr/003-windows-android-scope.md](adr/003-windows-android-scope.md) | 客户端范围收敛为 Windows + Android |

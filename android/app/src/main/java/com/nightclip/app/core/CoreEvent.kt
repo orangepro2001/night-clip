@@ -27,6 +27,8 @@ sealed interface CoreEvent {
         val sensitive: Boolean,
         val decision: String,
         val receivedAt: Long,
+        /** False when the text waited in an outbox; the core has already downgraded "auto" then. */
+        val live: Boolean = true,
     ) : CoreEvent {
         override val type = "clip.received"
         override val logId get() = eventId
@@ -140,6 +142,7 @@ sealed interface CoreEvent {
                 sensitive = o.optBoolean("sensitive", false),
                 decision = o.optString("decision", "notify"),
                 receivedAt = o.optLong("received_at", 0),
+                live = o.optBoolean("live", true),
             )
             "clip.ack" -> ClipAck(o.optString("event_id"), o.optString("from"), o.optString("result"), o.optString("reason"))
             "outbox.expired" -> OutboxExpired(o.optInt("count"))

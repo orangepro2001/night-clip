@@ -19,6 +19,10 @@ object Formatters {
         return String.format(Locale.ROOT, "%.1f %s", value, UNITS[unit])
     }
 
+    /** Local wall-clock "HH:mm" of a unix time (for "paused until 14:30"). */
+    fun clockTime(epochSeconds: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
+        java.time.format.DateTimeFormatter.ofPattern("HH:mm").withZone(zone).format(java.time.Instant.ofEpochSecond(epochSeconds))
+
     fun speed(bytesPerSecond: Long): String = fileSize(bytesPerSecond.coerceAtLeast(0)) + "/s"
 
     /** 0..100, or 0 when the total size is unknown. */

@@ -116,6 +116,7 @@ fun DevicesScreen(vm: AppViewModel, onPair: () -> Unit, modifier: Modifier = Mod
                 },
                 onRename = { renaming = peer },
                 onMode = { changingMode = peer },
+                onToggleSend = { vm.setSend(peer.deviceId, !peer.sendEnabled) },
                 onRemove = { removing = peer },
                 onRepair = onPair,
             )
@@ -190,6 +191,7 @@ private fun PeerCard(
     onSendFile: () -> Unit,
     onRename: () -> Unit,
     onMode: () -> Unit,
+    onToggleSend: () -> Unit,
     onRemove: () -> Unit,
     onRepair: () -> Unit,
 ) {
@@ -206,6 +208,10 @@ private fun PeerCard(
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text(stringResource(R.string.rename)) }, onClick = { menu = false; onRename() })
                     DropdownMenuItem(text = { Text(stringResource(R.string.apply_mode_menu, PeerTexts.applyModeLabel(peer.applyMode))) }, onClick = { menu = false; onMode() })
+                    DropdownMenuItem(
+                        text = { Text(stringResource(if (peer.sendEnabled) R.string.auto_send_on else R.string.auto_send_off)) },
+                        onClick = { menu = false; onToggleSend() },
+                    )
                     DropdownMenuItem(text = { Text(stringResource(R.string.remove)) }, onClick = { menu = false; onRemove() })
                 }
             }

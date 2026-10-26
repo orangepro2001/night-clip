@@ -73,7 +73,7 @@
     <string name="rename_device">重命名设备</string>
     <string name="apply_mode_menu">收到内容时：%1$s</string>
     <string name="apply_mode_title">%1$s 的内容如何处理</string>
-    <string name="apply_mode_note">自动复制仅在应用位于前台时生效，敏感内容永远不会自动复制。</string>
+    <string name="apply_mode_note">自动复制仅在应用位于前台时生效，其余情况会发通知；刚收到才自动复制，排队后补发的内容和暂停期间的内容只通知；敏感内容永远不会自动复制。</string>
     <string name="remove_device_title">解除配对</string>
     <string name="remove_device_text">确定要解除与 %1$s 的配对吗？对方也会收到通知，之后需要重新配对才能再次同步。</string>
     <string name="transfers">传输</string>
@@ -115,6 +115,17 @@
     <string name="settings_realtime_hint">开启后会显示一条常驻通知，让 ClipBridge 在后台保持与设备的连接；重启手机后自动恢复。关闭时只在应用运行期间同步。</string>
     <string name="settings_battery">电池优化设置</string>
     <string name="settings_sync">同步</string>
+    <string name="settings_capture">自动发送我复制的内容</string>
+    <string name="settings_capture_hint">Android 不允许应用在后台读取剪贴板，所以会在你打开 ClipBridge 时检查一次：刚复制的新内容会自动发到所有已配对的设备。也可以随时用通知、磁贴或分享菜单手动发送。</string>
+    <string name="settings_pause">暂停同步</string>
+    <string name="settings_pause_none">未暂停</string>
+    <string name="settings_pause_until">暂停到 %1$s</string>
+    <string name="settings_pause_resume">恢复同步</string>
+    <string name="settings_pause_15">暂停 15 分钟</string>
+    <string name="settings_pause_60">暂停 1 小时</string>
+    <string name="settings_pause_240">暂停 4 小时</string>
+    <string name="auto_send_on">自动发送到此设备：开</string>
+    <string name="auto_send_off">自动发送到此设备：关</string>
     <string name="settings_default_mode">新设备的默认处理方式</string>
     <string name="settings_ttl">离线时保留</string>
     <string name="settings_history">收件箱保留</string>

@@ -104,7 +104,7 @@ func (db *DB) ListInbox(limit int) ([]InboxRow, error) {
 	}
 	rows, err := db.sql.Query(`
 		SELECT event_id, peer_id, sequence, kind, payload_enc, received_at, expires_at, state, applied_at, sensitive
-		FROM inbox ORDER BY received_at DESC, event_id LIMIT ?`, limit)
+		FROM inbox ORDER BY received_at DESC, rowid DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, dbErr("list inbox", err)
 	}
@@ -171,7 +171,7 @@ func (db *DB) PruneInbox(keep int) (int64, error) {
 	}
 	res, err := db.sql.Exec(`
 		DELETE FROM inbox WHERE event_id IN (
-			SELECT event_id FROM inbox ORDER BY received_at DESC, event_id LIMIT -1 OFFSET ?)`, keep)
+			SELECT event_id FROM inbox ORDER BY received_at DESC, rowid DESC LIMIT -1 OFFSET ?)`, keep)
 	if err != nil {
 		return 0, dbErr("prune inbox", err)
 	}

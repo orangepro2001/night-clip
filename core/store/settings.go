@@ -34,3 +34,18 @@ func (db *DB) DeleteSetting(key string) error {
 	}
 	return nil
 }
+
+// DefaultApplyModeKey is the setting that gives a newly paired device its apply mode;
+// DefaultApplyMode is the value when the user has not chosen one.
+const (
+	DefaultApplyModeKey = "default_apply_mode"
+	DefaultApplyMode    = "auto"
+)
+
+// NewPeerApplyMode returns the apply mode a device paired right now starts with.
+func (db *DB) NewPeerApplyMode() string {
+	if v, found, err := db.GetSetting(DefaultApplyModeKey); err == nil && found {
+		return v
+	}
+	return DefaultApplyMode
+}

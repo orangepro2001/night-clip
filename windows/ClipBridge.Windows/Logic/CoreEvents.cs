@@ -46,6 +46,9 @@ public sealed record ClipReceivedEvent : CoreEvent
     public string Decision { get; init; } = "notify";
     public long ReceivedAt { get; init; }
 
+    /// <summary>False when the event waited (offline catch-up, slow link): the core already downgrades "auto" then.</summary>
+    public bool Live { get; init; } = true;
+
     /// <summary>GetClipboardSequenceNumber() read on the pump thread the moment the event arrived (0 = unknown).</summary>
     public uint SeqAtArrival { get; init; }
 }
@@ -175,7 +178,7 @@ public static class CoreEventParser
                 {
                     EventId = Id("event_id"), From = Id("from"), FromName = Id("from_name"), Text = Id("text"),
                     Sensitive = JsonRead.Bool(e, "sensitive"), Decision = Id("decision") is { Length: > 0 } d ? d : "notify",
-                    ReceivedAt = JsonRead.Long(e, "received_at"),
+                    ReceivedAt = JsonRead.Long(e, "received_at"), Live = JsonRead.Bool(e, "live", true),
                 };
                 id = Id("event_id");
                 break;

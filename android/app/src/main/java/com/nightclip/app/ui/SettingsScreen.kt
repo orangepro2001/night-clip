@@ -69,6 +69,17 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
         }
 
         SectionCard(stringResource(R.string.settings_sync)) {
+            SwitchRow(stringResource(R.string.settings_capture), settings.capture) { vm.set("capture", if (it) "on" else "off") }
+            Text(stringResource(R.string.settings_capture_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val nowSeconds = System.currentTimeMillis() / 1000
+            ChoiceRow(
+                stringResource(R.string.settings_pause),
+                if (settings.isPaused(nowSeconds)) stringResource(R.string.settings_pause_until, Formatters.clockTime(settings.pausedUntil)) else stringResource(R.string.settings_pause_none),
+                listOf(
+                    "15" to stringResource(R.string.settings_pause_15), "60" to stringResource(R.string.settings_pause_60),
+                    "240" to stringResource(R.string.settings_pause_240), "0" to stringResource(R.string.settings_pause_resume),
+                ),
+            ) { vm.pauseFor(it.toInt()) }
             ChoiceRow(
                 stringResource(R.string.settings_default_mode),
                 PeerTexts.applyModeLabel(settings.defaultApplyMode),

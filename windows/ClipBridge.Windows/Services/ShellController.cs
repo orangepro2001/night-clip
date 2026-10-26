@@ -70,7 +70,7 @@ internal sealed partial class ShellController : IDisposable
         _ui = ui;
         Api = new CoreApi(_core);
         Prefs = ShellPrefs.Load(App.DataDir);
-        Settings = new SettingsValues(false, "notify", SettingsValues.DefaultTtl, SettingsValues.DefaultHistory, true,
+        Settings = new SettingsValues(true, "auto", SettingsValues.DefaultTtl, SettingsValues.DefaultHistory, true,
             ShellPrefs.ResolveDownloadDir(null, Prefs.DownloadDir, KnownFolders.DefaultReceiveDir()), SettingsValues.DefaultMaxFileBytes);
 
         _peersReload = new Coalescer(LoadPeersAsync);
@@ -85,6 +85,8 @@ internal sealed partial class ShellController : IDisposable
         _tray.PairRequested += ShowPairListen;
         _tray.SyncToggled += on => _ = SetCaptureAsync(on);
         _tray.SendNowRequested += () => _clipQueue.Post(SendCurrentClipboard);
+        _tray.PauseRequested += minutes => _ = SetPausedAsync(minutes);
+        _tray.UndoRequested += () => _ = UndoLastAutoApplyAsync();
         _tray.AutoStartToggled += on => _ = SetAutoStartAsync(on);
         _tray.CheckUpdateRequested += () => _ = CheckUpdateFromTrayAsync();
         _tray.ExitRequested += ExitApp;
@@ -125,24 +127,18 @@ internal sealed partial class ShellController : IDisposable
         UpdateTray();
     }
 
-    /// <summary>First launch (or an upgrade from a version without this prompt): let the user choose whether to sync.</summary>
-    public async Task RunFirstRunIfNeededAsync(bool minimized)
+    /// <summary>
+    /// First launch: sync is on by default (the core's default), so there is nothing to ask. The user is told once,
+    /// non-blockingly, that copying now reaches every paired device and where to pause it.
+    /// </summary>
+    public Task RunFirstRunIfNeededAsync(bool minimized)
     {
-        if (Prefs.FirstRunDone) return;
-        if (Settings.Capture)
-        {
-            // Sync was already enabled before this prompt existed: nothing to ask.
-            Prefs.FirstRunDone = true;
-            Prefs.Save(App.DataDir);
-            return;
-        }
-        if (minimized) return; // never pop a dialog at login; ask on the next normal start
-        var window = new FirstRunWindow();
-        window.ShowDialog();
-        if (window.Choice is not bool enable) return; // closed without choosing: ask again next time
+        if (Prefs.FirstRunDone) return Task.CompletedTask;
+        if (Settings.Capture && !minimized) Balloon(Strings.AutoSyncOnTitle, Strings.AutoSyncOnText);
+        else if (Settings.Capture) return Task.CompletedTask; // started at login: tell them on the next normal start
         Prefs.FirstRunDone = true;
         Prefs.Save(App.DataDir);
-        if (enable) await SetCaptureAsync(true);
+        return Task.CompletedTask;
     }
 
     public void Dispose()
@@ -420,6 +416,7 @@ internal sealed partial class ShellController : IDisposable
             Settings = SettingsValues.FromJson(json, ShellPrefs.ResolveDownloadDir(null, Prefs.DownloadDir, KnownFolders.DefaultReceiveDir()));
             _captureOn = Settings.Capture;
             _tray.SetSyncChecked(Settings.Capture);
+            ApplyPauseUi();
             StateChanged?.Invoke();
         }
         catch (CoreException ex) { AppLog.Write("settings.get failed: " + ex.Code); }

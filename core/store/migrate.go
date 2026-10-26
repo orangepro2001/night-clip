@@ -9,7 +9,7 @@ import (
 
 // migrations holds one entry per schema version. Entry i upgrades the database
 // from version i to i+1; never edit a published entry, append a new one.
-var migrations = [][]string{migrationV1(), migrationV2(), migrationV3()}
+var migrations = [][]string{migrationV1(), migrationV2(), migrationV3(), migrationV4()}
 
 func migrationV1() []string {
 	return []string{
@@ -129,6 +129,14 @@ func migrationV3() []string {
 		`ALTER TABLE transfers ADD COLUMN mime_type TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE transfers ADD COLUMN save_dir TEXT NOT NULL DEFAULT ''`,
 		`CREATE INDEX idx_transfers_state ON transfers(state)`,
+	}
+}
+
+// migrationV4 adds the per-peer switch that keeps automatic broadcasts away from
+// one device (docs/plan-auto-broadcast.md §4.1). Existing peers keep receiving.
+func migrationV4() []string {
+	return []string{
+		`ALTER TABLE peers ADD COLUMN send_disabled INTEGER NOT NULL DEFAULT 0`,
 	}
 }
 

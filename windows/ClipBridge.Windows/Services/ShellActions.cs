@@ -91,10 +91,15 @@ internal sealed partial class ShellController
                 outcome = ApplyOutcome.Downgraded;
                 return;
             }
+            // Remember what the automatic write replaces so the user can take it back. Kept in memory only,
+            // and only when it was plain text (password-manager copies read as "excluded" and are never kept).
+            string? previous = null;
+            if (!user && eventId.Length > 0 && _clip.ReadText() is { Status: ClipReadStatus.Ok } prev) previous = prev.Text;
             if (_clip.WriteText(_monitor.Handle, text))
             {
                 _ownWriteSeq = ClipboardAccess.SequenceNumber(); // lets ReadAndSendLocalClipboard recognise our own write
                 outcome = ApplyOutcome.Written;
+                if (previous is not null) RememberUndo(previous);
             }
         }
 
@@ -250,6 +255,93 @@ internal sealed partial class ShellController
         var error = await CallAsync(a => a.PeerRename(peer.DeviceId, name));
         await ReloadPeersAsync();
         return error;
+    }
+
+    public async Task<string?> SetPeerSendAsync(PeerItem peer, bool enabled)
+    {
+        var error = await CallAsync(a => a.PeerSetSend(peer.DeviceId, enabled));
+        await ReloadPeersAsync();
+        return error;
+    }
+
+    // ---- pause and undo ------------------------------------------------------------------
+
+    private string? _undoText;
+    private DispatcherTimer? _undoTimer;
+    private DispatcherTimer? _pauseTimer;
+    private static readonly TimeSpan UndoWindow = TimeSpan.FromMinutes(2);
+
+    /// <summary>Runs on the UI thread (inside the write).</summary>
+    private void RememberUndo(string previous)
+    {
+        _undoText = previous;
+        _tray.SetUndoAvailable(true);
+        _undoTimer?.Stop();
+        _undoTimer = new DispatcherTimer(UndoWindow, DispatcherPriority.Background, (_, _) => ForgetUndo(), _ui);
+    }
+
+    private void ForgetUndo()
+    {
+        _undoTimer?.Stop();
+        _undoTimer = null;
+        _undoText = null;
+        if (!_disposed) _tray.SetUndoAvailable(false);
+    }
+
+    /// <summary>Tray "撤销上次自动写入": puts back what the last automatic write replaced.</summary>
+    public Task UndoLastAutoApplyAsync()
+    {
+        var previous = _undoText;
+        if (previous is null) return Task.CompletedTask;
+        ForgetUndo();
+        var tcs = new TaskCompletionSource();
+        _clipQueue.Post(() =>
+        {
+            var ok = false;
+            try
+            {
+                _ui.Invoke(() =>
+                {
+                    if (_clip.WriteText(_monitor.Handle, previous))
+                    {
+                        _ownWriteSeq = ClipboardAccess.SequenceNumber(); // our own write: never sent on
+                        ok = true;
+                    }
+                }, DispatcherPriority.Send, CancellationToken.None, TimeSpan.FromSeconds(3));
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException) { }
+            UiPost(() => Balloon(Strings.AppName, ok ? Strings.UndoDone : Strings.ApplyFailed));
+            tcs.TrySetResult();
+        });
+        return tcs.Task;
+    }
+
+    /// <summary>Tray pause: <paramref name="minutes"/> &gt; 0 pauses sending and automatic writing for that long, 0 resumes.</summary>
+    public async Task<string?> SetPausedAsync(int minutes)
+    {
+        var until = minutes > 0 ? DateTimeOffset.UtcNow.AddMinutes(minutes).ToUnixTimeSeconds() : 0;
+        var error = await CallAsync(a => a.SettingsSet("paused_until", until.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        if (error is null) Settings = Settings with { PausedUntil = until };
+        else Balloon(Strings.AppName, error);
+        ApplyPauseUi();
+        StateChanged?.Invoke();
+        return error;
+    }
+
+    /// <summary>Menu text and the timer that flips it back when the pause ends. UI thread.</summary>
+    private void ApplyPauseUi()
+    {
+        _pauseTimer?.Stop();
+        _pauseTimer = null;
+        var until = DateTimeOffset.FromUnixTimeSeconds(Math.Clamp(Settings.PausedUntil, 0, 253402300799));
+        var remaining = until - DateTimeOffset.UtcNow;
+        if (Settings.PausedUntil <= 0 || remaining <= TimeSpan.Zero)
+        {
+            _tray.SetPaused(null);
+            return;
+        }
+        _tray.SetPaused(until.LocalDateTime);
+        _pauseTimer = new DispatcherTimer(remaining + TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => ApplyPauseUi(), _ui);
     }
 
     public async Task<string?> SetPeerModeAsync(PeerItem peer, string mode)

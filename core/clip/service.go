@@ -18,13 +18,16 @@ const (
 	SettingTTL           = "clip_ttl_s"     // seconds an event may wait for an offline peer
 	SettingHistoryLimit  = "history_limit"  // inbox rows kept
 	SettingSendSensitive = "send_sensitive" // "on" (default) | "off"
-	SettingApplyMode     = "default_apply_mode"
+	SettingApplyMode     = store.DefaultApplyModeKey
+	SettingPausedUntil   = "paused_until" // unix seconds; while now < value nothing is sent or applied automatically
 )
 
 const (
 	defaultTTL       = 15 * time.Minute
 	defaultHistory   = 200
-	suppressWindow   = 3 * time.Second // after applying remote text, the same text read back is an echo
+	suppressWindow   = 3 * time.Second  // after applying remote text, the same text read back is an echo (persisted; the ring below has no time limit)
+	liveWindow       = 20 * time.Second // older events (offline catch-up, slow links) are never applied automatically
+	echoRingSize     = 32
 	duplicateWindow  = 3 * time.Second // one copy can fire several clipboard notifications
 	maxInboxTextList = 500
 )
@@ -39,6 +42,42 @@ type Service struct {
 	mu           sync.Mutex
 	lastSentHash string
 	lastSentAt   time.Time
+	// echoRing holds the hashes of texts this device wrote to its own clipboard on a
+	// peer's behalf. A clipboard notification that reads one of them back is an echo no
+	// matter how late it arrives (slow phones, wake from sleep); without this a text
+	// could bounce between three devices. It is emptied by the next genuine local copy.
+	echoRing []string
+}
+
+func (s *Service) ringAdd(hash string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, h := range s.echoRing {
+		if h == hash {
+			return
+		}
+	}
+	if len(s.echoRing) >= echoRingSize {
+		s.echoRing = s.echoRing[1:]
+	}
+	s.echoRing = append(s.echoRing, hash)
+}
+
+func (s *Service) ringHas(hash string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, h := range s.echoRing {
+		if h == hash {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) ringClear() {
+	s.mu.Lock()
+	s.echoRing = nil
+	s.mu.Unlock()
 }
 
 // New builds the service. emit receives clip.* events for the shell.
@@ -62,7 +101,9 @@ func (s *Service) Setting(key string) string {
 	}
 	switch key {
 	case SettingCapture:
-		return "off"
+		// On by default: with no paired device nothing is sent anyway, and once the user
+		// pairs one the whole point is that copying just works. An explicit "off" is kept.
+		return "on"
 	case SettingTTL:
 		return strconv.Itoa(int(defaultTTL.Seconds()))
 	case SettingHistoryLimit:
@@ -70,9 +111,17 @@ func (s *Service) Setting(key string) string {
 	case SettingSendSensitive:
 		return "on"
 	case SettingApplyMode:
-		return "notify"
+		return store.DefaultApplyMode // for devices paired from now on; existing peers keep their own choice
+	case SettingPausedUntil:
+		return "0"
 	}
 	return ""
+}
+
+// Paused reports whether the user paused sync and the pause has not ended yet.
+func (s *Service) Paused() bool {
+	n, err := strconv.ParseInt(s.Setting(SettingPausedUntil), 10, 64)
+	return err == nil && n > 0 && s.now().Unix() < n
 }
 
 func (s *Service) ttl() time.Duration {
@@ -109,6 +158,10 @@ func ValidateSetting(key, value string) error {
 		if value != "notify" && value != "manual" && value != "auto" {
 			return bad()
 		}
+	case SettingPausedUntil:
+		if n, err := strconv.ParseInt(value, 10, 64); err != nil || n < 0 || n > 4102444800 {
+			return bad()
+		}
 	default:
 		return proto.Errorf(proto.CodeInvalid, "unknown setting %q", key)
 	}
@@ -139,6 +192,7 @@ const (
 	SuppressNoPeers    = "no_peers"
 	SuppressTooLarge   = "too_large"
 	SuppressSensitive  = "sensitive_blocked"
+	SuppressPaused     = "paused"
 )
 
 func (s *Service) pairedPeers() []store.Peer {
@@ -152,6 +206,19 @@ func (s *Service) pairedPeers() []store.Peer {
 	return out
 }
 
+// broadcastPeers are the paired devices an automatic send reaches: the ones the user
+// has not switched off.
+func (s *Service) broadcastPeers() []store.Peer {
+	all := s.pairedPeers()
+	out := all[:0:0]
+	for _, p := range all {
+		if !p.SendDisabled {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // LocalChanged is called by the shell when the user copied something. The core
 // decides whether it is sent: capture must be on, the text must not be empty,
 // too large, an echo of text we just applied, or a repeat of the last send.
@@ -159,6 +226,10 @@ func (s *Service) LocalChanged(text string) (LocalResult, error) {
 	res := LocalResult{Sent: []Sent{}}
 	if s.Setting(SettingCapture) != "on" {
 		res.Suppressed = SuppressCaptureOff
+		return res, nil
+	}
+	if s.Paused() {
+		res.Suppressed = SuppressPaused
 		return res, nil
 	}
 	norm := Normalize(text)
@@ -176,7 +247,7 @@ func (s *Service) LocalChanged(text string) (LocalResult, error) {
 	if err != nil {
 		return res, err
 	}
-	if hash == st.LastAppliedHash && now.Unix() < st.SuppressUntil {
+	if (hash == st.LastAppliedHash && now.Unix() < st.SuppressUntil) || s.ringHas(hash) {
 		res.Suppressed = SuppressEcho
 		return res, nil
 	}
@@ -187,7 +258,7 @@ func (s *Service) LocalChanged(text string) (LocalResult, error) {
 		res.Suppressed = SuppressDuplicate
 		return res, nil
 	}
-	peers := s.pairedPeers()
+	peers := s.broadcastPeers()
 	if len(peers) == 0 {
 		res.Suppressed = SuppressNoPeers
 		return res, nil
@@ -205,6 +276,7 @@ func (s *Service) LocalChanged(text string) (LocalResult, error) {
 	s.mu.Lock()
 	s.lastSentHash, s.lastSentAt = hash, now
 	s.mu.Unlock()
+	s.ringClear() // the clipboard has moved on: older echoes are stale
 	st.LastLocalSentHash = hash
 	_ = s.db.SetClipState(st)
 	return res, nil
@@ -223,7 +295,8 @@ func (s *Service) Send(text string, to []string) ([]Sent, error) {
 	}
 	var targets []store.Peer
 	for _, p := range s.pairedPeers() {
-		if len(to) == 0 || contains(to, p.DeviceID) {
+		// Naming a device is an explicit choice; "everyone" leaves out switched-off ones.
+		if contains(to, p.DeviceID) || (len(to) == 0 && !p.SendDisabled) {
 			targets = append(targets, p)
 		}
 	}
@@ -282,10 +355,17 @@ func (s *Service) OnEvent(peerID string, env *proto.Envelope) {
 	sensitive := env.Sensitive || LooksSensitive(text)
 	pr, _, _ := s.db.GetPeer(peerID)
 	decision := Decide(pr.ApplyMode, sensitive)
+	// Only text that arrives right after it was copied may overwrite the clipboard on its
+	// own. What waited in an outbox (the device was offline, asleep, the link was slow)
+	// is old news by now; it is offered, not applied. The same while sync is paused.
+	live := s.now().Sub(env.CreatedAt) <= liveWindow
+	if decision == DecisionAuto && (!live || s.Paused()) {
+		decision = DecisionManual
+	}
 	_, _ = s.db.PruneInbox(s.historyLimit())
 	s.emit(map[string]any{
 		"type": "clip.received", "event_id": env.EventID, "from": peerID, "from_name": pr.Name,
-		"text": text, "sensitive": sensitive, "decision": decision, "received_at": s.now().Unix(),
+		"text": text, "sensitive": sensitive, "decision": decision, "live": live, "received_at": s.now().Unix(),
 	})
 }
 
@@ -319,6 +399,7 @@ func (s *Service) MarkApplied(eventID string) error {
 	}
 	st.LastAppliedEventID = eventID
 	st.LastAppliedHash = Hash(Normalize(p.Content))
+	s.ringAdd(st.LastAppliedHash)
 	st.SuppressUntil = s.now().Add(suppressWindow).Unix() + 1 // second resolution: round up
 	if err := s.db.SetClipState(st); err != nil {
 		return err

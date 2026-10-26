@@ -20,6 +20,13 @@ class FormattersTest {
     }
 
     @Test
+    fun clockTimeUsesTheGivenZone() {
+        // 1790003600 = 2026-09-21T15:13:20Z
+        assertEquals("15:13", Formatters.clockTime(1790003600, java.time.ZoneOffset.UTC))
+        assertEquals("00:13", Formatters.clockTime(1790003600, java.time.ZoneOffset.ofHours(9)))
+    }
+
+    @Test
     fun speeds() {
         assertEquals("50.0 MB/s", Formatters.speed(52_428_800))
         assertEquals("0 B/s", Formatters.speed(-5))

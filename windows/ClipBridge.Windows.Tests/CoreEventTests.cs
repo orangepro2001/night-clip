@@ -23,6 +23,16 @@ public class CoreEventTests
     }
 
     [Fact]
+    public void ClipReceived_LiveDefaultsToTrue_AndReadsFalse()
+    {
+        var old = Assert.IsType<ClipReceivedEvent>(P("{\"type\":\"clip.received\",\"event_id\":\"e1\",\"text\":\"x\"}"));
+        Assert.True(old.Live);
+        var stale = Assert.IsType<ClipReceivedEvent>(P("{\"type\":\"clip.received\",\"event_id\":\"e2\",\"text\":\"x\",\"decision\":\"manual\",\"live\":false}"));
+        Assert.False(stale.Live);
+        Assert.Equal("manual", stale.Decision);
+    }
+
+    [Fact]
     public void LogLine_NeverContainsPayload()
     {
         var e = P("{\"type\":\"clip.received\",\"event_id\":\"e1\",\"text\":\"TOP-SECRET-TEXT\",\"decision\":\"notify\"}");

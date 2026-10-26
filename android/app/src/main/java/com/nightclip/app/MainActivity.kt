@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.nightclip.app.platform.Actions
+import com.nightclip.app.platform.FocusAutoSend
 import com.nightclip.app.platform.RealtimeMode
 import com.nightclip.app.ui.AppRoot
 import com.nightclip.app.ui.ClipBridgeTheme
@@ -29,6 +30,13 @@ class MainActivity : ComponentActivity() {
             }
         }
         setContent { ClipBridgeTheme { AppRoot(requests) } }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // Android only lets the focused app read the clipboard, so this is where a copy made
+        // elsewhere is noticed and broadcast without any button press.
+        if (hasFocus) FocusAutoSend.onFocus(this)
     }
 
     override fun onNewIntent(intent: Intent) {

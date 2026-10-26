@@ -117,7 +117,10 @@ class ModelParsersTest {
         assertEquals(1000, s.historyLimit)
         assertFalse(s.sendSensitive)
         assertEquals("manual", s.defaultApplyMode)
-        assertEquals(CoreSettings(), ModelParsers.settings(JSONObject("{}")).copy(capture = false))
+        assertEquals(CoreSettings(), ModelParsers.settings(JSONObject("{}")))
+        // an explicit "off" is honoured, anything else (including unset) means on
+        assertTrue(ModelParsers.settings(JSONObject("{}")).capture)
+        assertEquals("auto", ModelParsers.settings(JSONObject("{}")).defaultApplyMode)
     }
 
     @Test
@@ -125,5 +128,17 @@ class ModelParsersTest {
         assertEquals(SendResult(2, ""), ModelParsers.sendResult(JSONObject("""{"sent":[{"device_id":"a"},{"device_id":"b"}]}""")))
         assertEquals(SendResult(0, "too_large"), ModelParsers.sendResult(JSONObject("""{"sent":[],"suppressed":"too_large"}""")))
         assertEquals(SendResult(0, ""), ModelParsers.sendResult(JSONObject("{}")))
+    }
+
+    @Test
+    fun parsesSendEnabledAndPause() {
+        val peers = ModelParsers.peers(JSONObject("""{"peers":[{"device_id":"a"},{"device_id":"b","send_enabled":false}]}"""))
+        assertTrue(peers[0].sendEnabled)
+        assertFalse(peers[1].sendEnabled)
+        val s = ModelParsers.settings(JSONObject("""{"settings":{"paused_until":"1790003600"}}"""))
+        assertEquals(1790003600L, s.pausedUntil)
+        assertTrue(s.isPaused(1790000000))
+        assertFalse(s.isPaused(1790003600))
+        assertEquals(0L, ModelParsers.settings(JSONObject("""{"settings":{"paused_until":"soon"}}""")).pausedUntil)
     }
 }

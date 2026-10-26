@@ -7,7 +7,7 @@
 
 - **产品**：Windows ↔ Android 剪贴板（文本）同步 + 文件传输。设备都在同一个 Tailscale tailnet 里直连，无服务端。仓库 `git@github.com:orangepro2001/night-clip.git`（公开，`main`）。
 - **架构**：一个 Go 核心承载全部业务；Windows 用 C# WPF 壳 + Go 编译的 DLL；Android 用 Kotlin Compose 壳 + gomobile AAR。壳只通过 `Call(method, json)` / `NextEvent(timeoutMs)` 访问核心。
-- **现状：功能完整**。配对、文本同步、文件传输、离线补发、撤销、命名管道与命令行、自动更新与本机分发、两端完整界面都已实现，核心全部有测试。**两端壳的系统相关行为（托盘、剪贴板监听、通知、相机、前台服务、MediaStore…）只编译、没在真机上跑过**——这是现在最大的未知，见 §6。
+- **现状：功能完整**，已按 [docs/plan-auto-broadcast.md](docs/plan-auto-broadcast.md) 把“复制即自动广播”做成默认（见该文 §11）。配对、文本同步、文件传输、离线补发、撤销、命名管道与命令行、自动更新与本机分发、两端完整界面都已实现，核心全部有测试。**两端壳的系统相关行为（托盘、剪贴板监听、通知、相机、前台服务、MediaStore…）只编译、没在真机上跑过**——这是现在最大的未知，见 §6。
 - **验证**：`make check` 全绿；GitHub CI（linux / windows / android）全绿；核心所有包的测试同时以 Windows 程序在 Wine 下通过。
 - **本机分发**：`clipbridge-dist` 用户服务（`127.0.0.1:18780`，`Linger=yes`）经 `tailscale serve --set-path /clipbridge` 暴露；下载页 `https://tony-ai-pc-1.tail9f7f1f.ts.net/clipbridge/`。每个阶段性功能：提交 → 推送 → `scripts/release-local.sh`，设备约 1 秒内收到更新。
 - **下一步**：真机验证清单（§6）→ 修问题 → 全部满意后配置 GitHub `nightly` 滚动发布（§7）。

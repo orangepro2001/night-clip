@@ -16,6 +16,15 @@ public class PeerModelTests
     }
 
     [Fact]
+    public void Peers_SendEnabledDefaultsToTrueAndFollowsTheCore()
+    {
+        var list = PeerItem.ListFromJson(J(
+            "{\"peers\":[{\"device_id\":\"dev_a\",\"name\":\"A\"},{\"device_id\":\"dev_b\",\"name\":\"B\",\"send_enabled\":false}," +
+            "{\"device_id\":\"dev_c\",\"name\":\"C\",\"send_enabled\":true}]}"), Now);
+        Assert.Equal(new[] { true, false, true }, list.Select(p => p.SendEnabled).ToArray());
+    }
+
+    [Fact]
     public void Peers_MapFromPeersList()
     {
         var list = PeerItem.ListFromJson(J(
@@ -141,10 +150,24 @@ public class SettingsModelTests
         Assert.True(s.Capture);
         Assert.Equal(300, s.ClipTtlSeconds);
         Assert.Equal(200, s.HistoryLimit);
-        Assert.Equal("notify", s.DefaultApplyMode);
+        Assert.Equal("auto", s.DefaultApplyMode);   // the core's default for newly paired devices
+        Assert.Equal(0, s.PausedUntil);
         Assert.True(s.SendSensitive);
         Assert.Equal(DefaultDir, s.DownloadDir);
         Assert.Equal(4294967296, s.MaxFileBytes);
+    }
+
+    [Fact]
+    public void FromJson_CaptureIsOnUnlessExplicitlyOff_AndPauseIsRead()
+    {
+        using var none = JsonDocument.Parse("{\"settings\":{}}");
+        Assert.True(SettingsValues.FromJson(none.RootElement, DefaultDir).Capture);
+        using var off = JsonDocument.Parse("{\"settings\":{\"capture\":\"off\",\"paused_until\":\"1790003600\"}}");
+        var s = SettingsValues.FromJson(off.RootElement, DefaultDir);
+        Assert.False(s.Capture);
+        Assert.Equal(1790003600, s.PausedUntil);
+        using var junk = JsonDocument.Parse("{\"settings\":{\"paused_until\":\"soon\"}}");
+        Assert.Equal(0, SettingsValues.FromJson(junk.RootElement, DefaultDir).PausedUntil);
     }
 
     [Fact]

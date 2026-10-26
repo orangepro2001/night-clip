@@ -189,9 +189,10 @@ func TestPairAndSyncThroughTheFacade(t *testing.T) {
 
 	pairNodes(t, win, pix)
 
-	// capture is opt-in; turn it on on the PC and copy something there
+	// capture is on by default; an explicit off is respected, then back on
+	win.call("settings.set", map[string]any{"key": "capture", "value": "off"})
 	if got := win.call("clip.local_changed", map[string]any{"text": "ignored"}); got["suppressed"] != "capture_off" {
-		t.Fatalf("capture should start off: %v", got)
+		t.Fatalf("capture off must suppress: %v", got)
 	}
 	win.call("settings.set", map[string]any{"key": "capture", "value": "on"})
 	got := win.call("clip.local_changed", map[string]any{"text": "hello from the pc"})
@@ -199,7 +200,7 @@ func TestPairAndSyncThroughTheFacade(t *testing.T) {
 		t.Fatalf("local_changed = %v", got)
 	}
 	ev := pix.waitEvent("clip.received", map[string]any{"text": "hello from the pc"})
-	if ev["decision"] != "notify" || ev["from_name"] != "Tony-PC" || ev["sensitive"] != false {
+	if ev["decision"] != "auto" || ev["live"] != true || ev["from_name"] != "Tony-PC" || ev["sensitive"] != false {
 		t.Fatalf("clip.received = %v", ev)
 	}
 
@@ -352,7 +353,7 @@ func TestPeerManagement(t *testing.T) {
 func TestSettingsAPI(t *testing.T) {
 	n := startNode(t, "Desk", "windows", true)
 	all := n.call("settings.get", nil)["settings"].(map[string]any)
-	if all["capture"] != "off" || all["clip_ttl_s"] != "900" || all["default_apply_mode"] != "notify" {
+	if all["capture"] != "on" || all["clip_ttl_s"] != "900" || all["default_apply_mode"] != "auto" || all["paused_until"] != "0" {
 		t.Fatalf("defaults = %v", all)
 	}
 	n.call("settings.set", map[string]any{"key": "clip_ttl_s", "value": "120"})

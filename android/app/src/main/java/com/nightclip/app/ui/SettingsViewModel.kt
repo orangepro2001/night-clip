@@ -73,6 +73,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /** Pauses sending and automatic writing for [minutes]; 0 resumes. */
+    fun pauseFor(minutes: Int) {
+        val until = if (minutes > 0) System.currentTimeMillis() / 1000 + minutes * 60L else 0L
+        set("paused_until", until.toString())
+    }
+
     fun checkUpdate() = updateCall { CoreApi.updateCheck() }
     fun downloadUpdate() = updateCall { CoreApi.updateDownload() }
 

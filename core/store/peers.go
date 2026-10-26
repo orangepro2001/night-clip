@@ -21,6 +21,10 @@ type Peer struct {
 	ApplyMode    string // "notify" | "manual" | "auto"
 	PairedAt     int64
 	LastSeenAt   int64
+	// SendDisabled stops broadcasts from reaching this peer (it still receives
+	// nothing from us, but what it sends us is handled as usual). Zero value =
+	// enabled, so records built without the field keep working.
+	SendDisabled bool
 }
 
 // PutPeer inserts or replaces a peer row keyed by device_id.
@@ -35,8 +39,8 @@ func (db *DB) PutPeer(p Peer) error {
 	}
 	_, err = db.sql.Exec(`
 		INSERT INTO peers (device_id, name, platform, cert_fp, tailnet_addrs_json, port,
-		                   role, state, apply_mode, paired_at, last_seen_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                   role, state, apply_mode, paired_at, last_seen_at, send_disabled)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(device_id) DO UPDATE SET
 			name = excluded.name,
 			platform = excluded.platform,
@@ -47,9 +51,10 @@ func (db *DB) PutPeer(p Peer) error {
 			state = excluded.state,
 			apply_mode = excluded.apply_mode,
 			paired_at = excluded.paired_at,
-			last_seen_at = excluded.last_seen_at`,
+			last_seen_at = excluded.last_seen_at,
+			send_disabled = excluded.send_disabled`,
 		p.DeviceID, p.Name, p.Platform, p.CertFP, string(raw), p.Port,
-		p.Role, p.State, p.ApplyMode, p.PairedAt, p.LastSeenAt)
+		p.Role, p.State, p.ApplyMode, p.PairedAt, p.LastSeenAt, boolInt(p.SendDisabled))
 	if err != nil {
 		return dbErr("store peer", err)
 	}
@@ -60,7 +65,7 @@ func (db *DB) PutPeer(p Peer) error {
 func (db *DB) GetPeer(deviceID string) (Peer, bool, error) {
 	row := db.sql.QueryRow(`
 		SELECT device_id, name, platform, cert_fp, tailnet_addrs_json, port,
-		       role, state, apply_mode, paired_at, last_seen_at
+		       role, state, apply_mode, paired_at, last_seen_at, send_disabled
 		FROM peers WHERE device_id = ?`, deviceID)
 	p, err := scanPeer(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -77,7 +82,7 @@ func (db *DB) GetPeer(deviceID string) (Peer, bool, error) {
 func (db *DB) FindPeerByFingerprint(certFP string) (Peer, bool, error) {
 	row := db.sql.QueryRow(`
 		SELECT device_id, name, platform, cert_fp, tailnet_addrs_json, port,
-		       role, state, apply_mode, paired_at, last_seen_at
+		       role, state, apply_mode, paired_at, last_seen_at, send_disabled
 		FROM peers WHERE cert_fp = ?`, certFP)
 	p, err := scanPeer(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -93,7 +98,7 @@ func (db *DB) FindPeerByFingerprint(certFP string) (Peer, bool, error) {
 func (db *DB) ListPeers() ([]Peer, error) {
 	rows, err := db.sql.Query(`
 		SELECT device_id, name, platform, cert_fp, tailnet_addrs_json, port,
-		       role, state, apply_mode, paired_at, last_seen_at
+		       role, state, apply_mode, paired_at, last_seen_at, send_disabled
 		FROM peers ORDER BY name, device_id`)
 	if err != nil {
 		return nil, dbErr("list peers", err)
@@ -130,11 +135,13 @@ func scanPeer(row rowScanner) (Peer, error) {
 	var (
 		p       Peer
 		addrsJS string
+		sendOff int
 	)
 	if err := row.Scan(&p.DeviceID, &p.Name, &p.Platform, &p.CertFP, &addrsJS, &p.Port,
-		&p.Role, &p.State, &p.ApplyMode, &p.PairedAt, &p.LastSeenAt); err != nil {
+		&p.Role, &p.State, &p.ApplyMode, &p.PairedAt, &p.LastSeenAt, &sendOff); err != nil {
 		return Peer{}, err
 	}
+	p.SendDisabled = sendOff != 0
 	if addrsJS != "" {
 		if err := json.Unmarshal([]byte(addrsJS), &p.TailnetAddrs); err != nil {
 			return Peer{}, err
@@ -171,4 +178,11 @@ func (db *DB) SetPeerState(deviceID, state string) error {
 		return dbErr("set peer state", err)
 	}
 	return nil
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

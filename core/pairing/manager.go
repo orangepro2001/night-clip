@@ -227,6 +227,7 @@ func (m *Manager) Confirm(pairID string, accept bool) error {
 	// Persist before telling the joiner "accepted": the joiner must never believe it is
 	// paired while we have forgotten about it.
 	p.PairedAt = m.now().Unix()
+	p.ApplyMode = m.db.NewPeerApplyMode()
 	if err := m.db.PutPeer(p); err != nil {
 		return err
 	}

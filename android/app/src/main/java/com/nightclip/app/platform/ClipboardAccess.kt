@@ -12,11 +12,19 @@ import android.os.PersistableBundle
  * Android 10+ ignores or blocks clipboard access for apps that are not in the foreground.
  */
 object ClipboardAccess {
-    fun readText(context: Context): String? {
+    fun readText(context: Context): String? = readClip(context)?.text
+
+    /** The text plus when it was copied (ms since epoch, 0 = unknown). */
+    data class ClipRead(val text: String, val copiedAtMs: Long) {
+        override fun toString() = "ClipRead(copiedAtMs=$copiedAtMs)" // never print clipboard text
+    }
+
+    fun readClip(context: Context): ClipRead? {
         val cm = context.getSystemService(ClipboardManager::class.java) ?: return null
         val clip = cm.primaryClip ?: return null
         if (clip.itemCount == 0) return null
-        return clip.getItemAt(0).coerceToText(context)?.toString()?.takeIf { it.isNotEmpty() }
+        val text = clip.getItemAt(0).coerceToText(context)?.toString()?.takeIf { it.isNotEmpty() } ?: return null
+        return ClipRead(text, clip.description?.timestamp ?: 0L)
     }
 
     /** Returns false if the platform refused the write. [sensitive] hides the preview on Android 13+. */

@@ -48,6 +48,10 @@
                                 <TextBlock Text="{Binding PendingText, Mode=OneWay}" Foreground="#FFB36B00" FontSize="12" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <CheckBox Content="{x:Static local:Strings.DeviceAutoSend}" IsChecked="{Binding SendEnabled, Mode=OneWay}"
+                                          ToolTip="{x:Static local:Strings.DeviceAutoSendTip}" Click="Send_Click"
+                                          VerticalAlignment="Center" Margin="0,0,10,0"
+                                          Visibility="{Binding CanChangeSettings, Converter={StaticResource B2V}}" />
                                 <ComboBox Width="112" SelectedValuePath="Tag" SelectedValue="{Binding ApplyMode, Mode=OneWay}"
                                           ToolTip="{x:Static local:Strings.LabelPolicy}" SelectionChanged="Mode_Changed"
                                           Visibility="{Binding CanChangeSettings, Converter={StaticResource B2V}}">

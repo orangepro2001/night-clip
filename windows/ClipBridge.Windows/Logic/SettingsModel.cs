@@ -7,7 +7,7 @@ namespace ClipBridge.Windows.Logic;
 /// <summary>The values behind the settings page (api-spec §7.3 keys plus the file keys of shell-guide §2).</summary>
 public sealed record SettingsValues(
     bool Capture, string DefaultApplyMode, int ClipTtlSeconds, int HistoryLimit, bool SendSensitive,
-    string DownloadDir, long MaxFileBytes)
+    string DownloadDir, long MaxFileBytes, long PausedUntil = 0)
 {
     public const int DefaultTtl = 900;
     public const int DefaultHistory = 200;
@@ -19,13 +19,14 @@ public sealed record SettingsValues(
         var s = JsonRead.Obj(result, "settings");
         string Get(string key) => JsonRead.Str(s, key);
         return new SettingsValues(
-            Capture: Get("capture") == "on",
-            DefaultApplyMode: SettingsModel.Modes.Contains(Get("default_apply_mode")) ? Get("default_apply_mode") : "notify",
+            Capture: Get("capture") != "off", // on unless the user switched it off (core default: on)
+            DefaultApplyMode: SettingsModel.Modes.Contains(Get("default_apply_mode")) ? Get("default_apply_mode") : "auto",
             ClipTtlSeconds: int.TryParse(Get("clip_ttl_s"), NumberStyles.None, CultureInfo.InvariantCulture, out var ttl) ? ttl : DefaultTtl,
             HistoryLimit: int.TryParse(Get("history_limit"), NumberStyles.None, CultureInfo.InvariantCulture, out var h) ? h : DefaultHistory,
             SendSensitive: Get("send_sensitive") != "off",
             DownloadDir: Get("download_dir") is { Length: > 0 } d && SettingsModel.IsAbsoluteWindowsPath(d) ? d : defaultDownloadDir,
-            MaxFileBytes: long.TryParse(Get("max_file_bytes"), NumberStyles.None, CultureInfo.InvariantCulture, out var m) && m > 0 ? m : DefaultMaxFileBytes);
+            MaxFileBytes: long.TryParse(Get("max_file_bytes"), NumberStyles.None, CultureInfo.InvariantCulture, out var m) && m > 0 ? m : DefaultMaxFileBytes,
+            PausedUntil: long.TryParse(Get("paused_until"), NumberStyles.None, CultureInfo.InvariantCulture, out var pu) ? pu : 0);
     }
 }
 
