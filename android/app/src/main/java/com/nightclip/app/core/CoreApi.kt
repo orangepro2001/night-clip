@@ -49,6 +49,9 @@ object CoreApi {
     /** The user copied something (automatic path): the core applies capture, pause, echo and duplicate rules. */
     suspend fun localChanged(text: String) =
         run("clip.local_changed", JSONObject().put("text", text), ModelParsers::sendResult)
+    /** Open the core's echo window BEFORE the shell writes the clipboard. */
+    suspend fun beginApply(eventId: String) = run("clip.begin_apply", JSONObject().put("event_id", eventId)) { }
+
     suspend fun markApplied(eventId: String) = run("clip.mark_applied", JSONObject().put("event_id", eventId)) { }
     suspend fun dismiss(eventId: String) = run("clip.dismiss", JSONObject().put("event_id", eventId)) { }
 

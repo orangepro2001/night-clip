@@ -72,12 +72,17 @@ fun InboxScreen(vm: InboxViewModel, onMessage: (String) -> Unit, modifier: Modif
                 revealed = show,
                 onReveal = { revealed = if (show) revealed - item.eventId else revealed + item.eventId },
                 onCopy = {
-                    // The button press happens in the visible app, so the write is allowed.
-                    if (ClipboardAccess.writeText(context, item.text, item.sensitive)) {
-                        vm.markApplied(item.eventId)
-                        onMessage(copiedText)
-                    } else {
-                        onMessage(failedText)
+                    // Open the echo window before the write; a clipboard notification during the
+                    // write must not send the same text back to the sender.
+                    vm.beginApply(item.eventId) { ready ->
+                        if (!ready) {
+                            onMessage(failedText)
+                        } else if (ClipboardAccess.writeText(context, item.text, item.sensitive)) {
+                            vm.markApplied(item.eventId)
+                            onMessage(copiedText)
+                        } else {
+                            onMessage(failedText)
+                        }
                     }
                 },
                 onDismiss = { vm.dismiss(item.eventId) },

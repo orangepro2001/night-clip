@@ -16,8 +16,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class InboxViewModel(application: Application) : AndroidViewModel(application) {
     private val _items = MutableStateFlow<List<InboxItem>>(emptyList())
@@ -41,6 +43,14 @@ class InboxViewModel(application: Application) : AndroidViewModel(application) {
     fun refresh() {
         viewModelScope.launch {
             (CoreApi.inbox(200) as? ApiResult.Ok)?.let { _items.value = it.value }
+        }
+    }
+
+    /** Opens the core's echo window before the caller writes the clipboard from a visible screen. */
+    fun beginApply(eventId: String, onReady: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = CoreApi.beginApply(eventId) is ApiResult.Ok
+            withContext(Dispatchers.Main) { onReady(ok) }
         }
     }
 

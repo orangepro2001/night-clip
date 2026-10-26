@@ -103,6 +103,18 @@ internal sealed partial class ShellController
             }
         }
 
+        // Open the echo window before the clipboard write. The write is what causes the
+        // WM_CLIPBOARDUPDATE; marking after it was too late for a fast notification.
+        if (eventId.Length > 0)
+        {
+            try { Api.BeginApply(eventId); }
+            catch (CoreException ex)
+            {
+                AppLog.Write("clip.begin_apply failed: " + ex.Code);
+                return ApplyOutcome.Failed;
+            }
+        }
+
         try { _ui.Invoke(Write, DispatcherPriority.Send, CancellationToken.None, TimeSpan.FromSeconds(3)); }
         catch (Exception ex) when (ex is OperationCanceledException or TimeoutException) { return ApplyOutcome.Failed; }
 

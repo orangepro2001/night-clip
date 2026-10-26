@@ -158,6 +158,35 @@ func TestAppliedTextIsNotSentBackAsAnEcho(t *testing.T) {
 	})
 }
 
+func TestBeginApplyClosesTheWriteRace(t *testing.T) {
+	r := newRig(t, "auto", "auto")
+	r.captureOn(t, r.win)
+	r.captureOn(t, r.pix)
+
+	if _, err := r.winSvc.LocalChanged("race text"); err != nil {
+		t.Fatal(err)
+	}
+	testnet.WaitUntil(t, "phone receives", func() bool { return len(received(r.pix)) == 1 })
+	ev := received(r.pix)[0]
+	eventID := ev["event_id"].(string)
+
+	// The shell marks the echo window before calling setPrimaryClip; a notification that
+	// fires during the write itself must already be suppressed.
+	if err := r.pixSvc.BeginApply(eventID); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := r.pixSvc.LocalChanged("race text"); res.Suppressed != SuppressEcho || len(res.Sent) != 0 {
+		t.Fatalf("echo during write not suppressed: %+v", res)
+	}
+	// The post-write call is still required to mark the inbox row and ack the sender.
+	if err := r.pixSvc.MarkApplied(eventID); err != nil {
+		t.Fatal(err)
+	}
+	testnet.WaitUntil(t, "applied ack on the pc", func() bool {
+		return r.win.Find("clip.ack", map[string]any{"result": "applied"}) != nil
+	})
+}
+
 func TestCRLFAndLFAreTheSameTextOnTheWire(t *testing.T) {
 	r := newRig(t, "notify", "notify")
 	r.captureOn(t, r.win)

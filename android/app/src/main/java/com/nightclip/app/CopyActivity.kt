@@ -57,16 +57,23 @@ class CopyActivity : ComponentActivity() {
         val it = item ?: return
         if (!focused) return
         done = true
-        val ok = ClipboardAccess.writeText(this, it.text, it.sensitive)
-        if (ok) {
-            val app = this.app
-            Notifications.cancelClip(this, eventId)
-            // Not tied to this activity: it is about to finish.
-            app.appScope.launch { CoreApi.markApplied(eventId) }
-            Toast.makeText(this, R.string.toast_copied, Toast.LENGTH_SHORT).show()
-        } else {
-            Toast.makeText(this, R.string.toast_copy_failed, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            if (CoreApi.beginApply(eventId) is ApiResult.Fail) {
+                Toast.makeText(this@CopyActivity, R.string.toast_copy_failed, Toast.LENGTH_SHORT).show()
+                finish()
+                return@launch
+            }
+            val ok = ClipboardAccess.writeText(this@CopyActivity, it.text, it.sensitive)
+            if (ok) {
+                val app = this@CopyActivity.app
+                Notifications.cancelClip(this@CopyActivity, eventId)
+                // Not tied to this activity: it is about to finish.
+                app.appScope.launch { CoreApi.markApplied(eventId) }
+                Toast.makeText(this@CopyActivity, R.string.toast_copied, Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@CopyActivity, R.string.toast_copy_failed, Toast.LENGTH_SHORT).show()
+            }
+            finish()
         }
-        finish()
     }
 }

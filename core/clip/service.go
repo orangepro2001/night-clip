@@ -439,17 +439,44 @@ func (s *Service) OnAck(peerID, eventID, result, reason string) {
 	s.emit(ev)
 }
 
-// MarkApplied is called by the shell after it wrote the event's text to the
-// clipboard. It records the echo-suppression state first (so the clipboard
-// notification the write is about to cause is recognised), then tells the sender.
-func (s *Service) MarkApplied(eventID string) error {
-	row, found, err := s.db.GetInbox(eventID)
+// BeginApply is called by the shell immediately BEFORE it writes the event's text
+// to the clipboard. It opens the echo-suppression window first, so even a clipboard
+// notification that fires while the write is still in progress cannot bounce the
+// text back to its sender. MarkApplied must still be called after a successful write.
+func (s *Service) BeginApply(eventID string) error {
+	row, err := s.applyRow(eventID)
 	if err != nil {
 		return err
 	}
-	if !found || row.Kind != string(proto.KindClipboard) {
-		return proto.Errorf(proto.CodeInvalid, "no received clipboard event %s", eventID)
+	return s.recordEcho(row)
+}
+
+// MarkApplied is called by the shell after it wrote the event's text to the
+// clipboard. It records the echo-suppression state (idempotent with BeginApply),
+// then tells the sender.
+func (s *Service) MarkApplied(eventID string) error {
+	row, err := s.applyRow(eventID)
+	if err != nil {
+		return err
 	}
+	if err := s.recordEcho(row); err != nil {
+		return err
+	}
+	return s.e.MarkInbox(row.PeerID, eventID, peer.ResultApplied, "")
+}
+
+func (s *Service) applyRow(eventID string) (store.InboxRow, error) {
+	row, found, err := s.db.GetInbox(eventID)
+	if err != nil {
+		return store.InboxRow{}, err
+	}
+	if !found || row.Kind != string(proto.KindClipboard) {
+		return store.InboxRow{}, proto.Errorf(proto.CodeInvalid, "no received clipboard event %s", eventID)
+	}
+	return row, nil
+}
+
+func (s *Service) recordEcho(row store.InboxRow) error {
 	var p proto.ClipboardPayload
 	if err := json.Unmarshal(row.Payload, &p); err != nil {
 		return proto.Errorf(proto.CodeInternal, "stored event is unreadable")
@@ -458,14 +485,11 @@ func (s *Service) MarkApplied(eventID string) error {
 	if err != nil {
 		return err
 	}
-	st.LastAppliedEventID = eventID
+	st.LastAppliedEventID = row.EventID
 	st.LastAppliedHash = Hash(Normalize(p.Content))
 	s.ringAdd(st.LastAppliedHash)
 	st.SuppressUntil = s.now().Add(suppressWindow).Unix() + 1 // second resolution: round up
-	if err := s.db.SetClipState(st); err != nil {
-		return err
-	}
-	return s.e.MarkInbox(row.PeerID, eventID, peer.ResultApplied, "")
+	return s.db.SetClipState(st)
 }
 
 // Dismiss records that the user declined an event.

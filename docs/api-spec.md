@@ -351,7 +351,8 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | `peers.remove` | `device_id`, `forget?` | 撤销配对：通知对端、拉黑指纹、断开；`forget` 同时删除记录（指纹仍被拉黑） |
 | `clip.local_changed` | `text` | 壳报告本地复制。结果 `{sent:[{device_id,name,event_id}], suppressed?}`；`suppressed`：`capture_off` / `paused` / `empty` / `echo` / `duplicate` / `no_peers` / `too_large` / `sensitive_blocked`。`echo`：该文本是本机刚替某个对端写入剪贴板的内容（无时间上限的记忆，直到用户真正复制了别的内容）。自动广播对所有未被 `send_enabled=false` 关闭的已配对设备各发一个事件 |
 | `clip.send` | `text`, `to[]?` | 用户显式发送，忽略捕获开关与回声检查；`{sent:[…]}` |
-| `clip.mark_applied` | `event_id` | 壳已把文本写入剪贴板：记录回声抑制窗口，并向发送方回 `applied` |
+| `clip.begin_apply` | `event_id` | **写剪贴板之前**调用：先打开回声抑制窗口，避免写入触发的剪贴板通知在 `mark_applied` 之前被当成用户复制而回传 |
+| `clip.mark_applied` | `event_id` | 壳已把文本写入剪贴板：确保回声状态已记录，并向发送方回 `applied`（与 `begin_apply` 幂等） |
 | `clip.dismiss` | `event_id` | 用户忽略：向发送方回 `ignored/user_dismissed` |
 | `inbox.list` | `limit?` | `{items:[{event_id, from, from_name, text, sensitive, state, received_at, expires_at, applied_at?}]}`，新的在前 |
 | `inbox.get` | `event_id` | 一条同上 |

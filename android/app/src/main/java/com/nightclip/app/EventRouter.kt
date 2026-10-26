@@ -95,15 +95,18 @@ class EventRouter(private val app: ClipBridgeApp) {
         val outcome = ReceiveDecider.decide(ev, ForegroundTracker.isForeground)
         var degraded = outcome.degraded
         if (outcome.action == ReceiveDecider.Action.WRITE_NOW) {
-            val written = withContext(Dispatchers.Main) {
-                // Re-check on the main thread: the user may have left the app since the decision.
-                ForegroundTracker.isForeground && !ev.sensitive && com.nightclip.app.platform.ClipboardAccess.writeText(app, ev.text)
-            }
-            if (written) {
-                // Immediately: the core opens its echo-suppression window now (api-spec §7.3).
-                CoreApi.markApplied(ev.eventId)
-                toast(app.getString(R.string.toast_auto_copied, ev.fromName.ifBlank { Strings.UNKNOWN_DEVICE }))
-                return
+            // Open the echo window before the clipboard write: the write itself can trigger a
+            // clipboard notification that must not be sent back to the sender.
+            if (CoreApi.beginApply(ev.eventId) is ApiResult.Ok) {
+                val written = withContext(Dispatchers.Main) {
+                    // Re-check on the main thread: the user may have left the app since the decision.
+                    ForegroundTracker.isForeground && !ev.sensitive && com.nightclip.app.platform.ClipboardAccess.writeText(app, ev.text)
+                }
+                if (written) {
+                    CoreApi.markApplied(ev.eventId)
+                    toast(app.getString(R.string.toast_auto_copied, ev.fromName.ifBlank { Strings.UNKNOWN_DEVICE }))
+                    return
+                }
             }
             degraded = true
         }

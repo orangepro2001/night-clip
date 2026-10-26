@@ -202,7 +202,7 @@ WebSocket 收到 event
   → sequence 处理（见 §4.4）
   → 写入本地收件箱，发 ack(received)
   → 发出 clip.received / file.offered 给壳
-  → 壳/用户应用后调用 clip.mark_applied，核心发 ack(applied)
+  → 壳写剪贴板前调用 clip.begin_apply，写入后调用 clip.mark_applied，核心发 ack(applied)
 ```
 
 ### 4.4 序号与缺口（修复 v2 遗留问题）

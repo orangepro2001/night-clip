@@ -205,14 +205,17 @@ func (c *Core) networkCall(method, params string) (result any, handled bool, err
 				result = map[string]any{"sent": sent}
 			}
 		}
-	case "clip.mark_applied", "clip.dismiss":
+	case "clip.begin_apply", "clip.mark_applied", "clip.dismiss":
 		var p struct {
 			EventID string `json:"event_id"`
 		}
 		if err = parseParams(params, &p); err == nil {
-			if method == "clip.dismiss" {
+			switch method {
+			case "clip.dismiss":
 				err = n.clip.Dismiss(p.EventID)
-			} else {
+			case "clip.begin_apply":
+				err = n.clip.BeginApply(p.EventID)
+			default:
 				err = n.clip.MarkApplied(p.EventID)
 			}
 			if err == nil {

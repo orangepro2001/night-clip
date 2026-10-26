@@ -36,11 +36,10 @@ object ClipboardAccess {
         if (sensitive && Build.VERSION.SDK_INT >= 33) {
             clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
         }
+        // Mark before setPrimaryClip: the platform may notify listeners during the write.
+        ClipWriteGuard.noteWrite(context, text)
         return try {
             cm.setPrimaryClip(clip)
-            // Our own write must not come back as a "user copied" trigger (and must not overwrite
-            // the baseline the focus path uses for the same text).
-            ClipWriteGuard.noteWrite(context, text)
             true
         } catch (e: SecurityException) {
             false

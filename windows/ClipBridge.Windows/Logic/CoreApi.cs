@@ -66,6 +66,9 @@ public sealed class CoreApi
 
     public SendResult ClipSend(string coreText) => ParseSend(_core.Call("clip.send", new { text = coreText }));
 
+    /// <summary>Open the echo window before the shell writes the clipboard; MarkApplied follows after a successful write.</summary>
+    public void BeginApply(string eventId) => _core.Call("clip.begin_apply", new { event_id = eventId });
+
     public void MarkApplied(string eventId) => _core.Call("clip.mark_applied", new { event_id = eventId });
     public void Dismiss(string eventId) => _core.Call("clip.dismiss", new { event_id = eventId });
     public JsonElement InboxList(int limit = 200) => _core.Call("inbox.list", new { limit });

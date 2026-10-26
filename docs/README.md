@@ -86,8 +86,9 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | --- | --- |
 | [user-guide.md](user-guide.md) | **使用说明书**：现在能做什么、安装、界面、更新、排错、计划中的用法 |
 | [update.md](update.md) | 自动更新与本机分发：信任模型、发布流程 |
-| [../HANDOFF-20261027-0805.md](../HANDOFF-20261027-0805.md) | **最新交接快照**：Android 底部导航 inset 修复、0.1.74 发布 |
-| [../HANDOFF-20261027-0745.md](../HANDOFF-20261027-0745.md) | 上一轮快照：Android/Windows 紧凑专业工具风 UI、0.1.73 发布 |
+| [../HANDOFF-20261027-0835.md](../HANDOFF-20261027-0835.md) | **最新交接快照**：写前 begin_apply 剪贴板回声修复、0.1.76 发布 |
+| [../HANDOFF-20261027-0805.md](../HANDOFF-20261027-0805.md) | 上一轮快照：Android 底部导航 inset 修复、0.1.74 发布 |
+| [../HANDOFF-20261027-0745.md](../HANDOFF-20261027-0745.md) | 更早快照：Android/Windows 紧凑专业工具风 UI、0.1.73 发布 |
 | [../HANDOFF-20261027-0230.md](../HANDOFF-20261027-0230.md) | 更早快照：密码库列表点按复制/独立查看编辑、0.1.66 发布 |
 | [../HANDOFF-20261027-0215.md](../HANDOFF-20261027-0215.md) | 更早快照：密码库空闲/后台/熄屏锁定与生物解锁有效期可定制、0.1.65 发布 |
 | [../HANDOFF-20261027-0205.md](../HANDOFF-20261027-0205.md) | 更早快照：空闲自动锁定/生物解锁有效期、0.1.64 发布 |
