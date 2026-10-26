@@ -1,6 +1,6 @@
 # 计划与实施记录：Android 后台读取剪贴板（悬浮窗取焦 + READ_LOGS）
 
-> 状态：**壳层已实现并编译/单测通过（2026-10-26）；真机验证未完成。**
+> 状态：**壳层已实现并编译/单测通过（2026-10-26）；2026-10-27 在 Android 15 模拟器上实测，发现 READ_LOGS 方案在 Android 13+ 有结构性问题，见 §7。真机验证未完成。**
 > 依据：[ADR-006](adr/006-android-background-read.md)、[plan-auto-broadcast.md](plan-auto-broadcast.md) §4.4/§5。
 > 范围：只做“后台读取本机剪贴板 → 自动发送”。接收方向的后台自动写入不在本次范围内。
 
@@ -117,3 +117,27 @@ adb logcat -s ClipBridge:I
 - 没有 `READ_LOGS` 时的无 ADB 备选（定时轮询 / Shizuku）未做。
 - 接收方向的后台自动写入未做；AOSP 允许无焦点 `setPrimaryClip`，但需要单独真机验证和自写保护。
 - 真机结果出来后再调 800ms 去抖、250ms+250ms 取焦超时、60 秒退避等参数。
+- **已知问题（暂不处理，只记录）：后台读取不检查“敏感”标记。** Android 13+ 的密码管理器复制时会在 `ClipDescription` 上设置 `EXTRA_IS_SENSITIVE`，`ClipboardAccess.readClip` 读取时没有检查这个标记（只排除了本应用密码库的 `VaultClipboard.MARKER_LABEL`）。因此后台自动发送会把密码管理器复制的内容当作普通文本发给所有已配对设备（核心的文本启发式只能拦住一部分）。修法方向：`readClip` 遇到 `EXTRA_IS_SENSITIVE` 时返回 null 或带标记交给核心按 `sensitive` 处理。
+
+## 7. 实测发现（2026-10-27，Android 15 x86_64 模拟器，分支 `fix/silent-copy`）
+
+环境：模拟器无 KVM（软件模拟，很慢），用 `tools/android-x86_64-emulator/` 构建、`tools/clipboard-probes/` 做“别的应用复制”。
+
+### 7.1 Go 核心在模拟器上 `SIGSYS`：只与 x86_64 有关
+`Fatal signal 31 (SIGSYS), code 1 (SYS_SECCOMP), syscall 6`，线程 `clipbridge-start`。x86_64 的 6 号调用是 `lstat`：`modernc.org/libc` 直接发 x86 才有的老式调用，Android 对应用的 seccomp 只放行 `*at` 系列。arm64 没有这些调用，真机不受影响（用户确认真机能运行）。模拟器测试用构建期补丁绕过，产品构建不变。
+
+### 7.2 READ_LOGS 方案：检测前提成立，但 Android 13+ 的日志访问确认让它不可靠
+- 成立：后台复制时系统确实写 `ClipboardService: Denying clipboard access to com.nightclip.app, application is not in focus nor is it a system service`；一旦应用的 `logcat` 连接获准，匹配到触发 <150 ms，之后 6 分钟内持续有效。
+- 不成立的部分：Android 13+ 的 `LogcatManagerService` 对**每一次** `logcat` 连接要求用户确认。应用在前台启动 `logcat` 时弹出 “Allow ClipBridge to access all device logs?”，只有 “Allow one-time access / Don’t allow”。
+- 应用在后台重连（`logcat` 进程被杀、应用重启、开机恢复）时**不弹窗，且连接被静默拒绝**：系统仍写拒绝日志，但应用收不到任何行（实测 0 次匹配）。
+- 现有监视器在这种情况下仍显示“运行中”（它只看到进程在、没有 EOF），实际已经“聋”了——这是一个独立的缺陷：状态不能反映真实可用性。
+- 因此该方案在 Android 13+ 只能在“用户每次把应用切到前台并点一次允许”之后工作到下次重连；无法做到“静默、持续”。
+
+### 7.3 shell 身份的辅助进程可以做到（已用探针验证）
+以 shell 用户（`app_process`）运行的进程，在后台、无焦点时：
+- 能写剪贴板（`SetClip`）、能读剪贴板（`GetClip` 读到了刚复制的文本）；
+- 轮询（`WatchClip`，300 ms）每次后台复制都能发现并读到内容；
+- 不需要 `READ_LOGS`、不需要悬浮窗、不抢焦点、不弹日志访问确认。
+没有验证的：监听回调（`addPrimaryClipChangedListener`）版本的探针在模拟器里被系统杀掉，原因没查明，所以目前只验证了轮询；Android 12+ 对 shell 读取是否显示“已粘贴”提示未检查；真机和其它版本未验证。
+
+要让 shell 进程长期运行，需要用户授权一次（USB/无线 adb，或 Android 11+ 设备上的“无线调试”自配对，或 Shizuku）；重启后需要重新拉起。这比 READ_LOGS 更直接，但需要决定实现方式（见分支讨论）。

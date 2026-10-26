@@ -14,6 +14,8 @@ import com.nightclip.app.core.CoreSettings
 import com.nightclip.app.core.CoreState
 import com.nightclip.app.platform.BackgroundReadController
 import com.nightclip.app.platform.BackgroundReadRuntime
+import com.nightclip.app.platform.ShizukuBridge
+import com.nightclip.app.platform.ShizukuRuntime
 import com.nightclip.app.platform.OverlayReadResult
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +45,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     /** Runtime status/counters for the opt-in background read, shared with the settings card. */
     val backgroundRead: StateFlow<BackgroundReadRuntime> = BackgroundReadController.state
+    val shizuku: StateFlow<ShizukuRuntime> = ShizukuBridge.state
+
+    fun refreshShizuku() {
+        ShizukuBridge.refresh()
+        BackgroundReadController.refresh(getApplication<Application>())
+    }
+
+    fun requestShizukuPermission() = ShizukuBridge.requestPermission()
 
     init {
         viewModelScope.launch {

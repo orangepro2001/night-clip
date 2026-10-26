@@ -131,6 +131,7 @@ class LogcatClipboardWatcher(private val context: Context) {
                 return
             }
             process = p
+            Log.i(tag, "bg-read: logcat watcher running")
             _state.value = WatcherState.Running
             var sawLine = false
             val permissionError = AtomicBoolean(false)
@@ -158,6 +159,7 @@ class LogcatClipboardWatcher(private val context: Context) {
                         if (stopping) break
                         sawLine = true
                         if (ClipboardLogTrigger.matches(line, context.packageName)) {
+                            Log.i(tag, "bg-read: denial log line matched")
                             trigger?.invoke()
                         }
                     }
