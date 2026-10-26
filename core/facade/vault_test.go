@@ -56,6 +56,10 @@ func TestVaultLifecycleThroughTheFacade(t *testing.T) {
 			t.Fatalf("a secret leaked into: %s", out)
 		}
 	}
+	list := n.call("vault.list", nil)["entries"].([]any)
+	if summary := list[0].(map[string]any); summary["has_password"] != true {
+		t.Fatalf("list summary without has_password: %v", summary)
+	}
 	got := n.call("vault.get", map[string]any{"id": id})
 	if got["has_password"] != true || got["has_totp"] != true || got["title"] != "Stripe live" {
 		t.Fatalf("get = %v", got)

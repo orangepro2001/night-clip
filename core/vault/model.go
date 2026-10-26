@@ -68,18 +68,19 @@ type Entry struct {
 
 // Summary is what listings carry: no secrets, no notes.
 type Summary struct {
-	ID         string   `json:"id"`
-	GroupID    string   `json:"group_id"`
-	Kind       string   `json:"kind"`
-	Title      string   `json:"title"`
-	Username   string   `json:"username"`
-	URL        string   `json:"url"`
-	Tags       []string `json:"tags"`
-	HasTOTP    bool     `json:"has_totp"`
-	HasAttach  bool     `json:"has_attachments"`
-	ModifiedAt int64    `json:"modified_at"`
-	ExpiresAt  int64    `json:"expires_at"`
-	InTrash    bool     `json:"in_trash"`
+	ID          string   `json:"id"`
+	GroupID     string   `json:"group_id"`
+	Kind        string   `json:"kind"`
+	Title       string   `json:"title"`
+	Username    string   `json:"username"`
+	URL         string   `json:"url"`
+	Tags        []string `json:"tags"`
+	HasPassword bool     `json:"has_password"`
+	HasTOTP     bool     `json:"has_totp"`
+	HasAttach   bool     `json:"has_attachments"`
+	ModifiedAt  int64    `json:"modified_at"`
+	ExpiresAt   int64    `json:"expires_at"`
+	InTrash     bool     `json:"in_trash"`
 }
 
 // Group is a folder.
@@ -105,7 +106,7 @@ type Version struct {
 func (e Entry) Summarize() Summary {
 	return Summary{
 		ID: e.ID, GroupID: e.GroupID, Kind: e.Kind, Title: e.Title, Username: e.Username, URL: e.URL,
-		Tags: append([]string{}, e.Tags...), HasTOTP: e.TOTP != "", HasAttach: len(e.Attachments) > 0,
+		Tags: append([]string{}, e.Tags...), HasPassword: e.Password != "", HasTOTP: e.TOTP != "", HasAttach: len(e.Attachments) > 0,
 		ModifiedAt: e.ModifiedAt, ExpiresAt: e.ExpiresAt, InTrash: e.InTrash,
 	}
 }

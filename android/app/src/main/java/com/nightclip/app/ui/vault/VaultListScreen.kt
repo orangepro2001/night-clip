@@ -11,12 +11,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -135,8 +138,22 @@ fun VaultListScreen(vm: VaultViewModel, browse: VaultBrowseViewModel) {
                 EmptyState(filter, query, status?.entries ?: 0)
             } else {
                 val nowS = System.currentTimeMillis() / 1000
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 88.dp)) {
-                    items(entries, key = { it.id }) { e -> EntryRow(e, nowS) { vm.push(VaultRoute.Detail(e.id)) } }
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 88.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(entries, key = { it.id }) { e ->
+                        EntryRow(
+                            e = e,
+                            nowS = nowS,
+                            onCopy = {
+                                if (e.inTrash || !e.hasPassword) vm.push(VaultRoute.Detail(e.id)) else browse.copy(e.id, "password")
+                            },
+                            onView = { vm.push(VaultRoute.Detail(e.id)) },
+                            onEdit = if (e.inTrash) null else ({ vm.push(VaultRoute.Editor(e.id, e.kind)) }),
+                        )
+                    }
                 }
             }
         }
@@ -221,23 +238,44 @@ private fun EmptyState(filter: VaultFilter, query: String, total: Int) {
 }
 
 @Composable
-private fun EntryRow(e: VaultEntrySummary, nowS: Long, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+private fun EntryRow(
+    e: VaultEntrySummary,
+    nowS: Long,
+    onCopy: () -> Unit,
+    onView: () -> Unit,
+    onEdit: (() -> Unit)?,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onCopy),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+        tonalElevation = 1.dp,
     ) {
-        Icon(kindIcon(e.kind), contentDescription = VaultTexts.kindLabel(e.kind), tint = MaterialTheme.colorScheme.primary)
-        Column(Modifier.weight(1f)) {
-            Text(VaultListLogic.title(e), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val sub = VaultListLogic.subtitle(e)
-            if (sub.isNotEmpty()) {
-                Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(
+            Modifier.fillMaxWidth().padding(start = 14.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(kindIcon(e.kind), contentDescription = VaultTexts.kindLabel(e.kind), tint = MaterialTheme.colorScheme.primary)
+            Column(Modifier.weight(1f)) {
+                Text(VaultListLogic.title(e), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val sub = VaultListLogic.subtitle(e)
+                if (sub.isNotEmpty()) {
+                    Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                val expiry = if (VaultListLogic.isExpiring(e, nowS)) VaultTexts.expiryLabel(e.expiresAt, nowS) else ""
+                if (expiry.isNotEmpty()) Text(expiry, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
-            val expiry = if (VaultListLogic.isExpiring(e, nowS)) VaultTexts.expiryLabel(e.expiresAt, nowS) else ""
-            if (expiry.isNotEmpty()) Text(expiry, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            if (e.hasTotp) Badge("TOTP")
+            IconButton(onClick = onView) {
+                Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.vault_view), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (onEdit != null) {
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.vault_edit), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
-        if (e.hasTotp) Badge("TOTP")
     }
 }
 

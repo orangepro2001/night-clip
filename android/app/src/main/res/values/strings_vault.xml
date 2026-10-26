@@ -68,6 +68,7 @@
     <!-- Detail -->
     <string name="vault_entry">条目</string>
     <string name="vault_edit">编辑</string>
+    <string name="vault_view">查看</string>
     <string name="vault_copy">复制</string>
     <string name="vault_open_url">打开</string>
     <string name="vault_move">移动到分组</string>

@@ -58,7 +58,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 
 | 方法 | 参数 | 结果 |
 | --- | --- | --- |
-| `vault.list` | `query?`、`group_id?`（**只含该分组本身的条目，不含子分组**）、`kind?`、`tag?`、`trash?`（只看回收站）、`include_trash?` | `{entries:[{id, group_id, kind, title, username, url, tags, has_totp, has_attachments, modified_at, expires_at, in_trash}]}`，按标题排序。**不含任何机密，也不含备注**。`query` 匹配标题、用户名、URL、备注、标签、自定义字段名和**非保护**字段值，**永远不匹配保护值** |
+| `vault.list` | `query?`、`group_id?`（**只含该分组本身的条目，不含子分组**）、`kind?`、`tag?`、`trash?`（只看回收站）、`include_trash?` | `{entries:[{id, group_id, kind, title, username, url, tags, has_password, has_totp, has_attachments, modified_at, expires_at, in_trash}]}`，按标题排序。**不含任何机密，也不含备注**。`query` 匹配标题、用户名、URL、备注、标签、自定义字段名和**非保护**字段值，**永远不匹配保护值** |
 | `vault.get` | `id` | 详情：同上加 `notes`、`fields[{name,value,protected,has_value}]`（保护字段的 `value` 为空）、`has_password`、`has_totp`、`attachments[{name,size}]`、`history`（版本数）、`created_at`、`password_strength{bits,label}` |
 | `vault.reveal` | `id`, `field` | `{value}`。`field`：`password`、`username`、`url`、`notes`、`totp`（当前验证码）、`totp_secret`、`field:<名字>`。**只用于在屏幕上显示**（用完立刻丢弃）；要复制到剪贴板请用 `vault.copy` |
 | `vault.copy` | 同上 | `{value, clear_after_s}`。除返回值外，核心把该文本登记为“来自密码库”：随后的剪贴板变化**不会被自动广播**（`clip.local_changed` 返回 `suppressed: "vault_origin"`）。壳必须按 §4 写入剪贴板并在 `clear_after_s` 秒后清除（0 = 不清除） |

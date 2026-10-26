@@ -49,13 +49,14 @@ class VaultModelsTest {
             JSONObject(
                 """{"entries":[
                 {"id":"a1","group_id":"g","kind":"apikey","title":"OpenAI","username":"","url":"https://api.openai.com","tags":["ai","prod"],
-                 "has_totp":false,"has_attachments":true,"modified_at":10,"expires_at":99,"in_trash":false},
+                 "has_password":true,"has_totp":false,"has_attachments":true,"modified_at":10,"expires_at":99,"in_trash":false},
                 {"id":"b2","kind":"login","title":"Bank","has_totp":true,"in_trash":true}]}""",
             ),
         )
         assertEquals(2, list.size)
         assertEquals("apikey", list[0].kind)
         assertEquals(listOf("ai", "prod"), list[0].tags)
+        assertTrue(list[0].hasPassword)
         assertTrue(list[0].hasAttachments)
         assertEquals(99L, list[0].expiresAt)
         assertTrue(list[1].hasTotp)

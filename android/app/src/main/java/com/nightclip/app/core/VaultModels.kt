@@ -57,6 +57,7 @@ data class VaultEntrySummary(
     val modifiedAt: Long,
     val expiresAt: Long,
     val inTrash: Boolean,
+    val hasPassword: Boolean = false,
 )
 
 data class VaultField(val name: String, val value: String, val protected: Boolean, val hasValue: Boolean)
@@ -197,6 +198,7 @@ object VaultParsers {
         username = o.optString("username", ""),
         url = o.optString("url", ""),
         tags = o.optJSONArray("tags").strings(),
+        hasPassword = o.optBoolean("has_password", false),
         hasTotp = o.optBoolean("has_totp", false),
         hasAttachments = o.optBoolean("has_attachments", false),
         modifiedAt = o.optLong("modified_at", 0),

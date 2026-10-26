@@ -522,7 +522,9 @@ func TestMergeOfThousandsOfEntriesIsFastAndTheLimitIsCheckedFirst(t *testing.T) 
 	if st.EntriesAdded != 6000 {
 		t.Fatalf("stats = %+v", st)
 	}
-	if d := time.Since(start); d > 8*time.Second {
+	// A slow CI runner can take ~8.5 s here; 20 s still catches a quadratic regression
+	// (the old per-entry reindex took minutes) without failing on load spikes.
+	if d := time.Since(start); d > 20*time.Second {
 		t.Fatalf("merging 6000 entries took %s (it used to be quadratic)", d)
 	}
 	// 6000 existing + the file with MaxEntries more must be refused BEFORE anything changes

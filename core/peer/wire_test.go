@@ -441,10 +441,12 @@ func TestOversizedFrameDropsTheConnection(t *testing.T) {
 	ctx, cancel := ctxTimeout(3 * time.Second)
 	defer cancel()
 	_ = c.conn.Write(ctx, websocket.MessageText, huge)
-	if _, err := c.next(3 * time.Second); err == nil {
+	// The server may have queued an ordinary event just before noticing the oversized frame;
+	// the authoritative outcome is that the link goes offline. Only then assert the socket is dead.
+	waitUntil(t, "link offline", func() bool { return win.linkState(pix.id.DeviceID) == StateOffline })
+	if _, err := c.next(time.Second); err == nil {
 		t.Fatal("the server accepted an oversized frame")
 	}
-	waitUntil(t, "link offline", func() bool { return win.linkState(pix.id.DeviceID) == StateOffline })
 }
 
 func TestSilentConnectionIsDroppedAfterTheIdleTimeout(t *testing.T) {
