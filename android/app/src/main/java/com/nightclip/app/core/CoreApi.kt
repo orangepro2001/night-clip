@@ -7,7 +7,7 @@ import org.json.JSONObject
 /** Typed result of a facade call: either a value or the core's error code with a user message. */
 sealed interface ApiResult<out T> {
     data class Ok<T>(val value: T) : ApiResult<T>
-    data class Fail(val code: String, val message: String) : ApiResult<Nothing>
+    data class Fail(val code: String, val message: String, val retryAfterS: Int = 0) : ApiResult<Nothing>
 
     val okOrNull: T? get() = (this as? Ok<T>)?.value
 }
