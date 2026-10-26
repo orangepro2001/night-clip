@@ -83,14 +83,17 @@ type session struct {
 }
 
 type request struct {
-	pairID    string
-	sid       string
-	peer      store.Peer
-	fp        string // certificate that made the request; only it may poll
-	sas       string
-	state     string
-	expires   time.Time
-	decidedAt time.Time
+	pairID     string
+	sid        string
+	psk        []byte // for the proofs sent back to the joiner
+	nonce      string
+	wasRemoved bool // this fingerprint was unpaired earlier; the user is told
+	peer       store.Peer
+	fp         string // certificate that made the request; only it may poll
+	sas        string
+	state      string
+	expires    time.Time
+	decidedAt  time.Time
 }
 
 // NewManager registers the pairing routes on e. Call it before e.Start().
@@ -215,6 +218,12 @@ func (m *Manager) Confirm(pairID string, accept bool) error {
 	}
 	m.mu.Unlock()
 
+	// A device that was unpaired earlier may be paired again: the user just confirmed it
+	// on purpose, so its fingerprint stops being blocked.
+	if err := m.db.RemoveRevokedFP(p.CertFP); err != nil {
+		return err
+	}
+
 	// Persist before telling the joiner "accepted": the joiner must never believe it is
 	// paired while we have forgotten about it.
 	p.PairedAt = m.now().Unix()
@@ -268,6 +277,8 @@ type pairResponse struct {
 	PairID string `json:"pair_id,omitempty"`
 	SAS    string `json:"sas,omitempty"`
 	State  string `json:"state"`
+	// Proof authenticates the listener to the joiner (see ServerProof).
+	Proof string `json:"proof,omitempty"`
 	// accepted:
 	DeviceID     string   `json:"device_id,omitempty"`
 	Name         string   `json:"name,omitempty"`
@@ -308,10 +319,7 @@ func (m *Manager) servePair(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, proto.CodeInvalid, "malformed pairing request")
 		return
 	}
-	if revoked, _ := m.db.IsRevoked(req.CertFP); revoked {
-		fail(w, http.StatusForbidden, proto.CodePairingFailed, "pairing failed")
-		return
-	}
+	removedBefore, _ := m.db.IsRevoked(req.CertFP)
 
 	m.mu.Lock()
 	m.purgeLocked()
@@ -358,7 +366,7 @@ func (m *Manager) servePair(w http.ResponseWriter, r *http.Request) {
 		port = req.Port
 	}
 	rq := &request{
-		pairID: randomID(), sid: s.sid, fp: req.CertFP, state: StateWaiting,
+		pairID: randomID(), sid: s.sid, fp: req.CertFP, state: StateWaiting, psk: s.psk, nonce: req.Nonce, wasRemoved: removedBefore,
 		sas:     SAS(m.id.Fingerprint(), req.CertFP, req.Nonce),
 		expires: m.now().Add(m.timings.ConfirmTTL),
 		peer: store.Peer{
@@ -371,10 +379,14 @@ func (m *Manager) servePair(w http.ResponseWriter, r *http.Request) {
 	m.mu.Unlock()
 
 	m.emit(map[string]any{"type": "pair.request", "pair_id": rq.pairID, "name": req.Name, "platform": req.Platform,
-		"device_id": req.DeviceID, "sas": rq.sas, "expires_at": rq.expires.UTC().Format(time.RFC3339)})
+		"device_id": req.DeviceID, "sas": rq.sas, "expires_at": rq.expires.UTC().Format(time.RFC3339),
+		"previously_removed": removedBefore})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(pairResponse{PairID: rq.pairID, SAS: rq.sas, State: StateWaiting})
+	_ = json.NewEncoder(w).Encode(pairResponse{
+		PairID: rq.pairID, SAS: rq.sas, State: StateWaiting,
+		Proof: ServerProof(rq.psk, StateWaiting, m.id.Fingerprint(), rq.fp, rq.nonce, rq.sas, m.id.DeviceID),
+	})
 }
 
 func (m *Manager) servePoll(w http.ResponseWriter, r *http.Request) {
@@ -387,7 +399,8 @@ func (m *Manager) servePoll(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, proto.CodePairingExpired, "unknown or expired pairing request")
 		return
 	}
-	resp := pairResponse{PairID: rq.pairID, State: rq.state}
+	resp := pairResponse{PairID: rq.pairID, State: rq.state,
+		Proof: ServerProof(rq.psk, rq.state, m.id.Fingerprint(), rq.fp, rq.nonce, rq.sas, m.id.DeviceID)}
 	m.mu.Unlock()
 	if resp.State == StateAccepted {
 		resp.DeviceID, resp.Name, resp.Platform = m.id.DeviceID, m.id.Name, platformOf(m.e)

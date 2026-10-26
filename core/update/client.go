@@ -95,6 +95,9 @@ var defaultHTTP = &http.Client{
 		if req.URL.Host != via[0].URL.Host {
 			return errors.New("redirect to another host refused")
 		}
+		if req.URL.Scheme != via[0].URL.Scheme {
+			return errors.New("redirect to another scheme refused") // https -> http would drop the transport security
+		}
 		return nil
 	},
 }

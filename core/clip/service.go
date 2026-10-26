@@ -233,23 +233,23 @@ func (s *Service) Send(text string, to []string) ([]Sent, error) {
 	return s.sendTo(targets, norm, LooksSensitive(norm))
 }
 
+// sendTo queues the text for every target. Each link gets its own event_id: ids are
+// primary keys in both databases, so sharing one across peers would make every send
+// after the first fail, and would let one peer pre-claim an id another peer later uses.
+// Failures are per peer: a device that cannot be queued for does not stop the others,
+// and the caller sees exactly who was reached.
 func (s *Service) sendTo(peers []store.Peer, norm string, sensitive bool) ([]Sent, error) {
 	payload := map[string]any{"mime_type": proto.MimeText, "content": norm, "size": len(norm)}
-	// One event_id for every target: the same content is the same event
-	// (docs/api-spec.md §2).
-	var eventID string
 	out := []Sent{}
 	var firstErr error
 	for _, p := range peers {
-		id, err := s.e.Send(p.DeviceID, proto.KindClipboard, payload,
-			peer.SendOptions{TTL: s.ttl(), Sensitive: sensitive, EventID: eventID})
+		id, err := s.e.Send(p.DeviceID, proto.KindClipboard, payload, peer.SendOptions{TTL: s.ttl(), Sensitive: sensitive})
 		if err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
 			continue
 		}
-		eventID = id
 		out = append(out, Sent{DeviceID: p.DeviceID, Name: p.Name, EventID: id})
 	}
 	if len(out) == 0 && firstErr != nil {

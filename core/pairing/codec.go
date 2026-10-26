@@ -153,6 +153,25 @@ func ProofValid(got, psk []byte, deviceID, certFP, serverFP, nonce string) bool 
 	return hmac.Equal(got, []byte(want))
 }
 
+// ServerProof is what the listener sends back so the joiner can tell that it is
+// talking to the device that owns the pairing code and not to somebody who merely
+// answered on that address: base64url(HMAC-SHA256(psk, label || state || serverFP ||
+// clientFP || nonce || sas || deviceID)), every field length-prefixed. Without it
+// a trust-on-first-use joiner (a link without a fingerprint) could be paired with
+// any impostor, because SAS inputs are all public.
+func ServerProof(psk []byte, state, serverFP, clientFP, nonce, sas, deviceID string) string {
+	m := hmac.New(sha256.New, psk)
+	buf := field(nil, proofLabel+"-server")
+	buf = field(buf, state)
+	buf = field(buf, serverFP)
+	buf = field(buf, clientFP)
+	buf = field(buf, nonce)
+	buf = field(buf, sas)
+	buf = field(buf, deviceID)
+	m.Write(buf)
+	return b64.EncodeToString(m.Sum(nil))
+}
+
 // SessionID lets the listener find the session a request belongs to without the
 // request revealing the psk. Attackers who do not know the psk cannot compute it.
 func SessionID(psk []byte) string {

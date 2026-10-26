@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ var updateKeys = update.TrustedKeys
 const (
 	settingUpdateAuto = "update.auto" // "0" | "1"; absent means on
 	settingUpdateURL  = "update.url"  // user override of the build-time server
+	settingUpdateHigh = "update.high" // highest versionCode the server ever announced
 	checkTimeout      = 30 * time.Second
 )
 
@@ -43,6 +45,12 @@ func (c *Core) newUpdateManager(cfg Config, db *store.DB) (*update.Manager, erro
 		CurrentName: cfg.AppVersionName,
 		Auto:        auto,
 		Emit:        c.emit,
+		LoadHighWater: func() int64 {
+			v, _, _ := db.GetSetting(settingUpdateHigh)
+			n, _ := strconv.ParseInt(v, 10, 64)
+			return n
+		},
+		StoreHighWater: func(code int64) { _ = db.SetSetting(settingUpdateHigh, strconv.FormatInt(code, 10)) },
 	}), nil
 }
 

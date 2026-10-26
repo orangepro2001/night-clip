@@ -37,7 +37,7 @@ func newEventID() string {
 type SendOptions struct {
 	TTL       time.Duration // 0: by kind (clipboard 15 min, file 24 h, control 5 min)
 	Sensitive bool
-	EventID   string // 0-value: a fresh UUIDv4; sharing one id across peers is allowed
+	EventID   string // empty: a fresh UUIDv4. Ids are unique per event: never reuse one across peers
 }
 
 func defaultTTL(kind proto.Kind) time.Duration {

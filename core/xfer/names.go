@@ -52,7 +52,7 @@ func SafeName(name string) string {
 	if i := strings.LastIndex(name, "."); i > 0 {
 		stem, ext = name[:i], name[i:]
 	}
-	if reservedNames[strings.ToUpper(stem)] {
+	if isReserved(name) {
 		stem = "_" + stem
 	}
 	// keep the extension intact when shortening
@@ -67,6 +67,27 @@ func SafeName(name string) string {
 		stem = "file"
 	}
 	return stem + ext
+}
+
+// isReserved reports whether Windows would treat name as a device. The device is
+// whatever comes before the FIRST dot (so "CON.tar.gz" and "nul.txt.bak" are devices
+// too), ignoring trailing spaces; the superscript digits of COM¹ / LPT² count as digits.
+func isReserved(name string) bool {
+	base := name
+	if i := strings.Index(base, "."); i >= 0 {
+		base = base[:i]
+	}
+	base = strings.ToUpper(strings.TrimRight(base, " "))
+	if reservedNames[base] || base == "CONIN$" || base == "CONOUT$" {
+		return true
+	}
+	if len(base) > 3 && (strings.HasPrefix(base, "COM") || strings.HasPrefix(base, "LPT")) {
+		switch strings.TrimPrefix(strings.TrimPrefix(base, "COM"), "LPT") {
+		case "¹", "²", "³":
+			return true
+		}
+	}
+	return false
 }
 
 // UniquePath returns dir/name, or dir/stem (1).ext, (2) ... when that exists.

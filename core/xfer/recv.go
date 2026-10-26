@@ -40,6 +40,10 @@ func (s *Service) OnOffer(peerID string, env *proto.Envelope) {
 	reject := func(code string) {
 		s.control(peerID, map[string]any{"action": "file_reject", "transfer_id": o.TransferID, "reason": code})
 	}
+	if s.openOffers(peerID) >= maxOpenOffers {
+		reject("too_many")
+		return
+	}
 	// Who moves the bytes must agree with who dials: a "pull" means the sender serves
 	// and we are the dialer; a "push" means we serve and the sender dials.
 	if (o.Mode == ModePull) != s.e.WeDial(p) {
@@ -52,7 +56,9 @@ func (s *Service) OnOffer(peerID string, env *proto.Envelope) {
 	}
 	t := store.Transfer{
 		ID: o.TransferID, PeerID: peerID, Direction: DirIn, Name: SafeName(o.Name), Size: o.Size, SHA256: o.SHA256,
-		State: StateOffered, CreatedAt: s.now().Unix(), ExpiresAt: env.ExpiresAt.Unix(), Mode: o.Mode, MimeType: o.MimeType,
+		State: StateOffered, CreatedAt: s.now().Unix(), Mode: o.Mode, MimeType: o.MimeType,
+		// the sender chooses the expiry in its envelope; never let that exceed our own limit
+		ExpiresAt: min(env.ExpiresAt.Unix(), s.now().Add(offerTTL).Unix()),
 	}
 	if err := s.db.PutTransfer(t); err != nil {
 		return
@@ -61,6 +67,23 @@ func (s *Service) OnOffer(peerID string, env *proto.Envelope) {
 		"type": "file.offered", "transfer_id": t.ID, "from": peerID, "from_name": p.Name, "name": t.Name, "size": t.Size,
 		"sha256": t.SHA256, "mime_type": t.MimeType, "expires_at": t.ExpiresAt,
 	})
+}
+
+// maxOpenOffers bounds how many unanswered offers one peer can leave on this device.
+const maxOpenOffers = 32
+
+func (s *Service) openOffers(peerID string) int {
+	rows, err := s.db.ListTransfersInStates(StateOffered)
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, t := range rows {
+		if t.PeerID == peerID && t.Direction == DirIn {
+			n++
+		}
+	}
+	return n
 }
 
 // partPath is where a download is assembled: beside its destination, so the final
@@ -111,15 +134,20 @@ func (s *Service) Accept(id, saveDir string) error {
 		return proto.Errorf(proto.CodeInvalid, "cannot use that folder: %v", err)
 	}
 	if need := uint64(t.Size) + uint64(spaceHeadroom); free < need {
-		s.control(t.PeerID, map[string]any{"action": "file_reject", "transfer_id": t.ID, "reason": string(proto.CodeNoSpace)})
+		s.controlFor(t, map[string]any{"action": "file_reject", "transfer_id": t.ID, "reason": string(proto.CodeNoSpace)})
 		s.end(t, StateFailed, string(proto.CodeNoSpace), "not enough free space")
 		return proto.Errorf(proto.CodeNoSpace, "not enough free space in %s", dir)
 	}
-	t.SaveDir = dir
-	if err := s.db.PutTransfer(t); err != nil {
+	// Conditional on "still offered": a cancel or expiry that just happened must win.
+	ok, err := s.db.AcceptTransfer(t.ID, dir)
+	if err != nil {
 		return err
 	}
-	t = s.setState(t, StateAccepted)
+	if !ok {
+		return proto.Errorf(proto.CodeInvalid, "this transfer is no longer waiting for an answer")
+	}
+	t.SaveDir, t.State = dir, StateAccepted
+	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": StateAccepted})
 
 	if t.Size == 0 { // nothing to move: create the empty file now
 		return s.finishEmpty(t)
@@ -129,7 +157,7 @@ func (s *Service) Accept(id, saveDir string) error {
 		return nil
 	}
 	// push: tell the sender where to start; its upload arrives on our server
-	s.control(t.PeerID, map[string]any{"action": "file_accept", "transfer_id": t.ID, "offset": partSize(t)})
+	s.controlFor(t, map[string]any{"action": "file_accept", "transfer_id": t.ID, "offset": partSize(t)})
 	return nil
 }
 
@@ -139,7 +167,7 @@ func (s *Service) finishEmpty(t store.Transfer) error {
 		return err
 	}
 	// Nothing will be fetched or uploaded, so say explicitly that it arrived.
-	s.control(t.PeerID, map[string]any{"action": "file_accept", "transfer_id": t.ID, "offset": 0})
+	s.controlFor(t, map[string]any{"action": "file_accept", "transfer_id": t.ID, "offset": 0})
 	return nil
 }
 
@@ -152,7 +180,7 @@ func (s *Service) Reject(id string) error {
 	if t.Direction != DirIn || t.State != StateOffered {
 		return proto.Errorf(proto.CodeInvalid, "this transfer is not waiting for an answer")
 	}
-	s.control(t.PeerID, map[string]any{"action": "file_reject", "transfer_id": t.ID, "reason": "declined"})
+	s.controlFor(t, map[string]any{"action": "file_reject", "transfer_id": t.ID, "reason": "declined"})
 	_ = s.db.SetTransferState(t.ID, StateRejected, "")
 	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": StateRejected})
 	return nil
@@ -168,7 +196,7 @@ func (s *Service) Cancel(id string) error {
 		return proto.Errorf(proto.CodeInvalid, "this transfer has already finished")
 	}
 	s.stopTask(id)
-	s.control(t.PeerID, map[string]any{"action": "file_cancel", "transfer_id": t.ID, "reason": "user"})
+	s.controlFor(t, map[string]any{"action": "file_cancel", "transfer_id": t.ID, "reason": "user"})
 	s.end(t, StateCancelled, "CANCELLED", "cancelled")
 	return nil
 }
@@ -212,7 +240,7 @@ func (s *Service) downloadLoop(ctx context.Context, id string) {
 			return
 		case perm != nil:
 			if perm.code == string(proto.CodeHashMismatch) {
-				s.control(t.PeerID, map[string]any{"action": "file_cancel", "transfer_id": t.ID, "reason": perm.code})
+				s.controlFor(t, map[string]any{"action": "file_cancel", "transfer_id": t.ID, "reason": perm.code})
 			}
 			s.end(t, StateFailed, perm.code, perm.msg)
 			return
@@ -329,6 +357,8 @@ func (s *Service) pullOnce(ctx context.Context, t store.Transfer) (done bool, pe
 			return false, nil, ferr2
 		}
 		_ = path
+		// Tell the sender the file arrived intact: until now it only knows it wrote the bytes.
+		s.controlFor(t, map[string]any{"action": "file_done", "transfer_id": t.ID})
 		return true, nil, nil
 	}
 	if lastErr == nil {
@@ -443,6 +473,7 @@ func (s *Service) sweepLoop() {
 }
 
 func (s *Service) sweep() {
+	_, _ = s.db.PruneTransfers(500)
 	expired, err := s.db.ExpireTransfers(time.Now().Unix())
 	if err != nil {
 		return

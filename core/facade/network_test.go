@@ -607,3 +607,52 @@ func TestAClaimedControlAddressOnlyCostsTheControlChannel(t *testing.T) {
 	}
 	t.Fatal("no PIPE_UNAVAILABLE warning")
 }
+
+// Shutdown used to hold the core's lock while waiting for pipe handlers that were
+// themselves waiting for that lock: any client that kept sending requests hung it.
+func TestShutdownDoesNotHangWhilePipeClientsAreBusy(t *testing.T) {
+	sock := controlAddress(t)
+	c := New()
+	cfg := configFor(t, t.TempDir(), func(m map[string]any) { m["pipe"] = sock; m["device_name"] = "Desk" })
+	if err := c.Init(cfg); err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			conn, err := pipe.Dial(sock)
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			r := bufio.NewReader(conn)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				if _, err := io.WriteString(conn, `{"id":"1","method":"status"}`+"\n"); err != nil {
+					return
+				}
+				if _, err := r.ReadBytes('\n'); err != nil {
+					return
+				}
+			}
+		}()
+	}
+	time.Sleep(200 * time.Millisecond)
+	done := make(chan struct{})
+	go func() { c.Shutdown(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		close(stop)
+		t.Fatal("Shutdown did not return within 5 s while pipe clients were sending requests")
+	}
+	close(stop)
+	wg.Wait()
+}

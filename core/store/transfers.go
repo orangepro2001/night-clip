@@ -158,6 +158,42 @@ func (db *DB) ExpireTransfers(now int64) ([]Transfer, error) {
 	return rows, nil
 }
 
+// AcceptTransfer atomically moves an offered transfer to accepted and records where
+// it will be saved. It reports false when the transfer was no longer offered (it was
+// cancelled or expired a moment ago), so a late accept cannot resurrect it.
+func (db *DB) AcceptTransfer(id, saveDir string) (bool, error) {
+	res, err := db.sql.Exec(`UPDATE transfers SET state = 'accepted', save_dir = ?, error = '' WHERE transfer_id = ? AND state = 'offered'`, saveDir, id)
+	if err != nil {
+		return false, dbErr("accept transfer", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, dbErr("accept transfer", err)
+	}
+	return n == 1, nil
+}
+
+// PruneTransfers keeps the newest `keep` finished transfers (done, failed, cancelled,
+// rejected, expired) and deletes older finished ones. Transfers in flight are never touched.
+func (db *DB) PruneTransfers(keep int) (int64, error) {
+	if keep <= 0 {
+		return 0, nil
+	}
+	res, err := db.sql.Exec(`
+		DELETE FROM transfers WHERE transfer_id IN (
+			SELECT transfer_id FROM transfers
+			WHERE state IN ('done', 'failed', 'cancelled', 'rejected', 'expired')
+			ORDER BY created_at DESC, transfer_id LIMIT -1 OFFSET ?)`, keep)
+	if err != nil {
+		return 0, dbErr("prune transfers", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, dbErr("prune transfers", err)
+	}
+	return n, nil
+}
+
 // DeleteTransfer removes a row.
 func (db *DB) DeleteTransfer(id string) error {
 	if _, err := db.sql.Exec(`DELETE FROM transfers WHERE transfer_id = ?`, id); err != nil {

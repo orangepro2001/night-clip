@@ -187,24 +187,30 @@ func parseDBKey(cfg Config) ([]byte, error) {
 // Shutdown stops the core, closes the store and wakes any NextEvent callers.
 // It is idempotent; every method answers NOT_INITIALIZED afterwards.
 func (c *Core) Shutdown() {
+	// Only the state change happens under the lock. Closing the components waits for
+	// goroutines (pipe handlers, transfers) that may be inside Call -> dispatch, which
+	// needs the read lock: holding the write lock here would deadlock against them.
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed {
+		c.mu.Unlock()
 		return
 	}
 	c.closed = true
 	close(c.done)
-	if c.upd != nil {
-		c.upd.Close()
+	upd, ctl, n, db := c.upd, c.ctl, c.n, c.db
+	c.mu.Unlock()
+
+	if ctl != nil { // first: no new outside requests
+		ctl.close()
 	}
-	if c.ctl != nil {
-		c.ctl.close()
+	if upd != nil {
+		upd.Close()
 	}
-	if c.n != nil {
-		c.n.close()
+	if n != nil {
+		n.close()
 	}
-	if c.db != nil {
-		_ = c.db.Close()
+	if db != nil { // last: everything above may still write
+		_ = db.Close()
 	}
 }
 

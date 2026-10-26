@@ -309,6 +309,12 @@ func (s *session) onEvent(raw json.RawMessage) error {
 	}
 	// 3. already known: answer again, change nothing (acks are idempotent)
 	if row, found, err := s.e.db.GetInbox(env.EventID); err == nil && found {
+		if row.PeerID != s.peer.DeviceID {
+			// The id belongs to an event from another device: never merge two senders'
+			// events (a peer must not be able to make us drop someone else's event).
+			s.ack(env.EventID, ResultError, "event_id_conflict")
+			return nil
+		}
 		result, reason := ResultReceived, ""
 		switch row.State {
 		case "applied":

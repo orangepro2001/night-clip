@@ -272,9 +272,13 @@ func (s *Service) afterTask(id string) {
 func (s *Service) stopTask(id string) {
 	s.mu.Lock()
 	cancel := s.tasks[id]
+	put := s.tasks["put:"+id] // an upload request being served for this transfer
 	s.mu.Unlock()
 	if cancel != nil {
 		cancel()
+	}
+	if put != nil {
+		put()
 	}
 }
 
@@ -322,6 +326,12 @@ func (s *Service) OnControl(peerID string, env *proto.Envelope) {
 			return
 		}
 		s.startUpload(t.ID)
+	case "file_done":
+		// pull: the receiver finished and verified the file; only now is it delivered.
+		if t.Direction != DirOut || t.Mode != ModePull {
+			return
+		}
+		s.finishSent(t)
 	case "file_reject":
 		if t.Direction != DirOut {
 			return
@@ -457,8 +467,10 @@ func (s *Service) uploadOnce(ctx context.Context, t store.Transfer) (done bool, 
 		}
 		req.Header.Set("Content-Type", "application/octet-stream")
 		req.Header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", offset, max(t.Size-1, 0), t.Size))
-		if t.Size == 0 {
-			req.Header.Set("Content-Range", "bytes */0")
+		if offset >= t.Size {
+			// Everything is already on the receiver (it is at the end, or empty): ask it to
+			// finish/verify. This also lets a PUT that failed only in the final step be retried.
+			req.Header.Set("Content-Range", fmt.Sprintf("bytes */%d", t.Size))
 		}
 		resp, derr := ep.Client.Do(req)
 		if derr != nil {

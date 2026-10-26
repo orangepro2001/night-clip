@@ -66,6 +66,12 @@ type Options struct {
 	Auto        bool // download automatically after a check finds a release
 	Emit        func(event map[string]any)
 
+	// HighWater persists the highest versionCode the server has ever announced, so a
+	// replayed older (but validly signed and still newer than the installed) manifest
+	// cannot move an up-to-date device back. Both nil: not remembered.
+	LoadHighWater  func() int64
+	StoreHighWater func(code int64)
+
 	FirstDelay time.Duration // before the first background check (default 20s)
 	Interval   time.Duration // between checks when the server cannot push (default 6h)
 	RetryAfter time.Duration // ceiling for the retry backoff after failures (default 5m)
@@ -161,6 +167,9 @@ func (m *Manager) SetClient(c *Client) {
 	m.mu.Lock()
 	m.client = c
 	m.latest = nil
+	if m.opt.StoreHighWater != nil {
+		m.opt.StoreHighWater(0) // a different server has its own numbering
+	}
 	m.synced, m.noWatch = false, false
 	m.st = Status{State: StateIdle, CurrentCode: m.opt.CurrentCode, CurrentName: m.opt.CurrentName}
 	m.mu.Unlock()
@@ -202,8 +211,13 @@ func (m *Manager) Check(ctx context.Context) (Status, error) {
 	case err != nil:
 		m.setErrorLocked(err)
 	case latest.VersionCode <= m.opt.CurrentCode:
+		m.noteHighWaterLocked(latest.VersionCode)
 		m.settleUpToDateLocked()
+	case m.rolledBackLocked(latest.VersionCode):
+		err = proto.Errorf(proto.CodeUpdateFailed, "the server offered release %d, older than %d it announced before", latest.VersionCode, m.opt.LoadHighWater())
+		m.setErrorLocked(err)
 	default:
+		m.noteHighWaterLocked(latest.VersionCode)
 		m.foundLocked(latest)
 	}
 	s := m.snapshotLocked()
@@ -223,6 +237,16 @@ func (m *Manager) Check(ctx context.Context) (Status, error) {
 		return m.Download()
 	}
 	return s, nil
+}
+
+func (m *Manager) rolledBackLocked(code int64) bool {
+	return m.opt.LoadHighWater != nil && code < m.opt.LoadHighWater()
+}
+
+func (m *Manager) noteHighWaterLocked(code int64) {
+	if m.opt.StoreHighWater != nil && m.opt.LoadHighWater != nil && code > m.opt.LoadHighWater() {
+		m.opt.StoreHighWater(code)
+	}
 }
 
 func (m *Manager) settleUpToDateLocked() {

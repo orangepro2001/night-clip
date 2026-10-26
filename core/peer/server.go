@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strconv"
+	"sync"
 	"time"
 
 	"nightclip/core/identity"
@@ -177,9 +178,44 @@ func (e *Engine) listenOn(a netip.Addr) (*listener, error) {
 	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
-		_ = srv.Serve(tls.NewListener(ln, e.tlsCfg))
+		_ = srv.Serve(tls.NewListener(limitListener(ln, maxConns), e.tlsCfg))
 	}()
 	return l, nil
+}
+
+// maxConns bounds simultaneous TCP connections per listening address: every legitimate
+// peer needs a handful, while anyone on the tailnet can open sockets without a certificate.
+const maxConns = 256
+
+// limitListener makes Accept wait while maxConns connections are already open.
+func limitListener(ln net.Listener, n int) net.Listener {
+	return &limited{Listener: ln, sem: make(chan struct{}, n)}
+}
+
+type limited struct {
+	net.Listener
+	sem chan struct{}
+}
+
+func (l *limited) Accept() (net.Conn, error) {
+	l.sem <- struct{}{}
+	c, err := l.Listener.Accept()
+	if err != nil {
+		<-l.sem
+		return nil, err
+	}
+	return &limitedConn{Conn: c, release: func() { <-l.sem }}, nil
+}
+
+type limitedConn struct {
+	net.Conn
+	once    sync.Once
+	release func()
+}
+
+func (c *limitedConn) Close() error {
+	c.once.Do(c.release)
+	return c.Conn.Close()
 }
 
 // httpHandler builds the route table: the built-in routes plus whatever was
@@ -212,7 +248,7 @@ func (e *Engine) httpHandler() http.Handler {
 
 // authenticate applies the connection admission rules of docs/architecture.md §3.3:
 // the source must be a tailnet address, a client certificate must be present,
-// and a revoked fingerprint is refused everywhere.
+// and a revoked fingerprint gets no peer identity (so only public routes are open to it).
 func (e *Engine) authenticate(w http.ResponseWriter, r *http.Request) (Caller, bool) {
 	ap, err := netip.ParseAddrPort(r.RemoteAddr)
 	if err != nil || !e.addrAllowed(ap.Addr()) {
@@ -224,12 +260,25 @@ func (e *Engine) authenticate(w http.ResponseWriter, r *http.Request) (Caller, b
 		return Caller{}, false
 	}
 	fp := identity.Fingerprint(r.TLS.PeerCertificates[0].Raw)
-	if revoked, err := e.db.IsRevoked(fp); err != nil || revoked {
-		writeJSONError(w, http.StatusForbidden, proto.CodeNotPaired, "this device is not paired")
+	caller := Caller{Fingerprint: fp}
+	revoked, err := e.db.IsRevoked(fp)
+	if err != nil {
+		// A database hiccup is not "this device is not paired": the dialer would give up for good.
+		writeJSONError(w, http.StatusServiceUnavailable, proto.CodeDBUnavailable, "temporarily unavailable")
 		return Caller{}, false
 	}
-	caller := Caller{Fingerprint: fp}
-	if p, found, err := e.db.FindPeerByFingerprint(fp); err == nil && found && p.State == "paired" {
+	if revoked {
+		// A removed device may still knock on the public pairing routes (the user decides
+		// there, and sees that it was removed before); every private route stays closed
+		// because Peer stays nil.
+		return caller, true
+	}
+	p, found, err := e.db.FindPeerByFingerprint(fp)
+	if err != nil {
+		writeJSONError(w, http.StatusServiceUnavailable, proto.CodeDBUnavailable, "temporarily unavailable")
+		return Caller{}, false
+	}
+	if found && p.State == "paired" {
 		caller.Peer = &p
 	}
 	return caller, true

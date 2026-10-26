@@ -60,7 +60,16 @@ func (h handler) OnAck(peerID, eventID, result, reason string) {
 	}
 }
 
-func (h handler) OnPeerState(string, string) {} // the engine already emits peer.state
+// OnPeerState: the engine already emits peer.state; here an unpaired peer also loses its
+// unfinished transfers (in flight uploads and downloads stop at once).
+func (h handler) OnPeerState(peerID, state string) {
+	if state != peer.StateRevoked {
+		return
+	}
+	if n := h.c.net(); n != nil {
+		n.xfer.CancelPeer(peerID)
+	}
+}
 
 func (c *Core) net() *netState {
 	c.mu.RLock()
@@ -445,6 +454,8 @@ func (c *Core) pairJoin(n *netState, params string) (any, error) {
 			return
 		}
 		peerRec.ApplyMode = n.clip.Setting(clip.SettingApplyMode)
+		// Pairing with a device we unpaired earlier is the user's explicit choice now.
+		_ = c.db.RemoveRevokedFP(peerRec.CertFP)
 		if err := c.db.PutPeer(peerRec); err != nil {
 			c.emit(map[string]any{"type": "pair.result", "join_id": id, "state": "failed", "role": "joiner", "code": string(proto.CodeDBUnavailable), "message": err.Error()})
 			return
@@ -482,8 +493,9 @@ func (c *Core) peersUpdate(n *netState, params string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !found {
-		return nil, proto.Errorf(proto.CodeNotPaired, "no such device %s", p.DeviceID)
+	if !found || rec.State != "paired" {
+		// A read-modify-write of a revoked record would silently pair it again.
+		return nil, proto.Errorf(proto.CodeNotPaired, "no paired device %s", p.DeviceID)
 	}
 	roleChanged := false
 	if p.Name != nil {

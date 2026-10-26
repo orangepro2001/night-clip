@@ -3,6 +3,7 @@ package pairing
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"encoding/json"
 	"errors"
 	"io"
@@ -98,6 +99,12 @@ func Join(ctx context.Context, p JoinParams) (store.Peer, error) {
 		return store.Peer{}, proto.Errorf(proto.CodePairingFailed,
 			"the confirmation codes differ: someone may be intercepting the connection")
 	}
+	// 2b. the device that answered must know the pairing code, not just have answered
+	own := p.Identity.Fingerprint()
+	if !proofOK(accepted.Proof, p.Link.PSK, StateWaiting, cap.FP(), own, nonce, mySAS, cap.DeviceID()) {
+		return store.Peer{}, proto.Errorf(proto.CodePairingFailed,
+			"the device that answered did not prove it holds the pairing code")
+	}
 	if p.OnSAS != nil {
 		p.OnSAS(mySAS)
 	}
@@ -118,6 +125,10 @@ func Join(ctx context.Context, p JoinParams) (store.Peer, error) {
 			}
 			continue // transient: keep asking until the overall timeout
 		}
+		if !proofOK(st.Proof, p.Link.PSK, st.State, cap.FP(), own, nonce, mySAS, cap.DeviceID()) {
+			return store.Peer{}, proto.Errorf(proto.CodePairingFailed,
+				"the device that answered did not prove it holds the pairing code")
+		}
 		switch st.State {
 		case StateWaiting:
 		case StateRejected:
@@ -128,6 +139,10 @@ func Join(ctx context.Context, p JoinParams) (store.Peer, error) {
 			return finish(p, &cap, st)
 		}
 	}
+}
+
+func proofOK(got string, psk []byte, state, serverFP, clientFP, nonce, sas, deviceID string) bool {
+	return hmac.Equal([]byte(got), []byte(ServerProof(psk, state, serverFP, clientFP, nonce, sas, deviceID)))
 }
 
 func portIf(listen bool, port int) int {

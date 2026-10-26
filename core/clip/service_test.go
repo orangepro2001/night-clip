@@ -338,3 +338,40 @@ func TestSettingsDefaultsAndOverrides(t *testing.T) {
 	}
 	_ = peer.StateConnected
 }
+
+// One PC paired with two phones: the text must reach both, each with its own event id.
+func TestSendReachesEveryPairedPeer(t *testing.T) {
+	clock := testnet.NewClock()
+	win := testnet.New(t, "win", "windows", true, clock, nil)
+	p1 := testnet.New(t, "pix1", "android", false, clock, nil)
+	p2 := testnet.New(t, "pix2", "android", false, clock, nil)
+	winSvc := New(win.Engine, win.DB, win.Emit, clock.Now)
+	win.Proxy.Set(handler{winSvc})
+	p1.Proxy.Set(handler{New(p1.Engine, p1.DB, p1.Emit, clock.Now)})
+	p2.Proxy.Set(handler{New(p2.Engine, p2.DB, p2.Emit, clock.Now)})
+	win.Know(p1, 0, "notify")
+	win.Know(p2, 0, "notify")
+	win.Start(true)
+	p1.Know(win, win.Engine.ListenPort(), "notify")
+	p2.Know(win, win.Engine.ListenPort(), "notify")
+	p1.Start(false)
+	p2.Start(false)
+	p1.WaitState(win, "connected")
+	p2.WaitState(win, "connected")
+
+	sent, err := winSvc.Send("hello to both", nil)
+	if err != nil || len(sent) != 2 {
+		t.Fatalf("expected the text to be queued for 2 peers, got %+v (%v)", sent, err)
+	}
+	if sent[0].EventID == sent[1].EventID {
+		t.Fatal("two links must not share an event id")
+	}
+	testnet.WaitUntil(t, "both phones receive", func() bool { return len(received(p1)) == 1 && len(received(p2)) == 1 })
+
+	// capture-driven sends fan out as well
+	_ = win.DB.SetSetting(SettingCapture, "on")
+	res, err := winSvc.LocalChanged("copied on the pc")
+	if err != nil || len(res.Sent) != 2 {
+		t.Fatalf("LocalChanged reached %d devices (%v)", len(res.Sent), err)
+	}
+}

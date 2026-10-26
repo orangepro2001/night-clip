@@ -3,6 +3,7 @@ package pairing
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -106,6 +107,17 @@ func (d *dev) event(typ string) map[string]any {
 	defer d.evMu.Unlock()
 	for _, ev := range d.events {
 		if ev["type"] == typ {
+			return ev
+		}
+	}
+	return nil
+}
+
+func (d *dev) eventWhere(typ string, pred func(map[string]any) bool) map[string]any {
+	d.evMu.Lock()
+	defer d.evMu.Unlock()
+	for _, ev := range d.events {
+		if ev["type"] == typ && pred(ev) {
 			return ev
 		}
 	}
@@ -584,22 +596,112 @@ func TestJoinRejectsNonTailnetHostsAndDeadHosts(t *testing.T) {
 	}
 }
 
-func TestRePairingAnExistingDeviceUpdatesItsRecord(t *testing.T) {
+func TestADeviceThatWasUnpairedCanBePairedAgainOnPurpose(t *testing.T) {
 	clk := newClock()
 	win := newDev(t, "win", "windows", true, clk, fastTimings())
 	pix := newDev(t, "pixel", "android", false, clk, fastTimings())
 	pairViaQR(t, win, pix)
-	if err := win.db.SetPeerState(pix.id.DeviceID, "revoked"); err != nil { // the user removed it earlier
+	if err := win.e.RevokePeer(pix.id.DeviceID); err != nil { // the user removed the phone
 		t.Fatal(err)
 	}
-	// a revoked fingerprint is a permanent no
+	if revoked, _ := win.db.IsRevoked(pix.id.Fingerprint()); !revoked {
+		t.Fatal("setup: the fingerprint should be blocked now")
+	}
+
+	// The same phone scans a fresh code. It is not turned away: the user sees the request
+	// (flagged as previously removed) and decides.
 	b, _ := win.m.Begin()
 	link, _ := ParseLink(b.Link, clk.Now())
-	_ = win.db.AddRevokedFP(pix.id.Fingerprint(), 1)
 	j := pix.startJoin(link)
+	waitUntil(t, "a second pair.request", func() bool {
+		ev := win.eventWhere("pair.request", func(e map[string]any) bool { return e["previously_removed"] == true })
+		return ev != nil
+	})
+	if win.e.PeerStatuses()[0].State != peer.StateRevoked {
+		t.Fatal("until the user confirms, the device stays unpaired")
+	}
+	req := win.eventWhere("pair.request", func(e map[string]any) bool { return e["previously_removed"] == true })
+	if err := win.m.Confirm(req["pair_id"].(string), true); err != nil {
+		t.Fatal(err)
+	}
 	j.wait(t)
-	if j.err == nil {
-		t.Fatal("a revoked fingerprint paired again")
+	if j.err != nil {
+		t.Fatalf("re-pairing: %v", j.err)
+	}
+	if revoked, _ := win.db.IsRevoked(pix.id.Fingerprint()); revoked {
+		t.Fatal("confirming should have lifted the block")
+	}
+	if p, _, _ := win.db.GetPeer(pix.id.DeviceID); p.State != "paired" {
+		t.Fatalf("peer state = %s", p.State)
+	}
+}
+
+// The joiner must verify that whoever answered knows the pairing code. Without the
+// fingerprint from a QR code, the SAS inputs are all public, so an impostor could
+// otherwise be "paired" without ever being seen by the real listener.
+func TestAnImpostorWithoutThePairingCodeIsRefusedByTheJoiner(t *testing.T) {
+	attacker, _ := identity.Generate("attacker")
+	for name, mode := range map[string]string{"no proof": "none", "proof from a guessed code": "guess"} {
+		t.Run(name, func(t *testing.T) {
+			var req pairRequest
+			mux := http.NewServeMux()
+			mux.HandleFunc("GET /v1/pair/probe", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) })
+			proofFor := func(state string) string {
+				if mode == "none" {
+					return ""
+				}
+				return ServerProof(NewPSK(), state, attacker.Fingerprint(), req.CertFP, req.Nonce,
+					SAS(attacker.Fingerprint(), req.CertFP, req.Nonce), attacker.DeviceID)
+			}
+			mux.HandleFunc("POST /v1/pair", func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&req)
+				w.WriteHeader(202)
+				_ = json.NewEncoder(w).Encode(pairResponse{PairID: "x", SAS: SAS(attacker.Fingerprint(), req.CertFP, req.Nonce),
+					State: StateWaiting, Proof: proofFor(StateWaiting)})
+			})
+			mux.HandleFunc("GET /v1/pair/x", func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewEncoder(w).Encode(pairResponse{PairID: "x", State: StateAccepted, Proof: proofFor(StateAccepted),
+					DeviceID: attacker.DeviceID, Name: "totally-your-pc", Platform: "windows"})
+			})
+			ln, err := tls.Listen("tcp", "127.0.0.1:0", peer.ServerTLS(attacker))
+			if err != nil {
+				t.Fatal(err)
+			}
+			go (&http.Server{Handler: mux}).Serve(ln)
+			defer ln.Close()
+
+			victim, _ := identity.Generate("victim-phone")
+			link := Link{Host: "127.0.0.1", Port: ln.Addr().(*net.TCPAddr).Port, PSK: NewPSK(), Exp: time.Now().Add(time.Minute)} // no fp: trust on first use
+			p, err := Join(context.Background(), JoinParams{
+				Link: link, Identity: victim, Platform: "android", Poll: 10 * time.Millisecond, Timeout: 3 * time.Second,
+				AllowAddr: func(a netip.Addr) bool { return a.IsLoopback() },
+			})
+			if err == nil || codeOf(err) != "PAIRING_FAILED" {
+				t.Fatalf("joiner accepted an impostor: peer %+v, err %v", p, err)
+			}
+		})
+	}
+}
+
+func TestServerProofBindsEveryField(t *testing.T) {
+	psk := NewPSK()
+	base := ServerProof(psk, StateWaiting, "s", "c", "n", "123456", "dev_x")
+	for name, v := range map[string]string{
+		"state": ServerProof(psk, StateAccepted, "s", "c", "n", "123456", "dev_x"),
+		"srv":   ServerProof(psk, StateWaiting, "S", "c", "n", "123456", "dev_x"),
+		"cli":   ServerProof(psk, StateWaiting, "s", "C", "n", "123456", "dev_x"),
+		"nonce": ServerProof(psk, StateWaiting, "s", "c", "N", "123456", "dev_x"),
+		"sas":   ServerProof(psk, StateWaiting, "s", "c", "n", "654321", "dev_x"),
+		"dev":   ServerProof(psk, StateWaiting, "s", "c", "n", "123456", "dev_y"),
+		"psk":   ServerProof(NewPSK(), StateWaiting, "s", "c", "n", "123456", "dev_x"),
+	} {
+		if v == base {
+			t.Errorf("changing %s did not change the server proof", name)
+		}
+	}
+	// it must not be confusable with the joiner's proof
+	if base == Proof(psk, "s", "c", "n", "123456") {
+		t.Fatal("server and client proofs collide")
 	}
 }
 

@@ -612,3 +612,44 @@ func TestNotPairedRightAfterPairingIsRetried(t *testing.T) {
 	win.know(pix, 0, "") // the other side finishes saving us
 	pix.waitState(win.id.DeviceID, StateConnected)
 }
+
+// An event id that already belongs to another device's event must not be treated as
+// "a duplicate of mine": the second sender is told, and the first sender's event is
+// untouched.
+func TestAnEventIDOwnedByAnotherDeviceIsNotMerged(t *testing.T) {
+	win := newNode(t, "win", "windows", true, nil)
+	a := newNode(t, "a", "android", false, nil)
+	b := newNode(t, "b", "android", false, nil)
+	win.know(a, 0, "")
+	win.know(b, 0, "")
+	win.start()
+	waitUntil(t, "listen", func() bool { return win.e.ListenPort() != 0 })
+
+	ca, _, err := rawConnect(t, win.e.ListenPort(), a.id, win.id.Fingerprint())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca.hello(a.id.DeviceID, 0)
+	first := envelope(t, a.id.DeviceID, win.id.DeviceID, 1, "from a", nil)
+	ca.event(first)
+	waitUntil(t, "a's event stored", func() bool { return win.rec.eventCount() == 1 })
+
+	cb, _, err := rawConnect(t, win.e.ListenPort(), b.id, win.id.Fingerprint())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cb.hello(b.id.DeviceID, 0)
+	stolen := envelope(t, b.id.DeviceID, win.id.DeviceID, 1, "from b", func(e *proto.Envelope) { e.EventID = envID(first) })
+	cb.event(stolen)
+	ack := cb.until(frameAck, 2*time.Second)
+	if ack["result"] != "error" || ack["reason"] != "event_id_conflict" {
+		t.Fatalf("ack = %v", ack)
+	}
+	if win.rec.eventCount() != 1 {
+		t.Fatal("the conflicting event reached the application")
+	}
+	row, _, _ := win.db.GetInbox(envID(first))
+	if row.PeerID != a.id.DeviceID {
+		t.Fatalf("the stored event now belongs to %s", row.PeerID)
+	}
+}

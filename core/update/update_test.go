@@ -1264,3 +1264,42 @@ func TestManagerBacksOffAfterFailuresAndRecovers(t *testing.T) {
 	down.Store(false)
 	waitFor(t, "recovery", func() bool { return m.Status().State == StateReady })
 }
+
+// Security review: an https download must not be moved to http by a redirect.
+func TestRedirectToAnotherSchemeIsRefused(t *testing.T) {
+	first, _ := http.NewRequest("GET", "https://tony-ai-pc-1.example/clipbridge/v1/android/latest", nil)
+	same, _ := http.NewRequest("GET", "https://tony-ai-pc-1.example/clipbridge/v1/android/latest/", nil)
+	downgrade, _ := http.NewRequest("GET", "http://tony-ai-pc-1.example/clipbridge/v1/android/latest", nil)
+	if err := defaultHTTP.CheckRedirect(same, []*http.Request{first}); err != nil {
+		t.Fatalf("same-scheme redirect refused: %v", err)
+	}
+	if err := defaultHTTP.CheckRedirect(downgrade, []*http.Request{first}); err == nil {
+		t.Fatal("https -> http redirect was followed")
+	}
+}
+
+// Security review: a validly signed but older manifest must not move a device that has
+// already seen a newer release.
+func TestManagerRefusesAnOlderReleaseThanItAnnouncedBefore(t *testing.T) {
+	r := newRelease(t)
+	r.publish(t, PlatformAndroid, 9, "0.1.9", payloadBytes(500, 1), false)
+	high := int64(0)
+	dir := filepath.Join(t.TempDir(), "updates")
+	m := NewManager(Options{
+		Client: r.client(serve(t, NewHandler(r.dir, "")), PlatformAndroid), Dir: dir, CurrentCode: 5, CurrentName: "cur",
+		LoadHighWater: func() int64 { return high }, StoreHighWater: func(c int64) { high = c },
+	})
+	t.Cleanup(m.Close)
+	if s, err := m.Check(context.Background()); err != nil || s.State != StateAvailable || high != 9 {
+		t.Fatalf("first check = %+v, %v, high=%d", s, err, high)
+	}
+	high = 12 // the server announced 12 earlier; now it serves 9 again (a replay)
+	s, err := m.Check(context.Background())
+	if err == nil || s.State != StateError {
+		t.Fatalf("a rollback to 9 after 12 was accepted: %+v, %v", s, err)
+	}
+	m.SetClient(r.client(serve(t, NewHandler(r.dir, "")), PlatformAndroid))
+	if high != 0 {
+		t.Fatalf("changing the server must reset the high-water mark, got %d", high)
+	}
+}

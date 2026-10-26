@@ -341,8 +341,35 @@ func (s *Service) fail(t store.Transfer, code, msg string) {
 	s.emit(map[string]any{"type": "file.state", "transfer_id": t.ID, "direction": t.Direction, "state": StateFailed})
 }
 
+// control sends a short-lived control event (answers that only matter right now).
 func (s *Service) control(peerID string, payload map[string]any) {
 	_, _ = s.e.Send(peerID, proto.KindControl, payload, peer.SendOptions{TTL: 10 * time.Minute})
+}
+
+// controlFor sends a control event about transfer t that must outlive a long
+// disconnection: it is valid for as long as the transfer itself. A file_accept that
+// expired while the sender was away would leave the transfer stuck for a day.
+func (s *Service) controlFor(t store.Transfer, payload map[string]any) {
+	ttl := time.Until(time.Unix(t.ExpiresAt, 0))
+	if ttl < time.Minute {
+		ttl = time.Minute
+	}
+	_, _ = s.e.Send(t.PeerID, proto.KindControl, payload, peer.SendOptions{TTL: ttl})
+}
+
+// CancelPeer ends every unfinished transfer with a peer that is no longer paired.
+// Nothing is sent: the other side is gone or has revoked us.
+func (s *Service) CancelPeer(peerID string) {
+	rows, err := s.db.ListTransfersInStates(StateHashing, StateOffered, StateAccepted, StateTransferring)
+	if err != nil {
+		return
+	}
+	for _, t := range rows {
+		if t.PeerID == peerID {
+			s.stopTask(t.ID)
+			s.end(t, StateCancelled, "PEER_REMOVED", "the device was unpaired")
+		}
+	}
 }
 
 func mimeFor(name string) string {

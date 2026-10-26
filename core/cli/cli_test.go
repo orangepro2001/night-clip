@@ -208,7 +208,7 @@ func TestInboxListAndShow(t *testing.T) {
 		"inbox.list": `{"ok":true,"result":{"items":[
 			{"event_id":"e1","from_name":"Pixel","text":"hello   there\nworld","sensitive":false,"state":"received","received_at":1790000000},
 			{"event_id":"e2","from_name":"Pixel","text":"P@ssw0rd!2024","sensitive":true,"state":"received","received_at":1790000100}]}}`,
-		"inbox.get": `{"ok":true,"result":{"event_id":"e2","text":"P@ssw0rd!2024","sensitive":true}}`,
+		"inbox.get": `{"ok":true,"result":{"event_id":"e2","text":"","redacted":true,"sensitive":true}}`,
 	}}
 	r := run(t, f, "", "inbox", "list", "--limit", "5")
 	if r.code != 0 || !strings.Contains(r.out, "hello there world") || strings.Contains(r.out, "P@ssw0rd") || !strings.Contains(r.out, "sensitive, hidden") {
@@ -217,8 +217,8 @@ func TestInboxListAndShow(t *testing.T) {
 	if f.last("inbox.list")["limit"].(float64) != 5 {
 		t.Fatal("limit not passed")
 	}
-	if r = run(t, f, "", "inbox", "show", "e2"); r.out != "P@ssw0rd!2024\n" {
-		t.Fatalf("inbox show = %q", r.out)
+	if r = run(t, f, "", "inbox", "show", "e2"); r.out != "" || r.code != 0 || !strings.Contains(r.errOut, "only shown in the ClipBridge window") {
+		t.Fatalf("inbox show of a sensitive item = %q / %q", r.out, r.errOut)
 	}
 	for _, bad := range [][]string{{"inbox", "list", "--limit", "0"}, {"inbox", "list", "--limit", "x"}, {"inbox", "show"}, {"inbox", "nope"}} {
 		if r = run(t, f, "", bad...); r.code != ExitUsage {
@@ -253,8 +253,11 @@ func TestFileSendOfferAcceptRejectCancelAndWait(t *testing.T) {
 	if r = run(t, f, "", "file", "send", dir); r.code != ExitUsage {
 		t.Fatalf("directory: %d", r.code)
 	}
-	if r = run(t, f, "", "file", "accept", "tr_1", "--dir", dir); r.code != 0 || f.last("file.accept")["save_dir"] != dir {
+	if r = run(t, f, "", "file", "accept", "tr_1"); r.code != 0 || f.last("file.accept")["save_dir"] != nil {
 		t.Fatalf("accept: %d %v", r.code, f.last("file.accept"))
+	}
+	if r = run(t, f, "", "file", "accept", "tr_1", "--dir", dir); r.code != ExitUsage {
+		t.Fatalf("accept --dir must be refused (a pipe client cannot choose the folder): %d", r.code)
 	}
 	for _, c := range []string{"reject", "cancel"} {
 		if r = run(t, f, "", "file", c, "tr_1"); r.code != 0 || f.count("file."+c) != 1 {

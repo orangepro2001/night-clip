@@ -17,6 +17,15 @@ func (db *DB) AddRevokedFP(certFP string, at int64) error {
 	return nil
 }
 
+// RemoveRevokedFP lifts a block. Pairing calls it after the user confirmed a device
+// that was unpaired earlier. Removing an absent fingerprint is not an error.
+func (db *DB) RemoveRevokedFP(certFP string) error {
+	if _, err := db.sql.Exec(`DELETE FROM revoked_fps WHERE cert_fp = ?`, certFP); err != nil {
+		return dbErr("lift revoked fingerprint", err)
+	}
+	return nil
+}
+
 // IsRevoked reports whether certFP has been revoked.
 func (db *DB) IsRevoked(certFP string) (bool, error) {
 	var one int

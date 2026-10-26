@@ -260,6 +260,11 @@ func (l *link) persistLocked(s *session, ready []*pending) ([]*proto.Envelope, e
 			delivered = append(delivered, env)
 		}
 	}
+	if len(delivered) > 0 {
+		// Whatever the kind, the received-events table stays bounded; the clipboard history
+		// limit (smaller) is applied by the clip service on top of this.
+		_, _ = l.e.db.PruneInbox(maxInboxRows)
+	}
 	if len(ready) > 0 {
 		if err := l.e.db.SetRecvCursor(l.peerID, l.cursor); err != nil {
 			return delivered, errStoreFailed
@@ -267,6 +272,9 @@ func (l *link) persistLocked(s *session, ready []*pending) ([]*proto.Envelope, e
 	}
 	return delivered, nil
 }
+
+// maxInboxRows is the hard cap on stored received events of all kinds.
+var maxInboxRows = 2000 // a var only so tests can lower it
 
 // deliver hands stored events to the application, in order, outside recvMu.
 func (l *link) deliver(envs []*proto.Envelope) {

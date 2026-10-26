@@ -81,12 +81,12 @@
 | 字段 | 类型 | 必填 | 约束 |
 | --- | --- | --- | --- |
 | `version` | integer | 是 | `1` |
-| `event_id` | string | 是 | UUIDv4；同一内容发给多个对端时可相同 |
+| `event_id` | string | 是 | UUIDv4；**每个对端、每个事件唯一**（同一内容发给多个对端时各用各的 id）。已被另一台设备的事件占用的 id 回 `ack error event_id_conflict`，不合并 |
 | `kind` | string | 是 | `clipboard` / `file` / `control` |
 | `source_device_id` | string | 是 | 与 TLS 指纹对应的设备 |
 | `target_device_id` | string | 是 | 本机 |
 | `sequence` | integer | 是 | ≥1，按链路（source→target）严格递增 |
-| `created_at` / `expires_at` | string | 是 | `expires_at` 晚于 `created_at` |
+| `created_at` / `expires_at` | string | 是 | `expires_at` 晚于 `created_at`，且相差不超过 7 天 |
 | `content_hash` | string | 是 | 见 §1.3 |
 | `sensitive` | boolean | 是 | 敏感内容不自动应用，通知不显示正文 |
 | `payload` | object | 是 | 见下 |
@@ -128,6 +128,7 @@ v1 只支持 UTF-8 纯文本，`size` ≤ 64 KiB。更大文本走文件。
 | `file_accept` | `transfer_id`, `offset` | 接受 push 类传输，从 offset 开始 |
 | `file_reject` | `transfer_id`, `reason` | 拒绝 |
 | `file_cancel` | `transfer_id` | 取消 |
+| `file_done` | `transfer_id` | `pull` 类传输：接收方已收齐并通过 SHA-256 校验；发送方此时才记为“已送达”（写完最后一个字节不算） |
 | `revoke` | — | 通知对端：我已撤销配对 |
 
 ## 3. 配对端点
@@ -165,6 +166,9 @@ v1 只支持 UTF-8 纯文本，`size` ≤ 64 KiB。更大文本走文件。
 - `202`：`{"pair_id":"…","sas":"482913","state":"waiting_confirm"}`；监听方用户确认前保持。
 - `GET /v1/pair/{pair_id}` 轮询（≤2 s 间隔，≤120 s；只有发起请求的那张证书能查询，否则 404）：`waiting_confirm` / `accepted`（含监听方的 `device_id`、`name`、`platform`、`tailnet_addrs`、`port`）/ `rejected` / `expired`。
 - `PAIRING_FAILED`：proof 错误或会话不存在（两者故意不可区分）；同一会话错 3 次后作废。`PAIRING_EXPIRED`：会话 5 分钟、确认 120 秒后作废。psk 一次有效：确认（不论接受或拒绝）后即作废。
+
+- **监听方也要证明自己**：`202` 与每次轮询的响应都带 `proof`（`ServerProof`：对 `psk`、`state`、双方 TLS 指纹、`nonce`、SAS、监听方 `device_id` 做长度前缀编码的 HMAC-SHA256）。加入方用 `hmac.Equal` 校验，不通过立即中止——没有配对码的冒充者即使在手动输入（TOFU）下也无法冒充监听方。
+- **被移除的设备可以再次配对**：监听方看到 `pair.request` 带 `previously_removed:true`，用户确认后才清除该证书指纹的黑名单；加入方在写入新记录前同样清除。
 
 SAS：两个证书指纹按字典序排序后与 `nonce` 一起做长度前缀编码，取 SHA-256 的前 20 bit，对 10⁶ 取模，补零成 6 位十进制。两端各自根据**自己看到的**指纹计算；加入方还要核对监听方返回的 `sas` 与自己算的一致，不一致立即中止。
 
@@ -264,6 +268,9 @@ Content-Type: application/octet-stream
 
 接收方追加写入临时文件；完整接收后校验 SHA-256，成功返回 `200 {"state":"complete"}`，失败返回 `422 HASH_MISMATCH` 并删除临时文件。`Content-Range` 起点与当前 offset 不符返回 `409`，响应体带正确 offset。
 
+- **补完（最后一步失败后重试）**：如果数据已全部写入但落盘/改名失败（返回 `500`），发送方重试时发送 `Content-Range: bytes */N`（`N` = 文件大小，无请求体），接收方只重新执行校验与改名。零字节文件同样用这种形式。
+- 上传进行中，如果传输被取消、过期或对端被解除配对，接收方中止该请求并回 `410 CANCELLED`；中途取消的数据不会被发布。
+
 ### 5.3 状态
 
 ```http
@@ -279,7 +286,8 @@ HEAD /v1/files/{transfer_id}
 - **访问控制**：`GET/HEAD/PUT` 只接受该传输的对端证书；其它已配对设备得到 `404`（不暴露传输是否存在），未配对证书由服务器统一回 `403 NOT_PAIRED`。
 - **状态码**：`410` 过期/已取消；`409 OFFSET_MISMATCH` 带 `{"offset":N}`；`409 NOT_ACCEPTED/NOT_READY/SOURCE_CHANGED`；`422 HASH_MISMATCH`（并删除已收数据）；`507 NO_SPACE`。
 - **完整性**：接收方把数据写进保存目录里的 `.<transfer_id>.part`，**全部收齐并核对 SHA-256 后**才原子改名为最终文件名（重名自动加 ` (1)`）；失败则删除 `.part`。核对失败时接收方发 `file_cancel{reason:"HASH_MISMATCH"}`——即使发送方已把传输记为“完成”（`pull` 下它写完最后一个字节就算送达），这条结论也会覆盖它。
-- **文件名**：对端给的名字只取最后一段，替换控制字符/双向覆盖字符/Windows 禁用字符，避开 `CON`、`NUL`、`COM1`…等保留名，去掉末尾的点和空格，限长 200 字节并保留扩展名。
+- **报价上限**：每个对端最多同时有 32 个未回应的 offer，超出回 `file_reject{reason:"too_many"}`；offer 的有效期取发送方给的 `expires_at` 与“现在 + 24 h”的较小值。`file` 事件载荷 ≤ 8 KiB，`control` ≤ 2 KiB，超出回 `ack error TOO_LARGE` 且不入库；收件箱所有类型合计最多 2000 行。
+- **文件名**：对端给的名字只取最后一段，替换控制字符/双向覆盖字符/Windows 禁用字符，避开 `CON`、`NUL`、`COM1`、`COM¹`、`CONIN$`…等保留名（设备名取第一个点之前的部分，`CON.tar.gz` 也算），去掉末尾的点和空格，限长 200 字节并保留扩展名。
 - **磁盘空间**：accept 时检查目标卷剩余空间（文件大小 + 16 MiB），不足则拒绝并回 `NO_SPACE`，不删除其它文件。
 - **重试**：下载/上传遇到网络错误按 1 s、2 s … 30 s 退避重试，直到完成、被取消或 offer 过期（24 h）；核心重启后自动恢复（Android 的 fd 来源无法恢复，标记 `SOURCE_LOST`）。
 
@@ -350,7 +358,7 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | `inbox.clear` | — | 清空历史 |
 | `update.status` / `update.check` / `update.download` / `update.config` | 见 [update.md](update.md) | 自更新 |
 | `file.offer` | `to`，以及 `path`（Windows）或 `fd`+`name`(+`size`)（Android，`detachFd()` 的整数，所有权交给核心） | `{transfer_id}`；立即返回，先在后台算 SHA-256（状态 `hashing`）再发出 offer。不可 seek 的 fd 会先落盘到 `data_dir/outgoing/` |
-| `file.accept` | `transfer_id`, `save_dir?` | 接收方同意；默认保存到设置 `download_dir`（Windows：`下载\ClipBridge`；Android：`data_dir/received`，由壳搬进 MediaStore 后调用 `file.release`） |
+| `file.accept` | `transfer_id`, `save_dir?`（本地管道忽略它） | 接收方同意；默认保存到设置 `download_dir`（Windows：`下载\ClipBridge`；Android：`data_dir/received`，由壳搬进 MediaStore 后调用 `file.release`） |
 | `file.reject` / `file.cancel` | `transfer_id` | 拒绝一个 offer / 取消进行中的传输（任一方） |
 | `file.release` | `transfer_id` | 壳已把完成的文件移走：删除私有副本 |
 | `transfers.list` | `limit?` | `{transfers:[{transfer_id, peer_id, peer_name, direction, name, size, sha256, state, offset, rate_bps, error?, path?, mime_type?, created_at, expires_at}]}` |
@@ -380,7 +388,7 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 {"type":"clip.received","event_id":"…","from":"dev_…","from_name":"Tony-PC","text":"…","sensitive":false,"decision":"notify|manual|auto","received_at":1790000000}
 {"type":"clip.ack","event_id":"…","from":"dev_…","result":"received|applied|ignored|expired|error","reason":"user_dismissed"}
 {"type":"outbox.expired","count":2}
-{"type":"pair.request","pair_id":"…","name":"Pixel","platform":"android","device_id":"dev_…","sas":"482913","expires_at":"…"}   // 监听方：等用户确认
+{"type":"pair.request","pair_id":"…","name":"Pixel","platform":"android","device_id":"dev_…","sas":"482913","previously_removed":false,"expires_at":"…"}   // 监听方：等用户确认
 {"type":"pair.sas","join_id":"…","sas":"482913"}                                                                        // 加入方：显示给用户核对
 {"type":"pair.result","state":"accepted|rejected|expired|failed","role":"listener|joiner","pair_id":"…","join_id":"…","code":"PAIRING_FAILED","message":"…"}
 {"type":"file.offered","transfer_id":"tr_…","from":"dev_…","from_name":"Pixel","name":"a.pdf","size":123456,"sha256":"…","mime_type":"application/pdf","expires_at":1790000000}
@@ -414,6 +422,7 @@ JSON Lines，每行一个请求，每个请求恰好一行回复，`id` 原样�
 
 - 回复的其余部分就是 `Core.Call` 的结果（`ok` + `result` 或 `error`）。
 - 一行最长 1 MiB；格式错误的行得到一条 `INVALID` 回复，连接继续可用；空行忽略。
+- **管道调用方不如界面可信**：`file.offer` 忽略 `fd`；`file.accept` 忽略 `save_dir`（文件只进用户设置的下载目录）；`inbox.list` / `inbox.get` 对 `sensitive` 条目返回 `text:""` 加 `redacted:true`，正文只在界面里显示。
 - **只开放白名单方法**：`version`、`status`、`identity.get`、`diagnostics.get`、`peers.list`、`clip.send`、`inbox.list`、`inbox.get`、`transfers.list`、`file.offer`、`file.accept`、`file.reject`、`file.cancel`、`settings.get`、`pair.pending`。其余一律 `METHOD_NOT_FOUND`——尤其是 `pair.*`（配对必须由本人在界面上确认）、`peers.update/remove`、`update.*`、`settings.set` 和 `shutdown`：同一用户的其它进程不应能借此改变信任关系或更新来源。
 - 事件（`NextEvent`）不走这个通道：它只有一个消费者，属于壳。
 
@@ -426,7 +435,7 @@ cbridge [--json] <command>
 ├── peers [list]
 ├── clip send [--to <peer>] [--text …]        （没有 --text 时读 stdin；没有 --to 发给所有设备）
 ├── file send [--to <peer>] [--wait] <path>…
-├── file accept <id> [--dir <dir>] | file reject <id> | file cancel <id>
+├── file accept <id> | file reject <id> | file cancel <id>
 ├── inbox list [--limit N] | inbox show <event-id>
 ├── transfers [list]
 ├── settings get [key]
@@ -437,7 +446,7 @@ cbridge [--json] <command>
 - `<peer>` 是设备 ID，或设备名（唯一前缀即可）。
 - 通过控制通道调用运行中的应用；应用未运行时退出码 3。地址默认是 §8 的管道，可用环境变量 `CBRIDGE_PIPE` 改。
 - `--json` 时 stdout 只输出 JSON（错误也是 `{"ok":false,"error":{…}}`），人类可读的提示走 stderr。
-- 不在 argv 放任何密钥；敏感条目在 `inbox list` 里不显示正文，只有 `inbox show` 才输出。
+- 不在 argv 放任何密钥；敏感条目的正文在 CLI 里一律不显示（`inbox show` 提示到界面查看）；`file accept` 不能指定保存目录。
 - `file send --wait` 轮询到所有传输结束；任一失败/被拒时用对应退出码退出。
 - `doctor` 检查 tailnet 监听地址、配对设备与连接状态，有问题退出码 6。
 

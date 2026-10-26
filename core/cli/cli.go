@@ -117,7 +117,7 @@ func (a *app) usage(msg string) int {
   peers [list]
   clip send [--to PEER] [--text TEXT]     (reads stdin when --text is absent)
   file send [--to PEER] [--wait] PATH...
-  file accept ID [--dir DIR] | file reject ID | file cancel ID
+  file accept ID | file reject ID | file cancel ID
   inbox list [--limit N] | inbox show ID
   transfers [list]
   settings get [KEY]
@@ -509,7 +509,7 @@ func (a *app) inbox(args []string) int {
 		for _, it := range out.Items {
 			text := oneLine(it.Text, 60)
 			if it.Sensitive {
-				text = "(sensitive, hidden; use 'inbox show')"
+				text = "(sensitive, hidden)"
 			}
 			fmt.Fprintf(a.env.Stdout, "%s  %-12s %-9s %s  %s\n", time.Unix(it.ReceivedAt, 0).Format("01-02 15:04"), it.FromName, it.State, text, it.EventID)
 		}
@@ -527,6 +527,10 @@ func (a *app) inbox(args []string) int {
 		}
 		var it inboxItem
 		_ = json.Unmarshal(res, &it)
+		if it.Sensitive {
+			fmt.Fprintln(a.env.Stderr, "this item looks sensitive; its text is only shown in the ClipBridge window")
+			return ExitOK
+		}
 		fmt.Fprint(a.env.Stdout, it.Text)
 		if !strings.HasSuffix(it.Text, "\n") {
 			fmt.Fprintln(a.env.Stdout)
@@ -610,22 +614,12 @@ func (a *app) file(args []string) int {
 		return a.fileSend(args[1:])
 	case "accept":
 		if len(args) < 2 {
-			return a.usage("file accept ID [--dir DIR]")
+			return a.usage("file accept ID")
 		}
-		params := map[string]any{"transfer_id": args[1]}
-		for i := 2; i < len(args); i++ {
-			if args[i] == "--dir" && i+1 < len(args) {
-				abs, err := filepath.Abs(args[i+1])
-				if err != nil {
-					return a.fail(err)
-				}
-				params["save_dir"] = abs
-				i++
-			} else {
-				return a.usage("file accept: unexpected " + args[i])
-			}
+		if len(args) > 2 {
+			return a.usage("file accept: unexpected " + args[2] + " (the file goes to the download folder set in ClipBridge)")
 		}
-		return a.simple("file.accept", params, "accepted")
+		return a.simple("file.accept", map[string]any{"transfer_id": args[1]}, "accepted")
 	case "reject", "cancel":
 		if len(args) != 2 {
 			return a.usage("file " + args[0] + " ID")

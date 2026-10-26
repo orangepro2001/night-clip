@@ -1,6 +1,7 @@
 package xfer
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -170,11 +171,9 @@ func (s *Service) serveGet(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("ETag", `"`+t.SHA256+`"`)
 	pw := &progressWriter{ResponseWriter: w, s: s, id: t.ID, base: rangeStart(r.Header.Get("Range")), size: t.Size}
 	http.ServeContent(pw, r, "", time.Time{}, io.NewSectionReader(f, 0, t.Size))
-	if pw.base+pw.n >= t.Size && r.Context().Err() == nil {
-		if cur, e := s.get(t.ID); e == nil && !terminal(cur.State) {
-			s.finishSent(cur)
-		}
-	}
+	// Writing the last byte does not mean it arrived: the transfer is only complete when
+	// the receiver has verified the file and says so (file_done), and until then a
+	// receiver that lost the tail can come back with a Range request.
 }
 
 // servePut receives an upload (mode push). The sender asks HEAD for the offset,
@@ -199,8 +198,13 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 	var start, end, total int64
 	cr := r.Header.Get("Content-Range")
 	switch {
-	case cr == "bytes */0":
-		start, end, total = 0, -1, 0
+	case strings.HasPrefix(cr, "bytes */"):
+		// "everything is there, finish it": no body
+		if _, err := fmt.Sscanf(cr, "bytes */%d", &total); err != nil || total != t.Size {
+			jsonError(w, http.StatusBadRequest, string(proto.CodeInvalid), nil)
+			return
+		}
+		start, end = total, total-1
 	default:
 		if _, err := fmt.Sscanf(cr, "bytes %d-%d/%d", &start, &end, &total); err != nil || start < 0 || end < start || total != t.Size || end >= total {
 			jsonError(w, http.StatusBadRequest, string(proto.CodeInvalid), nil)
@@ -212,11 +216,13 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cur := partSize(t)
-	if t.Size > 0 && start != cur {
+	if start != cur {
 		jsonError(w, http.StatusConflict, "OFFSET_MISMATCH", map[string]any{"offset": cur})
 		return
 	}
-	if !s.claim(t.ID) {
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	if !s.claim(t.ID, cancel) {
 		jsonError(w, http.StatusConflict, "BUSY", map[string]any{"offset": cur})
 		return
 	}
@@ -225,7 +231,7 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 	if t.State != StateTransferring {
 		t = s.setState(t, StateTransferring)
 	}
-	if t.Size > 0 {
+	if t.Size > 0 && start < t.Size {
 		f, err := os.OpenFile(partPath(t), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 		if err != nil {
 			jsonError(w, http.StatusInsufficientStorage, string(proto.CodeNoSpace), nil)
@@ -233,7 +239,7 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 		}
 		idle := noStall()
 		defer idle.Stop()
-		n, cerr := s.copyBody(r.Context(), f, io.LimitReader(r.Body, end-start+1), t, cur, idle)
+		n, cerr := s.copyBody(ctx, f, io.LimitReader(r.Body, end-start+1), t, cur, idle)
 		_ = f.Close()
 		if cerr != nil {
 			var pe *permanent
@@ -245,6 +251,10 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 					status = http.StatusUnprocessableEntity
 				}
 				jsonError(w, status, pe.code, nil)
+				return
+			}
+			if r.Context().Err() == nil { // we were stopped (cancelled), not the client
+				jsonError(w, http.StatusGone, "CANCELLED", nil)
 			}
 			return // the connection broke: the sender will ask HEAD and resume
 		}
@@ -253,6 +263,12 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"state": "partial", "offset": cur + n})
 			return
 		}
+	}
+	// A cancel, rejection, expiry or unpairing may have happened while the bytes were
+	// arriving: the file must not be published then.
+	if latest, err := s.get(t.ID); err != nil || terminal(latest.State) || time.Now().Unix() >= latest.ExpiresAt {
+		jsonError(w, http.StatusGone, "CANCELLED", nil)
+		return
 	}
 	if _, err := s.finalize(t); err != nil {
 		var pe *permanent
@@ -266,7 +282,7 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 			jsonError(w, status, pe.code, nil)
 			return
 		}
-		jsonError(w, http.StatusInternalServerError, string(proto.CodeInternal), nil)
+		jsonError(w, http.StatusInternalServerError, string(proto.CodeInternal), nil) // the sender retries "bytes */N"
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -275,14 +291,14 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 
 // claim marks a transfer as being written by one request; two concurrent PUTs
 // for the same transfer would corrupt the part file.
-func (s *Service) claim(id string) bool {
+func (s *Service) claim(id string, cancel context.CancelFunc) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := "put:" + id
 	if _, busy := s.tasks[key]; busy {
 		return false
 	}
-	s.tasks[key] = func() {}
+	s.tasks[key] = cancel // so Cancel/unpair can stop the request in flight
 	return true
 }
 

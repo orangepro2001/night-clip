@@ -11,6 +11,13 @@ const (
 	Version = 1
 	// MaxClipboardBytes is the largest clipboard text payload (docs/api-spec.md §2.1).
 	MaxClipboardBytes = 64 * 1024
+	// MaxFilePayloadBytes and MaxControlPayloadBytes bound the payload of the two other
+	// kinds: an offer and a control message are a few hundred bytes of JSON, so anything
+	// larger is an attempt to fill the receiver's database.
+	MaxFilePayloadBytes    = 8 * 1024
+	MaxControlPayloadBytes = 2 * 1024
+	// MaxEventLifetime is the longest expires_at - created_at a receiver accepts.
+	MaxEventLifetime = 7 * 24 * time.Hour
 )
 
 // Kind is the event kind.
@@ -83,6 +90,9 @@ func (e *Envelope) Validate(now time.Time) error {
 	if e.CreatedAt.IsZero() || !e.ExpiresAt.After(e.CreatedAt) {
 		return Errorf(CodeInvalid, "expires_at must be after created_at")
 	}
+	if e.ExpiresAt.Sub(e.CreatedAt) > MaxEventLifetime {
+		return Errorf(CodeInvalid, "event lifetime exceeds %s", MaxEventLifetime)
+	}
 	if !now.Before(e.ExpiresAt) {
 		return Errorf(CodeExpired, "event expired at %s", e.ExpiresAt.Format(time.RFC3339))
 	}
@@ -98,6 +108,11 @@ func (e *Envelope) Validate(now time.Time) error {
 	}
 	if got != e.ContentHash {
 		return Errorf(CodeHashMismatch, "content_hash does not match payload")
+	}
+	switch {
+	case e.Kind == KindFile && len(e.Payload) > MaxFilePayloadBytes,
+		e.Kind == KindControl && len(e.Payload) > MaxControlPayloadBytes:
+		return Errorf(CodeTooLarge, "%s payload exceeds its size limit", e.Kind)
 	}
 	if e.Kind == KindClipboard {
 		var p ClipboardPayload
