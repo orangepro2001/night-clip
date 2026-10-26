@@ -93,11 +93,13 @@ func (db *DB) ListOutbox(peerID string, afterSeq int64, limit int) ([]OutboxRow,
 	return out, nil
 }
 
-// MarkOutboxSent records a delivery attempt.
+// MarkOutboxSent records a delivery attempt. A row that was already sent is
+// counted again (a resend after reconnect); acked and expired rows never move
+// back to sent.
 func (db *DB) MarkOutboxSent(eventID string) error {
 	_, err := db.sql.Exec(`
 		UPDATE outbox SET state = 'sent', attempts = attempts + 1
-		WHERE event_id = ? AND state = 'queued'`, eventID)
+		WHERE event_id = ? AND state IN ('queued', 'sent')`, eventID)
 	if err != nil {
 		return dbErr("mark outbox sent", err)
 	}
