@@ -126,6 +126,7 @@ func (v *Vault) trashGroup(create bool) *g.Group {
 		return nil
 	}
 	bin := g.NewGroup()
+	bin.UUID = binUUIDFor(v.root().UUID)
 	bin.Name = "Recycle Bin"
 	bin.IconID = 43
 	bin.EnableSearching = w.NewNullableBoolWrapper(false)
@@ -777,3 +778,11 @@ func (v *Vault) RemoveAttachment(id, name string) error {
 	v.touch(le)
 	return v.commit("save")
 }
+
+func newGroup(name string) g.Group {
+	ng := g.NewGroup()
+	ng.Name = name
+	return ng
+}
+
+func newEntry() g.Entry { return g.NewEntry() }

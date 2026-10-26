@@ -105,6 +105,11 @@ func (bs *Binaries) Add(c []byte, options ...BinaryOption) *Binary {
 
 // GetContentBytes returns a bytes slice containing content of a binary
 func (b Binary) GetContentBytes() ([]byte, error) {
+	// KDBX 4 stores the raw bytes. Upstream guessed by trying base64 first, which turns any attachment
+	// that happens to be valid base64 (a short text such as "data") into garbage.
+	if b.isKDBX4 {
+		return b.Content, nil
+	}
 	// Check for base64 content (KDBX 3.1), if it fail try with KDBX 4
 	decoded := make([]byte, base64.StdEncoding.DecodedLen(len(b.Content)))
 	n, err := base64.StdEncoding.Decode(decoded, b.Content)

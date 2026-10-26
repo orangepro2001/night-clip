@@ -223,6 +223,15 @@ func syncDir(dir string) {
 
 func fingerprint(b []byte) [32]byte { return sha256.Sum256(b) }
 
+// binUUIDFor derives the recycle bin's id from the vault's root group, so replicas of one vault that
+// each create their bin on their own still end up with the same group.
+func binUUIDFor(root g.UUID) g.UUID {
+	sum := sha256.Sum256(append([]byte("clipbridge/recycle-bin/"), root[:]...))
+	var u g.UUID
+	copy(u[:], sum[:16])
+	return u
+}
+
 // ChangeCredentials re-keys the vault: new master password / key file and optionally a new KDF
 // cost (zero KDF keeps the current one). Everything is re-encrypted with fresh random values.
 // Old snapshots keep the old credentials; the caller should tell the user.

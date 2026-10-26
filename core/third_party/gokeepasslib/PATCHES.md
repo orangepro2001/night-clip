@@ -11,6 +11,9 @@ and fixtures. Changes made for night-clip (docs/vault-v0-poc-report.md has the e
 3. `decoder.go`, `binary.go`: gzip output is limited (decompression bombs).
 4. `content.go`: the inner-header "random stream id" field must be at least 4 bytes (upstream panics).
 
+5. `binary.go`: `GetContentBytes` returns a KDBX 4 binary (flagged as such when read) as it is. Upstream tried base64 first for every binary, so an attachment whose bytes are
+   valid base64 (for example the text `data`) came back as different bytes.
+
 Not changed on purpose: the writer still appends 36 zero bytes after the terminating block and pads
 ChaCha20 payloads; KeePassXC 2.7.10 reads those files (checked in core/vault interop tests). The
 library re-uses the opened file's MasterSeed/IV/KDF salt/inner stream key when saving; core/vault

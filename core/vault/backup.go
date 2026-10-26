@@ -77,6 +77,31 @@ func (v *Vault) snapshotLocked(old []byte, reason string) {
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
 
+// BackupNow takes a snapshot of the vault file as it is, outside the routine ones (the "back up now"
+// button). It works like every other snapshot: restorable with the credentials in force now.
+func (v *Vault) BackupNow() (BackupInfo, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if err := v.usable(); err != nil {
+		return BackupInfo{}, err
+	}
+	if err := v.saveLocked("manual-save"); err != nil { // makes sure the file on disk is current
+		return BackupInfo{}, err
+	}
+	cur, err := os.ReadFile(v.path())
+	if err != nil {
+		return BackupInfo{}, fmt.Errorf("vault: read file: %w", err)
+	}
+	v.lastSnapshot = time.Time{}
+	v.snapshotLocked(cur, "manual")
+	for _, b := range ListBackups(v.dir) {
+		if b.Reason == "manual" {
+			return b, nil
+		}
+	}
+	return BackupInfo{}, fmt.Errorf("vault: the snapshot could not be written")
+}
+
 // ListBackups lists the snapshots of the vault in dir, newest first, plus the previous generation of
 // the main file. It works while the vault is locked.
 func ListBackups(dir string) []BackupInfo {

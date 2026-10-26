@@ -311,13 +311,20 @@ func wrapInvalid(format string, a ...any) error {
 func (v *Vault) nowWrap() w.TimeWrapper { return *timeWrap(v.now().Unix()) }
 
 // upgradeToV4 moves the contents of a KDBX 3.x database (plain values, as after decode) into a fresh
-// KDBX 4 database that uses the standard Argon2d cost, keeping the same credentials. Attachments move
-// from the XML meta block into the KDBX 4 inner header and every reference is renumbered.
+// KDBX 4 database that uses the standard Argon2d cost, keeping the same credentials.
 func upgradeToV4(old *g.Database, c Creds) (*g.Database, error) {
 	nd, err := newDatabase(c, KDFStandard, old.Content.Meta.DatabaseName)
 	if err != nil {
 		return nil, err
 	}
+	adoptContent(nd, old)
+	return nd, nil
+}
+
+// adoptContent replaces the groups, entries and settings of nd with those of old. Attachments move
+// into nd's inner header (they live in the XML meta block in KDBX 3) and every reference, including
+// those inside history items, is renumbered. old must not be used afterwards.
+func adoptContent(nd, old *g.Database) {
 	remap := map[int]int{}
 	mapBinary := func(id int) (int, bool) {
 		if n, ok := remap[id]; ok {
@@ -366,5 +373,4 @@ func upgradeToV4(old *g.Database, c Creds) (*g.Database, error) {
 	meta.Generator = "ClipBridge"
 	nd.Content.Meta = meta
 	nd.Content.Root = old.Content.Root
-	return nd, nil
 }
