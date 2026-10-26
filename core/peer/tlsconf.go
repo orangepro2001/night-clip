@@ -44,19 +44,25 @@ func ClientTLS(id *identity.Identity, expectedFP string) *tls.Config {
 	}
 }
 
-// Capture records the fingerprint a server presented. It backs trust-on-first-use
-// pairing without a QR code, where the user then compares the SAS code.
+// Capture records who a server turned out to be during the handshake: the
+// certificate fingerprint and the device_id derived from its public key. It is
+// how the pairing client learns (and then verifies) the other side.
 type Capture struct {
-	mu sync.Mutex
-	fp string
+	mu       sync.Mutex
+	fp       string
+	deviceID string
 }
 
 // FP returns the captured fingerprint ("" before a handshake).
 func (c *Capture) FP() string { c.mu.Lock(); defer c.mu.Unlock(); return c.fp }
 
-// CaptureTLS is ClientTLS without a pin: it accepts any server certificate and
-// remembers its fingerprint in c. Use it only for the pairing handshake.
-func CaptureTLS(id *identity.Identity, c *Capture) *tls.Config {
+// DeviceID returns the device_id derived from the server certificate's key.
+func (c *Capture) DeviceID() string { c.mu.Lock(); defer c.mu.Unlock(); return c.deviceID }
+
+// ClientTLSCapture is the pairing handshake configuration. With a non-empty
+// expectedFP it pins the server exactly like ClientTLS; with "" it accepts any
+// certificate (trust on first use). Either way c records what was presented.
+func ClientTLSCapture(id *identity.Identity, expectedFP string, c *Capture) *tls.Config {
 	return &tls.Config{
 		MinVersion:         tls.VersionTLS13,
 		Certificates:       []tls.Certificate{id.TLSCertificate()},
@@ -65,12 +71,26 @@ func CaptureTLS(id *identity.Identity, c *Capture) *tls.Config {
 			if len(raw) == 0 {
 				return ErrFingerprint
 			}
+			fp := identity.Fingerprint(raw[0])
+			if expectedFP != "" && fp != expectedFP {
+				return ErrFingerprint
+			}
+			cert, err := x509.ParseCertificate(raw[0])
+			if err != nil {
+				return err
+			}
 			c.mu.Lock()
-			c.fp = identity.Fingerprint(raw[0])
+			c.fp, c.deviceID = fp, identity.DeviceID(cert.RawSubjectPublicKeyInfo)
 			c.mu.Unlock()
 			return nil
 		},
 	}
+}
+
+// CaptureTLS is ClientTLSCapture without a pin (trust on first use). Use it
+// only for the pairing handshake.
+func CaptureTLS(id *identity.Identity, c *Capture) *tls.Config {
+	return ClientTLSCapture(id, "", c)
 }
 
 // HTTPClient returns an http.Client that speaks mTLS with cfg, never uses a

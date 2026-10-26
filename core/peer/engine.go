@@ -52,6 +52,7 @@ const (
 // Hooks are test-only switches. They are set in Go code, never from JSON.
 type Hooks struct {
 	AllowLoopback bool                // treat 127.0.0.0/8 and ::1 as tailnet
+	RandomPort    bool                // bind port 0 (the OS picks) instead of Config.Port
 	ListenAddrs   func() []netip.Addr // replaces TailnetAddrs()
 }
 
@@ -125,7 +126,7 @@ type Engine struct {
 
 // New builds an engine; call Handle for extra routes, then Start.
 func New(cfg Config) *Engine {
-	if cfg.Port == 0 {
+	if cfg.Port == 0 && !cfg.Hooks.RandomPort {
 		cfg.Port = DefaultPort
 	}
 	if cfg.Now == nil {
@@ -144,6 +145,9 @@ func New(cfg Config) *Engine {
 }
 
 func (e *Engine) now() time.Time { return e.cfg.Now() }
+
+// Platform returns "windows" or "android" as configured.
+func (e *Engine) Platform() string { return e.cfg.Platform }
 
 func (e *Engine) emit(ev map[string]any) { e.cfg.Emit(ev) }
 

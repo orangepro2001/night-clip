@@ -59,3 +59,7 @@ func (e *Engine) tailnetStrings(in []string) []string {
 func (e *Engine) addrAllowed(a netip.Addr) bool {
 	return InTailnet(a) || (e.hooks.AllowLoopback && a.Unmap().IsLoopback())
 }
+
+// AddrAllowed reports whether a is acceptable as a peer address: a tailnet
+// address (or loopback in tests). Pairing uses it to vet hosts from QR codes.
+func (e *Engine) AddrAllowed(a netip.Addr) bool { return e.addrAllowed(a) }

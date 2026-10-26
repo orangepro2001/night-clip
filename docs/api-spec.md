@@ -136,25 +136,37 @@ v1 只支持 UTF-8 纯文本，`size` ≤ 64 KiB。更大文本走文件。
 
 ### 3.1 `POST /v1/pair`
 
+请求体（由加入方发出，TLS 客户端证书即其身份）：
+
 ```json
 {
+  "sid": "doLqTVRqFm2N",
   "device_id": "dev_…",
   "name": "Pixel",
   "platform": "android",
   "cert_fp": "base64url(sha256(cert))",
   "tailnet_addrs": ["100.101.146.200"],
-  "proof": "base64url(HMAC-SHA256(psk, device_id || cert_fp || nonce))",
-  "nonce": "base64url"
+  "port": 0,
+  "nonce": "base64url(16 bytes)",
+  "proof": "base64url(HMAC-SHA256(psk, …))"
 }
 ```
 
+字段与规则：
+
+- `sid` = `base64url(HMAC-SHA256(psk, "clipbridge-pair-sid-v1")[:9])`：监听方据此找到会话，而不暴露 psk；不知道 psk 的人算不出它，所以乱发请求不会消耗别人会话的失败次数。
+- `device_id` 必须等于 TLS 证书公钥派生的 id，`cert_fp` 必须等于该连接的证书指纹，否则 `PAIRING_FAILED`。
+- `port`：加入方自己监听的端口（Android 为 0）；Win↔Win 时监听方据此日后回拨。
+- `proof` = `base64url(HMAC-SHA256(psk, F("clipbridge-pair-v1") ‖ F(device_id) ‖ F(cert_fp) ‖ F(server_fp) ‖ F(nonce)))`，其中 `F(x)` = 2 字节大端长度 ‖ x（长度前缀，杜绝拼接歧义）。`server_fp` 是加入方在 TLS 握手里**实际看到**的监听方证书指纹：中间人用自己的证书终止 TLS，则加入方算出的 proof 里是中间人的指纹，真正的监听方验证必然失败——所以即使二维码没带 `fp`（手动输入，TOFU），中间人也过不了。
+- 来源地址限流：每个来源地址突发 6 次，每 10 秒补 1 次，超出返回 `429 RATE_LIMITED`；另外同时最多 3 个打开的会话。
+
 响应：
 
-- `202`：`{"pair_id":"…","sas":"482913","state":"waiting_confirm"}`；Windows 用户确认前保持。
-- `GET /v1/pair/{pair_id}` 轮询（≤2 s 间隔，≤120 s）：`waiting_confirm` / `accepted`（含对方 `device_id`、`name`、`tailnet_addrs`）/ `rejected`。
-- `PAIRING_FAILED` 3 次后该会话作废；`PAIRING_EXPIRED` 5 分钟后作废。
+- `202`：`{"pair_id":"…","sas":"482913","state":"waiting_confirm"}`；监听方用户确认前保持。
+- `GET /v1/pair/{pair_id}` 轮询（≤2 s 间隔，≤120 s；只有发起请求的那张证书能查询，否则 404）：`waiting_confirm` / `accepted`（含监听方的 `device_id`、`name`、`platform`、`tailnet_addrs`、`port`）/ `rejected` / `expired`。
+- `PAIRING_FAILED`：proof 错误或会话不存在（两者故意不可区分）；同一会话错 3 次后作废。`PAIRING_EXPIRED`：会话 5 分钟、确认 120 秒后作废。psk 一次有效：确认（不论接受或拒绝）后即作废。
 
-SAS = `sha256(fpA || fpB || nonce)` 的前 20 bit，取 6 位十进制，两端分别显示。
+SAS：两个证书指纹按字典序排序后与 `nonce` 一起做长度前缀编码，取 SHA-256 的前 20 bit，对 10⁶ 取模，补零成 6 位十进制。两端各自根据**自己看到的**指纹计算；加入方还要核对监听方返回的 `sas` 与自己算的一致，不一致立即中止。
 
 ### 3.2 QR / 深链
 

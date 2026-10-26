@@ -130,7 +130,7 @@ func newNode(t *testing.T, name, platform string, listen bool, clock *fakeClock,
 	cfg := Config{
 		Identity: id, Store: db, Listen: listen, Platform: platform, Handler: n.rec, Timing: fastTiming,
 		Emit:  func(ev map[string]any) { n.emitMu.Lock(); n.emits = append(n.emits, ev); n.emitMu.Unlock() },
-		Hooks: Hooks{AllowLoopback: true, ListenAddrs: func() []netip.Addr { return loopback }},
+		Hooks: Hooks{AllowLoopback: true, RandomPort: true, ListenAddrs: func() []netip.Addr { return loopback }},
 	}
 	if clock != nil {
 		cfg.Now = clock.Now
