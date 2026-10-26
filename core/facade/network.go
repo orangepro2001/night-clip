@@ -16,6 +16,7 @@ import (
 	"nightclip/core/pairing"
 	"nightclip/core/peer"
 	"nightclip/core/proto"
+	"nightclip/core/vsync"
 	"nightclip/core/xfer"
 )
 
@@ -25,6 +26,7 @@ type netState struct {
 	pair *pairing.Manager
 	clip *clip.Service
 	xfer *xfer.Service
+	sync *vsync.Service
 
 	joinMu sync.Mutex
 	joins  map[string]context.CancelFunc
@@ -63,11 +65,18 @@ func (h handler) OnAck(peerID, eventID, result, reason string) {
 // OnPeerState: the engine already emits peer.state; here an unpaired peer also loses its
 // unfinished transfers (in flight uploads and downloads stop at once).
 func (h handler) OnPeerState(peerID, state string) {
-	if state != peer.StateRevoked {
+	n := h.c.net()
+	if n == nil {
 		return
 	}
-	if n := h.c.net(); n != nil {
+	if n.sync != nil {
+		n.sync.OnPeerState(peerID, state)
+	}
+	if state == peer.StateRevoked {
 		n.xfer.CancelPeer(peerID)
+		if n.sync != nil {
+			n.sync.Forget(peerID)
+		}
 	}
 }
 
@@ -89,10 +98,12 @@ func (c *Core) startNetwork(cfg Config) (*netState, error) {
 	n.xfer = xfer.New(xfer.Config{
 		Engine: n.eng, DB: c.db, DataDir: cfg.DataDir, Platform: cfg.Platform, Emit: c.emitNet, Timing: n.xferT,
 	})
+	n.sync = vsync.New(vsync.Config{Engine: n.eng, DB: c.db, Provider: vaultProvider{c}, Emit: c.emitNet, Timing: c.syncT})
 	if err := n.eng.Start(); err != nil {
 		return nil, err
 	}
 	n.xfer.Start()
+	n.sync.Start()
 	return n, nil
 }
 
@@ -102,6 +113,7 @@ func (n *netState) close() {
 		cancel()
 	}
 	n.joinMu.Unlock()
+	n.sync.Close()
 	n.xfer.Close() // before the engine: transfers use its endpoints
 	n.eng.Close()
 }

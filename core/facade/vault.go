@@ -37,6 +37,27 @@ type vaultState struct {
 
 func (c *Core) vaultDir() string { return filepath.Join(c.cfg.DataDir, "vault") }
 
+// vaultProvider gives the sync service the open vault without arming the idle timer (a background
+// sync must not keep the vault unlocked).
+type vaultProvider struct{ c *Core }
+
+func (p vaultProvider) Current() *vault.Vault {
+	p.c.vs.mu.Lock()
+	defer p.c.vs.mu.Unlock()
+	return p.c.vs.v
+}
+func (p vaultProvider) Dir() string { return p.c.vaultDir() }
+
+// afterOpen wires a freshly opened vault to the sync service. Called without vs.mu held.
+func (c *Core) vaultAfterOpen(v *vault.Vault) {
+	n := c.net()
+	if n == nil || n.sync == nil {
+		return
+	}
+	v.SetOnSaved(n.sync.Kick)
+	go n.sync.OnUnlocked()
+}
+
 func (c *Core) vaultIntSetting(key string, def int) int {
 	if v, found, _ := c.db.GetSetting(key); found {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -290,6 +311,8 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 		return map[string]any{"backups": nonNil(vault.ListBackups(c.vaultDir()))}, nil
 	case "vault.backup_verify":
 		return c.vaultBackupVerify(params)
+	case "vault.sync_status", "vault.sync_enable", "vault.sync_resolve", "vault.sync_now":
+		return c.vaultSyncCall(method, params)
 	}
 	v, err := c.vaultOpen()
 	if err != nil {
@@ -666,6 +689,7 @@ func (c *Core) vaultCreate(params string) (any, error) {
 	}
 	c.vs.v = v
 	c.armIdleLocked()
+	go c.vaultAfterOpen(v)
 	return map[string]any{"unlocked": true, "create_ms": time.Since(start).Milliseconds()}, nil
 }
 
@@ -699,6 +723,7 @@ func (c *Core) vaultUnlock(params string) (any, error) {
 		v.Close()
 	} else {
 		c.vs.v = v
+		go c.vaultAfterOpen(v)
 	}
 	c.armIdleLocked()
 	return map[string]any{"unlocked": true, "unlock_ms": time.Since(start).Milliseconds()}, nil
@@ -936,4 +961,62 @@ func (c *Core) vaultExport(v *vault.Vault, method, params string) (any, error) {
 		}
 	}
 	return map[string]any{}, v.ExportFile(p.Path, cr, kdf)
+}
+
+// ---- device sync -----------------------------------------------------------------------------------------
+
+func (c *Core) vaultSyncCall(method, params string) (any, error) {
+	n := c.net()
+	if n == nil || n.sync == nil {
+		return nil, proto.Errorf(proto.CodeNotInitialized, "the network is not running")
+	}
+	switch method {
+	case "vault.sync_status":
+		return map[string]any{"peers": n.sync.Status(), "vault_exists": vault.Exists(c.vaultDir())}, nil
+	case "vault.sync_now":
+		n.sync.Kick()
+		return map[string]any{}, nil
+	case "vault.sync_enable":
+		var p struct {
+			DeviceID string `json:"device_id"`
+			Enabled  bool   `json:"enabled"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		rec, found, err := c.db.GetPeer(p.DeviceID)
+		if err != nil {
+			return nil, err
+		}
+		if !found || rec.State != "paired" {
+			return nil, proto.Errorf(proto.CodeNotPaired, "no paired device %s", p.DeviceID)
+		}
+		rec.VaultSync = p.Enabled
+		if err := c.db.PutPeer(rec); err != nil {
+			return nil, err
+		}
+		if p.Enabled {
+			n.sync.Kick()
+		} else {
+			n.sync.Forget(p.DeviceID)
+		}
+		return map[string]any{}, nil
+	default: // vault.sync_resolve
+		var p struct {
+			DeviceID string `json:"device_id"`
+			Approve  bool   `json:"approve"`
+			credParams
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		var cr vault.Creds
+		if p.Password != "" {
+			var err error
+			if cr, err = p.creds(); err != nil {
+				return nil, err
+			}
+		}
+		return map[string]any{}, n.sync.Resolve(p.DeviceID, cr, p.Approve)
+	}
 }

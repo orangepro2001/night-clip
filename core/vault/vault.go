@@ -32,6 +32,31 @@ type Vault struct {
 	now    func() time.Time
 
 	lastSnapshot time.Time
+	onSaved      func()
+}
+
+// SetOnSaved registers a function called (in its own goroutine) after every successful save. The
+// sync service uses it to push the new file to the other devices.
+func (v *Vault) SetOnSaved(f func()) {
+	v.mu.Lock()
+	v.onSaved = f
+	v.mu.Unlock()
+}
+
+// FileHash returns the SHA-256 (hex) and size of the vault file in dir, and false if there is none.
+// It works while the vault is locked: the file is ciphertext.
+func FileHash(dir string) (hash string, size int64, ok bool) {
+	data, err := readFileLimited(filepath.Join(dir, FileName))
+	if err != nil {
+		return "", 0, false
+	}
+	sum := fingerprint(data)
+	const hexd = "0123456789abcdef"
+	b := make([]byte, 64)
+	for i, x := range sum {
+		b[i*2], b[i*2+1] = hexd[x>>4], hexd[x&15]
+	}
+	return string(b), int64(len(data)), true
 }
 
 // Exists reports whether dir holds a vault file.
@@ -194,6 +219,9 @@ func (v *Vault) saveLocked(reason string) error {
 		return fmt.Errorf("vault: replace file: %w", err)
 	}
 	syncDir(v.dir)
+	if v.onSaved != nil {
+		go v.onSaved()
+	}
 	return nil
 }
 

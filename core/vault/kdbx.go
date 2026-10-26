@@ -37,6 +37,8 @@ var (
 	ErrExists           = errors.New("vault: a vault already exists there")
 	ErrInvalid          = errors.New("vault: invalid input")
 	ErrBroken           = errors.New("vault: in-memory state is inconsistent, lock and unlock again")
+	ErrDifferentVault   = errors.New("vault: that file is a different vault, not another copy of this one")
+	ErrReview           = errors.New("vault: that file would remove many entries and needs your approval")
 )
 
 // Creds are the master credentials: a password and optionally the contents of a key file.

@@ -106,7 +106,26 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 
 `stats` = `{entries_added, entries_updated, entries_removed, entries_moved, groups_added, groups_removed}`。
 
-### 3.6 设置（`settings.get`/`settings.set`）
+### 3.6 多设备同步（V2）
+
+设备之间传的**永远是加密的 `.kdbx` 文件**，不是明文条目：接收方先把对方的文件放在一边（`vault/incoming/<设备ID>.kdbx`），库**已解锁**时按 KeePass 规则合并（核心 `core/vault/merge.go`，有交换律/收敛性测试），合并后再把自己的最新文件传回去。传输复用现有的互相固定证书的 TLS 连接：监听方提供 `GET /v1/vault/head`、`GET /v1/vault/file`、`PUT /v1/vault/file`（仅限已配对且**对方设备已为本机开启**的设备），拨号方每 15 秒比较一次哈希，本机保存后立即推送。
+
+**默认什么都不共享**：每台设备要对每个对端单独开启 `vault.sync_enable`，**两边都开启**才会同步。对端没有开启时，本机状态为 `peer_off`。
+
+| 方法 | 参数 | 结果 |
+| --- | --- | --- |
+| `vault.sync_status` | — | `{vault_exists, peers:[{device_id, name, enabled, connected, state, detail, last_ok_at, pending_incoming}]}` |
+| `vault.sync_enable` | `device_id`, `enabled` | `{}`；关闭时丢弃已收到但未合并的文件 |
+| `vault.sync_resolve` | `device_id`, `approve?`, `credParams?` | `{}`：为 `needs_password` 输入对方库的主密码，或为 `review` 点“批准”。库必须已解锁，否则 `VAULT_LOCKED` |
+| `vault.sync_now` | — | `{}` |
+
+`state`：`idle`（正常）、`pending_unlock`（对方的修改已收到，等你解锁后合并）、`needs_password`（对方改了主密码，需要输入新密码才能合并）、`review`（需要批准：对方的文件**不是同一个库**，或这一批会**删除 5 个以上条目**）、`peer_off`（对方没有为本机开启）、`error`。
+
+- **加入：** 一台还没有库的设备，在两边都开启后会直接收到对方的库文件（事件 `vault.joined`），库显示为“已存在、已锁定”，用**那个库的主密码**解锁即可。
+- **事件：** `vault.sync {device_id, name, state, detail}`（状态变化）、`vault.changed {reason:"sync", device_id, stats}`（同步合并改动了本机库，壳应刷新列表）、`vault.joined {device_id, name}`。
+- **限制：** 单个文件 ≤64 MiB；每个对端每 2 秒最多上传一次；收到的文件必须有 KDBX 签名，否则 400。
+
+### 3.7 设置（`settings.get`/`settings.set`）
 
 | 键 | 值 | 默认 |
 | --- | --- | --- |
@@ -132,4 +151,4 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 
 - 密码库复制的内容不会被自动广播（`vault_origin`，登记有效 1 小时）；用户显式用 `clip.send` 发送仍然可以。
 - 收到的剪贴板文本若被识别为敏感，依然永远不会自动写入（`plan-auto-broadcast.md`）。
-- 密码库本身**目前只在本机**；多设备同步（V2）见 [plan-vault.md](plan-vault.md) §5，合并规则已在 `core/vault/merge.go` 实现并有收敛性测试，传输层尚未接入。
+- 多设备同步见 §3.6：默认关闭，逐设备、双向开启；传输的是加密文件，合并在本机解锁后进行。

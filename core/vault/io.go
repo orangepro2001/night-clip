@@ -30,6 +30,59 @@ func (v *Vault) MergeBytes(data []byte, c Creds, reason string) (MergeStats, err
 	return st, v.commit(reason)
 }
 
+// MergeOptions guard a merge that was not asked for by the user in person (device sync).
+type MergeOptions struct {
+	// RequireSameVault refuses a file whose top group is not this vault's: two unrelated vaults are
+	// merged only when the user says so.
+	RequireSameVault bool
+	// MaxRemoved refuses a merge that would delete more than this many entries (0 = no limit).
+	MaxRemoved int
+}
+
+// MergeGuarded is MergeBytes with safety checks. c may be empty: the vault's own credentials are used.
+// The returned error is ErrDifferentVault or ErrReview when a guard stopped the merge (nothing changed).
+func (v *Vault) MergeGuarded(data []byte, c Creds, reason string, o MergeOptions) (MergeStats, error) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if err := v.usable(); err != nil {
+		return MergeStats{}, err
+	}
+	if len(c.Password) == 0 {
+		c = v.creds
+	}
+	src, err := decode(data, c)
+	if err != nil {
+		return MergeStats{}, err
+	}
+	if o.RequireSameVault && src.Content.Root.Groups[0].UUID != v.root().UUID {
+		return MergeStats{}, ErrDifferentVault
+	}
+	if o.MaxRemoved > 0 && wouldRemove(v.db, src) > o.MaxRemoved {
+		return MergeStats{}, ErrReview
+	}
+	st := mergeInto(v.db, src, nil)
+	if !st.Changed() {
+		return st, nil
+	}
+	if v.countEntries() > MaxEntries {
+		return st, ErrTooLarge
+	}
+	return st, v.commit(reason)
+}
+
+// wouldRemove counts the entries the other side's deletions would take out of dst (same rule as the merge).
+func wouldRemove(dst, src *g.Database) int {
+	mine := map[g.UUID]int64{}
+	walk(dst, func(le *libEntry, _ string, _ bool) { mine[le.UUID] = touched(&le.Times) }, nil)
+	n := 0
+	for _, d := range src.Content.Root.DeletedObjects {
+		if t, ok := mine[d.UUID]; ok && t <= unix(d.DeletionTime) {
+			n++
+		}
+	}
+	return n
+}
+
 // ImportFile merges the KDBX file at path.
 func (v *Vault) ImportFile(path string, c Creds) (MergeStats, error) {
 	data, err := readFileLimited(path)

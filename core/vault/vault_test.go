@@ -3,6 +3,7 @@ package vault
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -404,3 +405,42 @@ func TestLimitsRejectHostileKDFParameters(t *testing.T) {
 }
 
 func sha256sum(b []byte) [32]byte { return fingerprint(b) }
+
+func TestMergeGuardedStopsUnrelatedVaultsAndMassDeletion(t *testing.T) {
+	a, clock := baseVault(t)
+	var ids []string
+	for i := 0; i < 8; i++ {
+		id, _ := a.AddEntry(Entry{Title: fmt.Sprintf("e%d", i), Password: "p"})
+		ids = append(ids, id)
+	}
+	b := fork(t, a, clock)
+	for _, id := range ids[:6] { // b deletes six entries for good
+		_, _ = b.Delete(id)
+		_, _ = b.Delete(id)
+	}
+	bFile, _ := os.ReadFile(b.path())
+	if _, err := a.MergeGuarded(bFile, Creds{}, "sync", MergeOptions{RequireSameVault: true, MaxRemoved: 5}); !errors.Is(err, ErrReview) {
+		t.Fatalf("mass deletion: %v", err)
+	}
+	if l, _ := a.List(Filter{}); len(l) != 8 {
+		t.Fatalf("a refused merge changed the vault: %d entries", len(l))
+	}
+	if st, err := a.MergeGuarded(bFile, Creds{}, "sync", MergeOptions{RequireSameVault: true}); err != nil || st.EntriesRemoved != 6 {
+		t.Fatalf("approved merge: %+v %v", st, err)
+	}
+
+	other, _ := Create(filepath.Join(t.TempDir(), "o"), creds("correct horse battery staple"), KDFTest, "Other")
+	defer other.Close()
+	_, _ = other.AddEntry(Entry{Title: "foreign", Password: "x"})
+	oFile, _ := os.ReadFile(other.path())
+	if _, err := a.MergeGuarded(oFile, Creds{}, "sync", MergeOptions{RequireSameVault: true}); !errors.Is(err, ErrDifferentVault) {
+		t.Fatalf("unrelated vault: %v", err)
+	}
+	if st, err := a.MergeGuarded(oFile, Creds{}, "sync", MergeOptions{}); err != nil || st.EntriesAdded != 1 {
+		t.Fatalf("explicit union: %+v %v", st, err)
+	}
+	h, size, ok := FileHash(a.Dir())
+	if !ok || len(h) != 64 || size <= 0 {
+		t.Fatalf("FileHash = %q %d %v", h, size, ok)
+	}
+}

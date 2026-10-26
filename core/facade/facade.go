@@ -24,6 +24,7 @@ import (
 	"nightclip/core/proto"
 	"nightclip/core/store"
 	"nightclip/core/update"
+	"nightclip/core/vsync"
 	"nightclip/core/xfer"
 )
 
@@ -82,6 +83,7 @@ type Core struct {
 	timing peer.Timing
 	pairT  pairing.Timings
 	xferT  xfer.Timing
+	syncT  vsync.Timing
 }
 
 // testEngine, set only by this package's tests (see network_test.go), makes
@@ -92,13 +94,14 @@ var testEngine *struct {
 	timing peer.Timing
 	pairT  pairing.Timings
 	xferT  xfer.Timing
+	syncT  vsync.Timing
 }
 
 // New returns an uninitialised Core.
 func New() *Core {
 	c := &Core{events: make(chan []byte, eventQueueSize), done: make(chan struct{})}
 	if testEngine != nil {
-		c.hooks, c.timing, c.pairT, c.xferT = testEngine.hooks, testEngine.timing, testEngine.pairT, testEngine.xferT
+		c.hooks, c.timing, c.pairT, c.xferT, c.syncT = testEngine.hooks, testEngine.timing, testEngine.pairT, testEngine.xferT, testEngine.syncT
 	}
 	return c
 }
@@ -275,7 +278,8 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		"vault.restore_entry", "vault.empty_trash", "vault.move", "vault.groups", "vault.group_add", "vault.group_rename",
 		"vault.group_delete", "vault.history", "vault.history_restore", "vault.attach_add", "vault.attach_get",
 		"vault.attach_remove", "vault.health", "vault.restore_preview", "vault.restore", "vault.import_file",
-		"vault.import_csv", "vault.export_file", "vault.export_csv":
+		"vault.import_csv", "vault.export_file", "vault.export_csv",
+		"vault.sync_status", "vault.sync_enable", "vault.sync_resolve", "vault.sync_now":
 		return c.vaultCall(method, paramsJSON)
 	default:
 		if result, handled, err := c.networkCall(method, paramsJSON); handled {
