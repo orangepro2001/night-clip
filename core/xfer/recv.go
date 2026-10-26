@@ -450,7 +450,7 @@ func (s *Service) sweep() {
 	for _, t := range expired {
 		s.stopTask(t.ID)
 		s.dropSource(t.ID)
-		if t.Direction == DirIn {
+		if t.Direction == DirIn && !s.hasTask(t.ID) {
 			s.removePart(t)
 		}
 		s.emit(map[string]any{"type": "file.failed", "transfer_id": t.ID, "code": string(proto.CodeExpired), "message": "the offer expired", "direction": t.Direction})

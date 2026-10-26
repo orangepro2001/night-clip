@@ -244,9 +244,27 @@ func (s *Service) runTask(id string, fn func(ctx context.Context)) {
 			delete(s.tasks, id)
 			s.mu.Unlock()
 			cancel()
+			s.afterTask(id)
 		}()
 		fn(ctx)
 	}()
+}
+
+// hasTask reports whether a goroutine or an upload request still works on id (and
+// so may hold the part file open).
+func (s *Service) hasTask(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tasks[id] != nil || s.tasks["put:"+id] != nil
+}
+
+// afterTask removes the part file of an incoming transfer that ended without
+// success. It runs once the working goroutine has released the file: Windows
+// refuses to delete a file that is still open.
+func (s *Service) afterTask(id string) {
+	if t, found, _ := s.db.GetTransfer(id); found && t.Direction == DirIn && terminal(t.State) && t.State != StateDone {
+		s.removePart(t)
+	}
 }
 
 func (s *Service) stopTask(id string) {
@@ -324,8 +342,8 @@ func (s *Service) OnControl(peerID string, env *proto.Envelope) {
 func (s *Service) end(t store.Transfer, state, code, msg string) {
 	_ = s.db.SetTransferState(t.ID, state, code)
 	s.dropSource(t.ID)
-	if t.Direction == DirIn {
-		s.removePart(t)
+	if t.Direction == DirIn && !s.hasTask(t.ID) {
+		s.removePart(t) // otherwise afterTask does it when the file is released
 	}
 	s.forgetMeter(t.ID)
 	s.emit(map[string]any{"type": "file.failed", "transfer_id": t.ID, "code": code, "message": msg, "direction": t.Direction})

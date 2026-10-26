@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+func skipWithoutDescriptors(*testing.T) {}
+
 // dupFD returns a new descriptor for f: the core takes ownership of what it is
 // given (Android's detachFd), so the test hands over a duplicate.
 func dupFD(t *testing.T, f *os.File) int {

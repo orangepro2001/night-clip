@@ -186,6 +186,7 @@ func TestPullWindowsToPhone(t *testing.T) {
 }
 
 func TestPushPhoneToWindowsFromAFileDescriptor(t *testing.T) {
+	skipWithoutDescriptors(t)
 	r := newRig(t, Hooks{}, Hooks{})
 	data := randBytes(t, 2<<20)
 	f, err := os.Open(writeFile(t, t.TempDir(), "src.bin", data))
@@ -222,6 +223,7 @@ func TestPushPhoneToWindowsFromAFileDescriptor(t *testing.T) {
 }
 
 func TestANonSeekableSourceIsSpooledToDisk(t *testing.T) {
+	skipWithoutDescriptors(t)
 	r := newRig(t, Hooks{}, Hooks{})
 	data := randBytes(t, 700_000)
 	pr, pw, err := os.Pipe()
@@ -555,6 +557,7 @@ func TestStartResumesADownloadFromItsPartFile(t *testing.T) {
 }
 
 func TestADescriptorBackedSendCannotResumeAfterARestart(t *testing.T) {
+	skipWithoutDescriptors(t)
 	r := newRig(t, Hooks{}, Hooks{})
 	f, _ := os.Open(writeFile(t, t.TempDir(), "s.bin", randBytes(t, 4096)))
 	id, err := r.pix.svc.Offer(r.win.ID.DeviceID, OfferSource{FD: dupFD(t, f), Name: "s.bin"})
@@ -784,8 +787,9 @@ func TestSettingsValidationAndDefaults(t *testing.T) {
 	if got := r.pix.svc.DownloadDir(); got != filepath.Join(r.pix.dir, "received") {
 		t.Fatalf("android default dir = %s", got)
 	}
-	_ = r.pix.DB.SetSetting(SettingDownloadDir, "/somewhere/else")
-	if got := r.pix.svc.DownloadDir(); got != "/somewhere/else" {
+	elsewhere := filepath.Join(t.TempDir(), "else")
+	_ = r.pix.DB.SetSetting(SettingDownloadDir, elsewhere)
+	if got := r.pix.svc.DownloadDir(); got != elsewhere {
 		t.Fatalf("configured dir = %s", got)
 	}
 	_ = r.pix.DB.SetSetting(SettingMaxFileBytes, "garbage")
@@ -796,7 +800,7 @@ func TestSettingsValidationAndDefaults(t *testing.T) {
 		k, v string
 		ok   bool
 	}{
-		{SettingDownloadDir, "/abs/dir", true}, {SettingDownloadDir, "relative", false},
+		{SettingDownloadDir, t.TempDir(), true}, {SettingDownloadDir, "relative", false},
 		{SettingMaxFileBytes, "1048576", true}, {SettingMaxFileBytes, "10", false}, {SettingMaxFileBytes, "x", false}, {"nope", "1", false},
 	} {
 		if err := ValidateSetting(c.k, c.v); (err == nil) != c.ok {

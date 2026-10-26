@@ -220,7 +220,7 @@ func (s *Service) servePut(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusConflict, "BUSY", map[string]any{"offset": cur})
 		return
 	}
-	defer s.release(t.ID)
+	defer func() { s.release(t.ID); s.afterTask(t.ID) }()
 
 	if t.State != StateTransferring {
 		t = s.setState(t, StateTransferring)
