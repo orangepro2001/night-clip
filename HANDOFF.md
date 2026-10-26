@@ -1,6 +1,7 @@
 # night-clip 交接文档
 
 > 更新于 2026-10-26（功能开发完成、待真机验证阶段）。读完这一份就能接着干活。
+> **最新一轮的交接快照：[HANDOFF-20261026-220002.md](HANDOFF-20261026-220002.md)**（自动广播、密码库评估、0.1.30 发布）。
 > 用户文档：[docs/user-guide.md](docs/user-guide.md)。设计：[docs/README.md](docs/README.md) → `architecture.md` → `api-spec.md`。更新/发布：[docs/update.md](docs/update.md)。壳层开发指南：[docs/shell-guide.md](docs/shell-guide.md)。
 
 ## 0. 一页摘要
