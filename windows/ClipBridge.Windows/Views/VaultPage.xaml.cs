@@ -23,6 +23,7 @@ public partial class VaultPage : UserControl
         LockPanel.Attach(shell);
         MainPanel.Attach(shell);
         shell.VaultLocked += OnVaultLocked;
+        shell.VaultChanged += () => { if (_screen == VaultScreen.Unlocked && _mainLoaded) _ = MainPanel.ReloadAsync(); };
         LockPanel.Succeeded += async created => await OnSucceededAsync(created);
         MainPanel.LockedDetected += () => ShowLocked("", 0);
     }

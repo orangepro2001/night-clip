@@ -8,19 +8,20 @@ namespace ClipBridge.Windows.Logic;
 
 public sealed record VaultStatus(
     bool Exists, bool Unlocked, int AutolockS, int ClipClearS, int RetryAfterS, int Entries, int Backups,
-    long LastManualBackupAt, string Kdf)
+    long LastManualBackupAt, string Kdf, bool KeyFile = false)
 {
     public static VaultStatus FromJson(JsonElement r)
     {
         var kdf = JsonRead.Obj(r, "kdf");
-        var kdfText = kdf.ValueKind == JsonValueKind.Object
-            ? $"Argon2d {JsonRead.Long(kdf, "MemoryMiB")} MiB × {JsonRead.Long(kdf, "Iterations")}"
-            : "";
+        // docs/vault-api.md: kdf is {memory_mib, iterations, parallelism}; the first cores used the Go field names.
+        var memory = JsonRead.Long(kdf, "memory_mib", JsonRead.Long(kdf, "MemoryMiB"));
+        var iterations = JsonRead.Long(kdf, "iterations", JsonRead.Long(kdf, "Iterations"));
+        var kdfText = kdf.ValueKind == JsonValueKind.Object ? $"Argon2d {memory} MiB × {iterations}" : "";
         return new VaultStatus(
             JsonRead.Bool(r, "exists"), JsonRead.Bool(r, "unlocked"),
             (int)JsonRead.Long(r, "autolock_s", 300), (int)JsonRead.Long(r, "clip_clear_s", 20),
             (int)JsonRead.Long(r, "retry_after_s"), (int)JsonRead.Long(r, "entries"), (int)JsonRead.Long(r, "backups"),
-            JsonRead.Long(r, "last_manual_backup_at"), kdfText);
+            JsonRead.Long(r, "last_manual_backup_at"), kdfText, JsonRead.Bool(r, "key_file"));
     }
 }
 

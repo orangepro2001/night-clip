@@ -257,6 +257,9 @@ internal sealed partial class ShellController : IDisposable
                 case VaultLockedEvent v:
                     OnVaultLockedEvent(v);
                     break;
+                case VaultChangedEvent:
+                    VaultChanged?.Invoke();
+                    break;
             }
         }
         catch (Exception ex) { AppLog.Error("dispatch " + ev.Type, ex); }

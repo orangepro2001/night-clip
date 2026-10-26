@@ -281,6 +281,14 @@ public class LockPolicyTests
     }
 
     [Fact]
+    public void ChangedEvent_Parses()
+    {
+        var ev = Assert.IsType<VaultChangedEvent>(CoreEventParser.Parse("""{"type":"vault.changed","reason":"sync","device_id":"dev_x","stats":{}}"""));
+        Assert.Equal("sync", ev.Reason);
+        Assert.Equal("vault.changed", ev.LogLine);
+    }
+
+    [Fact]
     public void LockedEvent_Parses()
     {
         var ev = CoreEventParser.Parse("""{"type":"vault.locked","reason":"idle"}""");

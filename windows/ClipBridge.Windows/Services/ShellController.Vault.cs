@@ -33,6 +33,9 @@ internal sealed partial class ShellController
     /// <summary>The vault was locked (by the core, the user, or a session event). UI thread. The page must drop everything it holds.</summary>
     public event Action<VaultLockedEvent>? VaultLocked;
 
+    /// <summary>The unlocked vault was changed by something other than this UI (a sync merge): reload the list. UI thread.</summary>
+    public event Action? VaultChanged;
+
     // ---- calling the core -----------------------------------------------------------------
 
     /// <summary>Runs a vault call off the UI thread. Errors come back as a friendly text (and the code, for RATE_LIMITED countdowns).</summary>

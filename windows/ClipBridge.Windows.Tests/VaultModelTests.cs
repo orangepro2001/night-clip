@@ -39,7 +39,7 @@ public class VaultModelTests
     {
         var s = VaultStatus.FromJson(VJ.Parse("""
             {"exists":true,"unlocked":false,"autolock_s":120,"clip_clear_s":0,"retry_after_s":7,"entries":3,"backups":2,
-             "last_manual_backup_at":1700000000,"kdf":{"MemoryMiB":64,"Iterations":3,"Parallelism":2}}
+             "last_manual_backup_at":1700000000,"key_file":true,"kdf":{"memory_mib":64,"iterations":3,"parallelism":2}}
             """));
         Assert.True(s.Exists);
         Assert.False(s.Unlocked);
@@ -49,6 +49,9 @@ public class VaultModelTests
         Assert.Equal(3, s.Entries);
         Assert.Equal(1700000000, s.LastManualBackupAt);
         Assert.Contains("64 MiB", s.Kdf);
+        Assert.True(s.KeyFile);
+        // The first cores wrote the Go field names: still understood.
+        Assert.Contains("32 MiB", VaultStatus.FromJson(VJ.Parse("""{"kdf":{"MemoryMiB":32,"Iterations":3}}""")).Kdf);
 
         var empty = VaultStatus.FromJson(VJ.Parse("{}"));
         Assert.False(empty.Exists);
