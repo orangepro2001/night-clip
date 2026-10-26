@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -198,7 +199,8 @@ func TestKeyFileRoundTripAndNoOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st, _ := os.Stat(path); st.Mode().Perm() != 0o600 {
+	// Windows has no POSIX mode bits; the user profile ACL protects the file there.
+	if st, _ := os.Stat(path); runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
 		t.Fatalf("key file mode = %v, want 0600", st.Mode().Perm())
 	}
 	priv, err := LoadPrivateKey(path)
