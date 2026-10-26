@@ -39,7 +39,9 @@ import com.nightclip.app.R
 import com.nightclip.app.logic.KdfLevel
 import com.nightclip.app.logic.MasterPasswordRules
 import com.nightclip.app.logic.PasswordStrengthUi
+import com.nightclip.app.logic.KeyFileHint
 import com.nightclip.app.logic.RateLimitCountdown
+import com.nightclip.app.logic.VaultSyncLogic
 import com.nightclip.app.ui.InfoCard
 import kotlinx.coroutines.delay
 
@@ -60,6 +62,9 @@ fun UnlockScreen(vm: VaultViewModel, onMessage: (String) -> Unit, modifier: Modi
     val rate by vm.rateLimit.collectAsStateWithLifecycle()
     val quick by vm.quickAvailability.collectAsStateWithLifecycle()
     val quickNotice by vm.quickNotice.collectAsStateWithLifecycle()
+    val status by vm.status.collectAsStateWithLifecycle()
+    val keyHint = KeyFileHint.of(status?.keyFile)
+    var showKeyPicker by remember { mutableStateOf(false) }
     val activity = LocalContext.current.findActivity() as? FragmentActivity
 
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -98,7 +103,14 @@ fun UnlockScreen(vm: VaultViewModel, onMessage: (String) -> Unit, modifier: Modi
             imeAction = ImeAction.Done,
             onDone = { submit() },
             enabled = !busy,
+            keyFileLabel = stringResource(
+                if (keyHint == KeyFileHint.EXPECTED) R.string.vault_key_file_pick_expected else R.string.vault_key_file_pick,
+            ),
+            showKeyFile = keyHint != KeyFileHint.NOT_USED || showKeyPicker || keyFile != null,
         )
+        if (keyHint == KeyFileHint.NOT_USED && !showKeyPicker && keyFile == null) {
+            TextButton(onClick = { showKeyPicker = true }) { Text(stringResource(R.string.vault_key_file_show)) }
+        }
         if (waitS > 0) {
             InfoCard(container = MaterialTheme.colorScheme.errorContainer) {
                 Text(stringResource(R.string.vault_rate_limited, RateLimitCountdown.label(waitS)), color = MaterialTheme.colorScheme.onErrorContainer)
@@ -117,6 +129,7 @@ fun UnlockScreen(vm: VaultViewModel, onMessage: (String) -> Unit, modifier: Modi
         }
         quickNotice?.let { HintText(it) }
         HintText(stringResource(R.string.vault_forgot_hint))
+        TextButton(onClick = { vm.openSync() }) { Text(stringResource(R.string.vault_sync_title)) }
     }
 }
 
@@ -146,6 +159,10 @@ fun CreateVaultScreen(vm: VaultViewModel, onMessage: (String) -> Unit, modifier:
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.vault_create_title), style = MaterialTheme.typography.headlineSmall)
+        InfoCard {
+            Text(VaultSyncLogic.HINT_NO_VAULT, style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { vm.openSync() }) { Text(stringResource(R.string.vault_sync_title)) }
+        }
         InfoCard(container = MaterialTheme.colorScheme.errorContainer) {
             Text(
                 stringResource(R.string.vault_forgot_warning_title),

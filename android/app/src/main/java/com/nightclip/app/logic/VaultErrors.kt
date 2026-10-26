@@ -4,12 +4,13 @@ import com.nightclip.app.core.ErrorMessages
 
 /** Error code -> text for vault calls (docs/vault-api.md §2). Anything else falls back to [ErrorMessages]. */
 object VaultErrors {
-    enum class Context { GENERAL, UNLOCK, CREATE, EXPORT, IMPORT, BACKUP }
+    enum class Context { GENERAL, UNLOCK, CREATE, EXPORT, IMPORT, BACKUP, SYNC }
 
     fun message(code: String, retryAfterS: Int = 0, context: Context = Context.GENERAL): String = when (code) {
         "VAULT_LOCKED" -> "密码库已锁定，请先解锁"
         "VAULT_WRONG_CREDENTIALS" -> when (context) {
             Context.IMPORT -> "导入文件的密码或密钥文件不对，或文件已损坏。"
+            Context.SYNC -> "对方库的主密码或密钥文件不对，请再试一次。"
             Context.BACKUP -> "密码或密钥文件不对，或备份已损坏。如果这份备份是更换主密码之前的，请输入旧密码。"
             else -> "主密码或密钥文件不对，或文件已损坏。可以从备份恢复。"
         }

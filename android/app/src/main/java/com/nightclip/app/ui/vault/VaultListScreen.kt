@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -46,6 +48,7 @@ import com.nightclip.app.core.VaultEntrySummary
 import com.nightclip.app.logic.VaultFilter
 import com.nightclip.app.logic.VaultListLogic
 import com.nightclip.app.logic.VaultTexts
+import com.nightclip.app.platform.VaultSession
 import com.nightclip.app.ui.ConfirmDialog
 import com.nightclip.app.ui.LifecycleRefresh
 
@@ -58,6 +61,7 @@ fun VaultListScreen(vm: VaultViewModel, browse: VaultBrowseViewModel) {
     val groups by browse.groups.collectAsStateWithLifecycle()
     val entries by browse.entries.collectAsStateWithLifecycle()
     val status by vm.status.collectAsStateWithLifecycle()
+    val attention by VaultSession.attention.collectAsStateWithLifecycle()
 
     var menu by remember { mutableStateOf(false) }
     var addDialog by remember { mutableStateOf(false) }
@@ -72,13 +76,21 @@ fun VaultListScreen(vm: VaultViewModel, browse: VaultBrowseViewModel) {
             VaultTopBar(stringResource(R.string.nav_vault), onBack = null) {
                 IconButton(onClick = { vm.lock() }) { Icon(Icons.Filled.Lock, contentDescription = stringResource(R.string.vault_lock_now)) }
                 Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more)) }
+                    IconButton(onClick = { menu = true }) {
+                        BadgedBox(badge = { if (attention.isNotEmpty()) Badge() }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.more))
+                        }
+                    }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         MenuItem(R.string.vault_menu_health) { menu = false; vm.push(VaultRoute.Health) }
                         MenuItem(R.string.vault_menu_backups) { menu = false; vm.push(VaultRoute.Backups) }
                         MenuItem(R.string.vault_menu_import) { menu = false; vm.push(VaultRoute.Import) }
                         MenuItem(R.string.vault_menu_export) { menu = false; vm.push(VaultRoute.Export) }
                         MenuItem(R.string.vault_menu_change_master) { menu = false; vm.push(VaultRoute.ChangeMaster) }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.vault_menu_sync) + if (attention.isNotEmpty()) " ●" else "") },
+                            onClick = { menu = false; vm.openSync() },
+                        )
                         MenuItem(R.string.vault_menu_settings) { menu = false; vm.push(VaultRoute.Settings) }
                     }
                 }

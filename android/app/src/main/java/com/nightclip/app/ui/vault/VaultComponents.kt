@@ -154,13 +154,15 @@ fun CredentialsInput(
     imeAction: ImeAction = ImeAction.Done,
     onDone: (() -> Unit)? = null,
     enabled: Boolean = true,
+    keyFileLabel: String = stringResource(R.string.vault_key_file_pick),
+    showKeyFile: Boolean = true,
 ) {
     val pick = rememberKeyFilePicker(onPicked = { if (it != null) onKeyFile(it) }, onError = onMessage)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SecretTextField(password, onPassword, passwordLabel, imeAction = imeAction, onDone = onDone, enabled = enabled)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (showKeyFile) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (keyFile == null) {
-                OutlinedButton(onClick = pick, enabled = enabled) { Text(stringResource(R.string.vault_key_file_pick)) }
+                OutlinedButton(onClick = pick, enabled = enabled) { Text(keyFileLabel) }
             } else {
                 Text(stringResource(R.string.vault_key_file_chosen, keyFile.name), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 TextButton(onClick = { onKeyFile(null) }) { Text(stringResource(R.string.vault_key_file_remove)) }

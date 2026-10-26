@@ -23,7 +23,23 @@ data class VaultStatus(
     val kdf: VaultKdfInfo?,
     val backups: Int,
     val lastManualBackupAt: Long,
+    /** Whether this device's last credentials included a key file; null = unknown (a vault that arrived by sync, not unlocked here yet). */
+    val keyFile: Boolean? = null,
 )
+
+/** One paired device in `vault.sync_status`. [detail] is the core's English diagnostic text; the shell shows its own Chinese text per [state]. */
+data class SyncPeer(
+    val deviceId: String,
+    val name: String,
+    val enabled: Boolean,
+    val connected: Boolean,
+    val state: String,
+    val detail: String,
+    val lastOkAt: Long,
+    val pendingIncoming: Boolean,
+)
+
+data class SyncStatus(val vaultExists: Boolean, val peers: List<SyncPeer>)
 
 /** Row of `vault.list`. Contains no secrets and no notes. */
 data class VaultEntrySummary(
@@ -151,6 +167,23 @@ object VaultParsers {
         kdf = o.kdfOrNull("kdf"),
         backups = o.optInt("backups", 0),
         lastManualBackupAt = o.optLong("last_manual_backup_at", 0),
+        keyFile = if (o.has("key_file")) o.optBoolean("key_file") else null,
+    )
+
+    fun syncStatus(o: JSONObject) = SyncStatus(
+        vaultExists = o.optBoolean("vault_exists", false),
+        peers = o.optJSONArray("peers").objects().map {
+            SyncPeer(
+                deviceId = it.optString("device_id", ""),
+                name = it.optString("name", ""),
+                enabled = it.optBoolean("enabled", false),
+                connected = it.optBoolean("connected", false),
+                state = it.optString("state", "idle"),
+                detail = it.optString("detail", ""),
+                lastOkAt = it.optLong("last_ok_at", 0),
+                pendingIncoming = it.optBoolean("pending_incoming", false),
+            )
+        },
     )
 
     fun summary(o: JSONObject) = VaultEntrySummary(

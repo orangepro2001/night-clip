@@ -150,6 +150,21 @@ object VaultApi {
         return run("vault.export_csv", p) { }
     }
 
+    // ---- device sync (docs/vault-api.md §3.6) ---------------------------------------------------
+
+    suspend fun syncStatus() = run("vault.sync_status", parse = VaultParsers::syncStatus)
+    suspend fun syncEnable(deviceId: String, enabled: Boolean) =
+        run("vault.sync_enable", JSONObject().put("device_id", deviceId).put("enabled", enabled)) { }
+    suspend fun syncNow() = run("vault.sync_now") { }
+
+    /** needs_password: pass [creds] (the OTHER device's current master password). review: pass [approve] = true. */
+    suspend fun syncResolve(deviceId: String, approve: Boolean, creds: VaultCreds?): ApiResult<Unit> {
+        val p = JSONObject().put("device_id", deviceId)
+        if (approve) p.put("approve", true)
+        if (creds != null) putCreds(p, creds)
+        return run("vault.sync_resolve", p) { }
+    }
+
     // ---- settings ----------------------------------------------------------------------------
 
     suspend fun setAutolock(seconds: Int) = CoreApi.setSetting("vault_autolock_s", seconds.toString())

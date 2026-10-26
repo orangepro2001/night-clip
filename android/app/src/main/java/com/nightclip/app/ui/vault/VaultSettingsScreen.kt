@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nightclip.app.R
 import com.nightclip.app.logic.QuickUnlockAvailability
 import com.nightclip.app.logic.VaultSettingOptions
+import com.nightclip.app.platform.VaultSession
 import com.nightclip.app.ui.SectionTitle
 
 @Composable
@@ -72,6 +73,13 @@ fun VaultSettingsScreen(vm: VaultViewModel, onMessage: (String) -> Unit) {
                     })
                 }
                 HintText(stringResource(R.string.vault_settings_quick_hint))
+            }
+
+            SectionTitle(stringResource(R.string.vault_sync_title))
+            HintText(stringResource(R.string.vault_settings_sync_hint))
+            val attention by VaultSession.attention.collectAsStateWithLifecycle()
+            OutlinedButton(onClick = { vm.openSync() }) {
+                Text(stringResource(R.string.vault_sync_title) + if (attention.isNotEmpty()) " ●" else "")
             }
 
             SectionTitle(stringResource(R.string.vault_settings_info))

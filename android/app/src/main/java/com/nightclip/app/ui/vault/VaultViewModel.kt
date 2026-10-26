@@ -22,6 +22,7 @@ import com.nightclip.app.platform.VaultSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -61,6 +62,18 @@ class VaultViewModel(application: Application) : VaultBaseViewModel(application)
     private val _exportNudge = MutableStateFlow(false)
     val exportNudge: StateFlow<Boolean> = _exportNudge.asStateFlow()
 
+    /** The device-sync screen is shown over every phase (it also works for a locked vault or when none exists yet). */
+    private val _syncOpen = MutableStateFlow(false)
+    val syncOpen: StateFlow<Boolean> = _syncOpen.asStateFlow()
+
+    fun openSync() {
+        _syncOpen.value = true
+    }
+
+    fun closeSync() {
+        _syncOpen.value = false
+    }
+
     private val _route = MutableStateFlow<List<VaultRoute>>(emptyList())
     val route: StateFlow<List<VaultRoute>> = _route.asStateFlow()
 
@@ -73,6 +86,9 @@ class VaultViewModel(application: Application) : VaultBaseViewModel(application)
             awaitCore()
             refresh()
         }
+        // A sync merge or a vault that arrived from another device changes what vault.status says.
+        viewModelScope.launch { VaultSession.dataVersion.drop(1).collect { refresh() } }
+        viewModelScope.launch { VaultSession.joined.collect { if (it != null) refresh() } }
         // The core's own idle lock reaches the screens through VaultSession.locks (base class -> wipe()).
     }
 

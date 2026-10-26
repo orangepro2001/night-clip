@@ -222,4 +222,26 @@
     <string name="vault_settings_kdf">加密参数：Argon2d，%1$d MiB × %2$d 次</string>
     <string name="vault_settings_entries">条目：%1$d 个</string>
     <string name="vault_settings_backups">备份：%1$d 份</string>
+
+    <!-- Device sync -->
+    <string name="vault_menu_sync">设备同步</string>
+    <string name="vault_sync_title">设备同步</string>
+    <string name="vault_sync_unknown_device">其他设备</string>
+    <string name="vault_sync_no_vault">这台设备上还没有密码库。两边都开启同步后，对方的库会直接传过来，到时用那个库的主密码解锁即可。</string>
+    <string name="vault_sync_no_devices">还没有配对设备。请先在“设备”页配对，再回到这里开启。</string>
+    <string name="vault_sync_now">立即同步</string>
+    <string name="vault_sync_remove_hint">关掉某台设备的开关，只会停止之后的同步，不会清除它已经拿到的内容。</string>
+    <string name="vault_sync_enter_password">输入对方的主密码</string>
+    <string name="vault_sync_review">查看并处理</string>
+    <string name="vault_sync_password_title">合并 %1$s 的密码库</string>
+    <string name="vault_sync_password_text">对方更换过主密码。请输入对方设备上那个库现在的主密码（和密钥文件），用来读取它的修改并合并到本机。密码只用于这一次合并，不会保存。</string>
+    <string name="vault_sync_password_label">对方库的主密码</string>
+    <string name="vault_sync_merge">合并</string>
+    <string name="vault_sync_review_title">%1$s 的修改需要你确认</string>
+    <string name="vault_sync_approve">批准并合并</string>
+    <string name="vault_sync_ignore">忽略</string>
+    <string name="vault_joined_title">已加入另一台设备的密码库</string>
+    <string name="vault_key_file_pick_expected">选择密钥文件（这个库需要）</string>
+    <string name="vault_key_file_show">我的主密码还搭配了密钥文件…</string>
+    <string name="vault_settings_sync_hint">在多台设备之间同步同一个密码库（只传加密文件）。</string>
 </resources>

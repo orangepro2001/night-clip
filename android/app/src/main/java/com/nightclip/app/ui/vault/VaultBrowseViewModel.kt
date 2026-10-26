@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -85,6 +86,21 @@ class VaultBrowseViewModel(application: Application) : VaultBaseViewModel(applic
             combine(_query, _filter, _groupFilter, reload, VaultSession.dataVersion) { q, f, g, _, _ -> Triple(q, f, g) }
                 .debounce(180)
                 .collectLatest { (q, f, g) -> if (VaultSession.unlocked.value) load(q, f, g) }
+        }
+    }
+
+    init {
+        // A sync merge may have changed or removed the entry on screen.
+        viewModelScope.launch {
+            VaultSession.dataVersion.drop(1).collect {
+                val id = _detail.value?.id
+                if (id != null && VaultSession.unlocked.value) {
+                    when (val r = VaultApi.get(id)) {
+                        is ApiResult.Ok -> _detail.value = r.value
+                        is ApiResult.Fail -> if (r.code == "VAULT_NOT_FOUND") _detail.value = null else fail(r)
+                    }
+                }
+            }
         }
     }
 
