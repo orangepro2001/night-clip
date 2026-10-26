@@ -19,6 +19,8 @@
 GO        ?= go
 DOTNET    ?= $(shell command -v dotnet || echo $$HOME/.dotnet/dotnet)
 MINGW_CC  ?= x86_64-w64-mingw32-gcc
+# Ubuntu 22.04 ships `wine64`; 24.04 and later only `wine` (it runs 64-bit programs too).
+WINE      ?= $(shell command -v wine64 || command -v wine || echo wine64)
 DIST      := core/dist
 JAVAPKG   ?= com.nightclip.core
 ANDROIDAPI ?= 26
@@ -64,8 +66,8 @@ dll-smoke:
 
 dll-wine: dll
 	$(MINGW_CC) -Wall -Wextra -Wno-cast-function-type -o $(DIST)/windows-amd64/smoke_win.exe core/test/abi/smoke_win.c
-	cd $(DIST)/windows-amd64 && WINEDEBUG=-all WINEPREFIX=$${WINEPREFIX:-$$HOME/.wine-clipbridge} \
-		wine64 smoke_win.exe clipbridge_core.dll
+	cd $(DIST)/windows-amd64 && WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml=" WINEPREFIX=$${WINEPREFIX:-$$HOME/.wine-clipbridge} \
+		$(WINE) smoke_win.exe clipbridge_core.dll
 
 test-interop: dll-smoke
 	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) test windows/ClipBridge.Windows.Tests

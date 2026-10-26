@@ -43,6 +43,8 @@
 
 丢失 Android 密钥后，已安装的 App 只能卸载重装；丢失发布密钥则需要发一个新信任密钥的版本（见 `keys.go` 的轮换说明）。
 
+**备份**：`scripts/backup-keys.sh` 把三个文件打包到 `~/backups/clipbridge-keys/`（目录 700、文件 600、写入后逐字节校验、附 `SHA256SUMS` 与 `RESTORE.txt`）。这是同一块盘上的明文备份，只防误删；请另存一份到本机之外（密码管理器附件、加密 U 盘等）。更换或新增密钥后重新运行。
+
 ## 3. 清单与端点
 
 `GET {update_url}/v1/{platform}/latest`（`platform` = `android` | `windows`）：

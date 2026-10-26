@@ -287,13 +287,15 @@ android/app/src/main/{AndroidManifest.xml,java/com/nightclip/app/{CoreHost,DevKe
 - 发布：`scripts/release-local.sh`（版本号 = 提交数；工作区必须干净）→ `cbdist publish` → `~/.local/share/clipbridge/releases`。已用真实密钥发布过一次 0.1.7（两个平台），并用**真实公钥**走通了「旧版本设备 → 检查 → 自动下载 → SHA-256 一致」，以及「已是最新 → up_to_date」。
 - 密钥只在本机 `~/.config/clipbridge/`（Ed25519 发布密钥、Android JKS）。**请备份**。更新地址在被忽略的 `release.local.env`（仓库公开，不能写 tailnet 名）。
 - 测试：`core/update` 55 个、`facade/update_test.go` 7 个、Windows `UpdateApplier`/`UpdateModel` 20 个、Android `UpdateStateTest` 6 个。`make check` 全绿。
-- **尚未做 / 待用户批准**：
-  1. 常驻服务 `scripts/install-dist-service.sh`（systemd 用户服务）被权限策略拒绝，**未安装**；
-  2. `tailscale serve --set-path /clipbridge http://127.0.0.1:18780` **未执行**（全局规则：只添加用户指定的路径）；在此之前设备访问不到本机分发地址；
-  3. `gh auth login`（用户本人操作），之后才能读 CI 日志、创建 Release；
-  4. GitHub `nightly` Release：全部功能完成后再做（docs/update.md §9：CI 需要同一把 Android 密钥与 Ed25519 密钥作为仓库密钥）。
+- **已做（2026-10-26 晚）**：
+  1. 常驻服务 `clipbridge-dist.service`（systemd 用户服务，`Linger=yes`，开机自启）已安装并运行，只监听 `127.0.0.1:18780`，正在提供 0.1.7；
+  2. `gh` 已用用户提供的 token 登录（存于 `~/.config/gh/hosts.yml`，600），原 token 文件已 `shred`；
+  3. 密钥备份：`scripts/backup-keys.sh` → `~/backups/clipbridge-keys/`（700，含校验和与 RESTORE.txt，已逐字节验证）。**同盘备份只防误删，请再复制一份到本机之外**；
+  4. 本机 SSH 登录不再自动进入 tmux（删除了 `~/.zshrc` 里的 auto-tmux 段，备份为 `~/.zshrc.bak-*`）；`~/.tmux.conf` 加了 OSC 52 复制（`set-clipboard on`）、vi 复制模式和 `prefix + m` 切换鼠标。
+- **仍待用户批准**：`tailscale serve --set-path /clipbridge http://127.0.0.1:18780`（全局规则：只添加用户指定的路径）。在此之前设备访问不到本机分发地址。
+- **GitHub `nightly` Release**：全部功能完成后再做（docs/update.md §9：CI 需要同一把 Android 密钥与 Ed25519 密钥作为仓库密钥）。
 - **未在真机验证**：Android 系统安装器与「安装未知应用」跳转；Windows 上真实的文件占用/杀毒干扰与 `--apply-update` 重启；`tailscale serve` 的路径前缀行为（若保留前缀，给 `cbdist serve` 加 `-prefix /clipbridge`）。
-- **CI**：自首次推送起 linux/android/windows 三个任务全部失败，**原因未知**（日志需要登录）。已知步骤：linux 在 `make vet test dll-smoke dll-wine …`；android 在 `android-actions/setup-android@v3`；windows 在 `go test ./...`。在本机用 Wine 跑 Windows 版 Go 测试（proto/identity/store/update/facade）全部通过。
+- **CI（已读到日志）**：windows 任务已通过（之前失败是测试里的 POSIX 权限断言，已修）。linux 任务失败是 `wine64: not found`（ubuntu-latest 只有 `wine`）且 apt 安装 wine 时可能卡在交互提示；android 任务失败是 `setup-android` 在 runner 预装 SDK 上装 `tools` 包失败。已改：Makefile 自动选 `wine64`/`wine`，CI 非交互安装并设超时，Android 改用预装 SDK。
 
 ## 11. 与 `development-plan.md` Phase 0 清单的对照
 

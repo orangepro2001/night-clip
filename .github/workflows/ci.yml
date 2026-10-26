@@ -1,7 +1,6 @@
-# Prepared but not yet pushed anywhere (no git remote is configured).
-# Linux job mirrors `make check` minus Wine; the Windows job is the only place
-# the real WPF app is built and the real clipbridge_core.dll is loaded by .NET
-# on Windows. Action versions and runner images are unverified: bump on first run.
+# Linux job mirrors `make check` minus the Android toolchain; the Android job builds the
+# AAR and APKs on the runner's preinstalled SDK; the Windows job is the only place the
+# real WPF app is built and the real clipbridge_core.dll is loaded by .NET on Windows.
 name: ci
 
 on:
@@ -12,6 +11,7 @@ on:
 jobs:
   linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -21,11 +21,17 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64 wine64
+      # Non-interactive: wine's postinst can otherwise wait for input forever.
+      - run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc-mingw-w64-x86-64 wine wine64
+        env:
+          DEBIAN_FRONTEND: noninteractive
       - run: make vet test dll-smoke dll-wine test-interop build-windows-app cli
 
   android:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -36,8 +42,10 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
+      # GitHub's Ubuntu image already has the Android SDK (ANDROID_HOME); only add what we pin.
+      - run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358"
       - run: |
           go install golang.org/x/mobile/cmd/gomobile@latest
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
@@ -49,6 +57,7 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
