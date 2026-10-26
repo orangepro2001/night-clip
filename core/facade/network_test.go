@@ -533,7 +533,7 @@ func TestFileTransferThroughTheFacade(t *testing.T) {
 }
 
 func TestControlChannelServesTheWhitelistedMethods(t *testing.T) {
-	sock := filepath.Join(t.TempDir(), "ctl.sock")
+	sock := controlAddress(t)
 	c := New()
 	cfg := configFor(t, t.TempDir(), func(m map[string]any) { m["pipe"] = sock; m["device_name"] = "Desk" })
 	if err := c.Init(cfg); err != nil {
@@ -574,7 +574,8 @@ func TestControlChannelServesTheWhitelistedMethods(t *testing.T) {
 }
 
 func TestAClaimedControlAddressOnlyCostsTheControlChannel(t *testing.T) {
-	sock := filepath.Join(t.TempDir(), "ctl.sock")
+	skipWithoutSquatProtection(t)
+	sock := controlAddress(t)
 	squatter, err := pipe.Listen(sock)
 	if err != nil {
 		t.Fatal(err)
