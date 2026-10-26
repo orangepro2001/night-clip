@@ -7,7 +7,7 @@
 ## 1. 状态与锁
 
 - 核心同一时刻最多持有一个已解锁的库。**未解锁时除下列方法外一律返回 `VAULT_LOCKED`**：`vault.status`、`vault.create`、`vault.unlock`、`vault.lock`、`vault.verify_master`（需要已解锁）、`vault.generate`、`vault.strength`、`vault.backup_list`、`vault.backup_verify`。
-- **空闲自动锁**：任何 `vault.*`（除 `status`）调用都会重置计时；超过 `vault_autolock_s`（默认 300 秒，范围 30–86400）核心自行锁定并发出事件 `{"type":"vault.locked","reason":"idle"}`。壳在系统锁屏/睡眠/应用进入后台时应调用 `vault.lock`（`reason:"user"`）。
+- **空闲自动锁**：任何 `vault.*`（除 `status` 和 `vault.totp`）调用都会重置计时（轮询一次性验证码**不算**活动，否则无人值守的库永远不会锁）；用户正在输入而没有调用核心时，壳发 `vault.touch`（`{}`）表示“还在”；超过 `vault_autolock_s`（默认 300 秒，范围 30–86400）核心自行锁定并发出事件 `{"type":"vault.locked","reason":"idle"}`。壳在系统锁屏/睡眠/应用进入后台时应调用 `vault.lock`（`reason:"user"`）。
 - **猜测限速**：同一进程内连续 3 次错误凭据后，每次再试等待 1、2、4…秒（上限 5 分钟），期间 `vault.unlock`/`verify_master`/`change_master`/`export_*`/`backup_verify` 返回 `RATE_LIMITED`（`retryable:true`，`details.retry_after_s`）。成功一次清零。这只能挡住对运行中应用的脚本猜测；偷走文件的离线猜测靠 Argon2 成本。
 - 关闭核心（`shutdown`）会先锁库。
 
@@ -18,6 +18,7 @@
 | `VAULT_LOCKED` | 库未解锁 | 跳到解锁界面 |
 | `VAULT_WRONG_CREDENTIALS` | 主密码/密钥文件错误**或文件损坏**（故意不区分） | “主密码或密钥文件不对，或文件已损坏。可以从备份恢复。” |
 | `VAULT_NOT_FOUND` | 条目/分组/备份不存在 | |
+| `VAULT_NOT_EMPTY` | 删除的分组还有条目或子分组 | 提示先删条目 |
 | `VAULT_EXISTS` | 库已存在 / 导出目标文件已存在 | |
 | `VAULT_UNSUPPORTED` | 文件的密钥派生参数不被接受（过大或不支持的 KDF） | “这个库的加密参数不受支持或不安全。” |
 | `VAULT_BROKEN` | 内存状态不一致 | 提示锁定后重新解锁 |
@@ -60,9 +61,11 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `vault.get` | `id` | 详情：同上加 `notes`、`fields[{name,value,protected,has_value}]`（保护字段的 `value` 为空）、`has_password`、`has_totp`、`attachments[{name,size}]`、`history`（版本数）、`created_at`、`password_strength{bits,label}` |
 | `vault.reveal` | `id`, `field` | `{value}`。`field`：`password`、`username`、`url`、`notes`、`totp`（当前验证码）、`totp_secret`、`field:<名字>`。**只用于在屏幕上显示**（用完立刻丢弃）；要复制到剪贴板请用 `vault.copy` |
 | `vault.copy` | 同上 | `{value, clear_after_s}`。除返回值外，核心把该文本登记为“来自密码库”：随后的剪贴板变化**不会被自动广播**（`clip.local_changed` 返回 `suppressed: "vault_origin"`）。壳必须按 §4 写入剪贴板并在 `clear_after_s` 秒后清除（0 = 不清除） |
+| `vault.touch` | — | `{}`：只重置空闲计时 |
 | `vault.totp` | `id` | `{code, seconds_left}`（RFC 6238；SHA1/256/512，6–8 位，周期 1–3600 秒） |
 | `vault.add` | `entry` | `{id}` |
 | `vault.update` | `id`, `entry` | `{}`；内容有变化才写入历史并更新修改时间；附件、所在分组、历史保持 |
+| `vault.patch` | `id` + 要改的字段（`title/username/password/url/notes/totp/kind/tags/fields/expires_at`，没给的保持不变；给了 `fields` 则整体替换自定义字段） | `{}`；改一个密码不必读出所有保护字段 |
 | `vault.delete` | `id` | `{permanent}`；第一次移入回收站，回收站里再删一次才永久删除 |
 | `vault.restore_entry` | `id` | `{}`：从回收站放回原分组 |
 | `vault.empty_trash` | — | `{removed}` |

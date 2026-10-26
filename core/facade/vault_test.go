@@ -326,3 +326,64 @@ func TestVaultMatchForAutofill(t *testing.T) {
 		t.Fatalf("match while locked: %s", code)
 	}
 }
+
+func TestVaultTotpDoesNotKeepAnUnattendedVaultUnlocked(t *testing.T) {
+	n := startNode(t, "Desk", "windows", false)
+	vcreate(t, n)
+	id := n.call("vault.add", map[string]any{"entry": map[string]any{"title": "t", "totp": "JBSWY3DPEHPK3PXP"}})["id"].(string)
+	_ = n.c.db.SetSetting(settingVaultAutoLock, "1")
+	n.call("vault.list", nil) // re-arm with 1 s
+	deadline := time.Now().Add(900 * time.Millisecond)
+	for time.Now().Before(deadline) { // polling the one-time code must not postpone the lock
+		n.call("vault.totp", map[string]any{"id": id})
+		time.Sleep(100 * time.Millisecond)
+	}
+	n.waitEvent("vault.locked", map[string]any{"reason": "idle"})
+
+	n.call("vault.unlock", map[string]any{"password": vpw})
+	n.call("vault.list", nil)
+	for i := 0; i < 8; i++ { // "still here" does
+		time.Sleep(250 * time.Millisecond)
+		n.call("vault.touch", nil)
+	}
+	if st := n.call("vault.status", nil); st["unlocked"] != true {
+		t.Fatalf("vault.touch must keep the vault open: %v", st)
+	}
+}
+
+func TestVaultGroupDeleteNotEmptyCode(t *testing.T) {
+	n := startNode(t, "Desk", "windows", false)
+	vcreate(t, n)
+	gid := n.call("vault.group_add", map[string]any{"name": "G"})["id"].(string)
+	n.call("vault.add", map[string]any{"entry": map[string]any{"title": "x", "group_id": gid}})
+	if code := n.errorCode("vault.group_delete", map[string]any{"id": gid}); code != "VAULT_NOT_EMPTY" {
+		t.Fatalf("code = %s", code)
+	}
+}
+
+func TestVaultPatchChangesOnlyWhatIsGiven(t *testing.T) {
+	n := startNode(t, "Desk", "windows", false)
+	vcreate(t, n)
+	id := n.call("vault.add", map[string]any{"entry": map[string]any{
+		"title": "site", "username": "me", "password": "old", "totp": "JBSWY3DPEHPK3PXP",
+		"fields": []map[string]any{{"name": "Key", "value": "keep-me", "protected": true}},
+	}})["id"].(string)
+	n.call("vault.patch", map[string]any{"id": id, "password": "new"})
+	if r := n.call("vault.reveal", map[string]any{"id": id, "field": "password"}); r["value"] != "new" {
+		t.Fatalf("password = %v", r)
+	}
+	if r := n.call("vault.reveal", map[string]any{"id": id, "field": "field:Key"}); r["value"] != "keep-me" {
+		t.Fatalf("a patch wiped a protected field: %v", r)
+	}
+	if r := n.call("vault.reveal", map[string]any{"id": id, "field": "totp_secret"}); r["value"] != "JBSWY3DPEHPK3PXP" {
+		t.Fatalf("a patch wiped the totp secret: %v", r)
+	}
+	got := n.call("vault.get", map[string]any{"id": id})
+	if got["username"] != "me" || got["history"].(float64) != 1 {
+		t.Fatalf("get = %v", got)
+	}
+	n.call("vault.patch", map[string]any{"id": id, "tags": []string{"a"}, "title": "renamed"})
+	if code := n.errorCode("vault.patch", map[string]any{"id": id, "title": ""}); code != "INVALID" {
+		t.Fatalf("empty title: %s", code)
+	}
+}

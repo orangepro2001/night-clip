@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -378,4 +379,39 @@ func seedCount(def int64) int64 {
 		return n
 	}
 	return def
+}
+
+// A restored entry must not be taken away again by the deletion record it came back from, not even
+// when the vault is merged with an export of itself.
+func TestRestoreDropsTheTombstone(t *testing.T) {
+	a, _ := baseVault(t)
+	id, _ := a.AddEntry(Entry{Title: "once deleted", Password: "p"})
+	snap, _ := a.BackupNow()
+	_, _ = a.Delete(id)
+	_, _ = a.Delete(id)
+	export, err := a.ExportKDBX(Creds{Password: []byte("x")}, KDFTest) // carries the tombstone
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Restore(snap.Name, Creds{}, RestoreEntries, []string{id}); err != nil {
+		t.Fatal(err)
+	}
+	if len(a.db.Content.Root.DeletedObjects) != 0 {
+		t.Fatalf("tombstone survived the restore: %+v", a.db.Content.Root.DeletedObjects)
+	}
+	if st, err := a.MergeBytes(export, Creds{Password: []byte("x")}, "import"); err != nil || st.EntriesRemoved != 0 {
+		t.Fatalf("merging an older export removed the restored entry: %+v %v", st, err)
+	}
+	if _, err := a.Get(id); err != nil {
+		t.Fatalf("restored entry is gone: %v", err)
+	}
+}
+
+func TestDeleteGroupNotEmptyHasItsOwnError(t *testing.T) {
+	v := newTestVault(t)
+	gid, _ := v.AddGroup("", "G")
+	_, _ = v.AddEntry(Entry{Title: "x", GroupID: gid})
+	if err := v.DeleteGroup(gid); !errors.Is(err, ErrNotEmpty) {
+		t.Fatalf("DeleteGroup = %v", err)
+	}
 }

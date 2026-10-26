@@ -35,6 +35,7 @@ const (
 	CodeVaultExists      Code = "VAULT_EXISTS"
 	CodeVaultUnsupported Code = "VAULT_UNSUPPORTED"
 	CodeVaultBroken      Code = "VAULT_BROKEN"
+	CodeVaultNotEmpty    Code = "VAULT_NOT_EMPTY"
 	CodeInvalid          Code = "INVALID"
 	CodeMethodNotFound   Code = "METHOD_NOT_FOUND"
 	CodeNotInitialized   Code = "NOT_INITIALIZED"

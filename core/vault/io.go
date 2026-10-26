@@ -274,6 +274,16 @@ func (v *Vault) Restore(name string, c Creds, mode RestoreMode, ids []string) (M
 	return st, v.commit("restore")
 }
 
+func (v *Vault) dropTombstone(u g.UUID) {
+	out := v.db.Content.Root.DeletedObjects[:0]
+	for _, d := range v.db.Content.Root.DeletedObjects {
+		if d.UUID != u {
+			out = append(out, d)
+		}
+	}
+	v.db.Content.Root.DeletedObjects = out
+}
+
 // restoreEntries forces the backup's version of the given entries to become current.
 func (v *Vault) restoreEntries(b *g.Database, only map[string]bool) MergeStats {
 	var st MergeStats
@@ -287,6 +297,7 @@ func (v *Vault) restoreEntries(b *g.Database, only map[string]bool) MergeStats {
 		ne := se.Clone()
 		ne.UUID = se.UUID
 		m.remapBinaries(&ne)
+		v.dropTombstone(se.UUID) // it exists again: a later merge must not delete it by an old record
 		if de, ok := m.dstEntry[se.UUID]; ok {
 			v.pushHistory(de)
 			ne.Histories = de.Histories

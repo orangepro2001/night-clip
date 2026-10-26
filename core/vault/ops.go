@@ -665,7 +665,7 @@ func (v *Vault) DeleteGroup(id string) error {
 		return invalid("the top group cannot be deleted")
 	}
 	if len(gr.Entries) > 0 || len(gr.Groups) > 0 {
-		return invalid("the group is not empty")
+		return ErrNotEmpty
 	}
 	for i := range par.Groups {
 		if par.Groups[i].UUID == gr.UUID {

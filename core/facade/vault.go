@@ -106,6 +106,8 @@ func vaultErr(err error) error {
 		return proto.Errorf(proto.CodeVaultExists, "already exists")
 	case errors.Is(err, vault.ErrUnsupported):
 		return proto.Errorf(proto.CodeVaultUnsupported, "%v", err)
+	case errors.Is(err, vault.ErrNotEmpty):
+		return proto.Errorf(proto.CodeVaultNotEmpty, "the group is not empty")
 	case errors.Is(err, vault.ErrBroken):
 		return proto.Errorf(proto.CodeVaultBroken, "the vault state is inconsistent; lock and unlock again")
 	case errors.Is(err, vault.ErrTooLarge):
@@ -119,13 +121,20 @@ func vaultErr(err error) error {
 // ---- state helpers ------------------------------------------------------------------------------
 
 // open returns the unlocked vault and restarts the idle timer.
-func (c *Core) vaultOpen() (*vault.Vault, error) {
+func (c *Core) vaultOpen() (*vault.Vault, error) { return c.vaultOpenFor("") }
+
+// vaultOpenFor is vaultOpen, except that background polling (the live one-time code of an entry that
+// is open on screen) must not keep an unattended vault unlocked: vault.totp does not count as activity.
+// A shell that sees the user typing sends vault.touch to say "still here".
+func (c *Core) vaultOpenFor(method string) (*vault.Vault, error) {
 	c.vs.mu.Lock()
 	defer c.vs.mu.Unlock()
 	if c.vs.v == nil {
 		return nil, proto.Errorf(proto.CodeVaultLocked, "the vault is locked")
 	}
-	c.armIdleLocked()
+	if method != "vault.totp" {
+		c.armIdleLocked()
+	}
 	return c.vs.v, nil
 }
 
@@ -315,11 +324,13 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 	case "vault.sync_status", "vault.sync_enable", "vault.sync_resolve", "vault.sync_now":
 		return c.vaultSyncCall(method, params)
 	}
-	v, err := c.vaultOpen()
+	v, err := c.vaultOpenFor(method)
 	if err != nil {
 		return nil, err
 	}
 	switch method {
+	case "vault.touch":
+		return map[string]any{}, nil // the call itself restarted the idle timer
 	case "vault.list":
 		var p struct {
 			Query, GroupID, Kind, Tag string
@@ -382,6 +393,49 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 			return nil, err
 		}
 		return map[string]any{}, v.UpdateEntry(p.ID, p.Entry)
+	case "vault.patch":
+		var p struct {
+			ID        string         `json:"id"`
+			Kind      *string        `json:"kind"`
+			Title     *string        `json:"title"`
+			Username  *string        `json:"username"`
+			Password  *string        `json:"password"`
+			URL       *string        `json:"url"`
+			Notes     *string        `json:"notes"`
+			TOTP      *string        `json:"totp"`
+			Tags      *[]string      `json:"tags"`
+			Fields    *[]vault.Field `json:"fields"`
+			ExpiresAt *int64         `json:"expires_at"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		e, err := v.Get(p.ID)
+		if err != nil {
+			return nil, err
+		}
+		set := func(dst *string, src *string) {
+			if src != nil {
+				*dst = *src
+			}
+		}
+		set(&e.Kind, p.Kind)
+		set(&e.Title, p.Title)
+		set(&e.Username, p.Username)
+		set(&e.Password, p.Password)
+		set(&e.URL, p.URL)
+		set(&e.Notes, p.Notes)
+		set(&e.TOTP, p.TOTP)
+		if p.Tags != nil {
+			e.Tags = *p.Tags
+		}
+		if p.Fields != nil {
+			e.Fields = *p.Fields
+		}
+		if p.ExpiresAt != nil {
+			e.ExpiresAt = *p.ExpiresAt
+		}
+		return map[string]any{}, v.UpdateEntry(p.ID, e)
 	case "vault.delete":
 		var p struct {
 			ID string `json:"id"`
