@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.nightclip.app.ClipBridgeApp
 import com.nightclip.app.core.ApiResult
@@ -67,6 +68,9 @@ data class BackgroundReadRuntime(
  * never a silent failure.
  */
 object BackgroundReadController {
+    // Diagnostics only: stage names and error codes, never clipboard text or log lines.
+    private const val TAG = "ClipBridge"
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val _state = MutableStateFlow(BackgroundReadRuntime())
     val state: StateFlow<BackgroundReadRuntime> = _state.asStateFlow()
@@ -197,6 +201,7 @@ object BackgroundReadController {
         val now = System.currentTimeMillis()
         if (ClipboardLogTrigger.isDebounced(now, lastTriggerAt)) return
         lastTriggerAt = now
+        Log.i(TAG, "bg-read: trigger")
         _state.update { it.copy(triggers = it.triggers + 1) }
         if (!reading.compareAndSet(false, true)) return
         scope.launch {
@@ -211,18 +216,19 @@ object BackgroundReadController {
     private suspend fun performRead() {
         val app = app ?: return
         val now = System.currentTimeMillis()
-        if (!app.prefs.backgroundRead.value || !serviceRunning) return
-        if (ClipWriteGuard.isRecent(now)) return
-        if (now < backoffUntil) return
+        if (!app.prefs.backgroundRead.value || !serviceRunning) return skip("disabled")
+        if (ClipWriteGuard.isRecent(now)) return skip("own-write")
+        if (now < backoffUntil) return skip("backoff")
 
-        val settings = (CoreApi.settings() as? ApiResult.Ok)?.value ?: return
-        if (!settings.capture || settings.isPaused(now / 1000)) return
-        val peers = (CoreApi.peers() as? ApiResult.Ok)?.value ?: return
-        if (peers.none { it.canSend && it.sendEnabled }) return
+        val settings = (CoreApi.settings() as? ApiResult.Ok)?.value ?: return skip("settings-unavailable")
+        if (!settings.capture || settings.isPaused(now / 1000)) return skip("capture-off-or-paused")
+        val peers = (CoreApi.peers() as? ApiResult.Ok)?.value ?: return skip("peers-unavailable")
+        if (peers.none { it.canSend && it.sendEnabled }) return skip("no-send-peer")
         if (!serviceRunning || !app.prefs.backgroundRead.value) return
         if (ClipWriteGuard.isRecent()) return // an app write may have landed during the facade calls
 
         val result = overlay.read(app)
+        Log.i(TAG, "bg-read: overlay result=${result.javaClass.simpleName}")
         // The service/setting may have been turned off while the overlay was up.
         if (!serviceRunning || !app.prefs.backgroundRead.value) return
         when (result) {
@@ -230,7 +236,9 @@ object BackgroundReadController {
                 consecutiveReadFailures = 0
                 backoffUntil = 0
                 _state.update { it.copy(readsOk = it.readsOk + 1, lastError = null) }
-                if (AutoSend.handle(app, result.text, result.copiedAtMs, notify = ForegroundTracker.isForeground)) {
+                val started = AutoSend.handle(app, result.text, result.copiedAtMs, notify = ForegroundTracker.isForeground)
+                Log.i(TAG, "bg-read: send started=$started")
+                if (started) {
                     _state.update { it.copy(sends = it.sends + 1) }
                 }
             }
@@ -242,6 +250,10 @@ object BackgroundReadController {
             is OverlayReadResult.Busy -> Unit
             is OverlayReadResult.Failed -> readFailed(result.code, now)
         }
+    }
+
+    private fun skip(reason: String) {
+        Log.i(TAG, "bg-read: skipped ($reason)")
     }
 
     private fun readFailed(code: String, now: Long) {
