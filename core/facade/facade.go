@@ -21,6 +21,7 @@ import (
 	"nightclip/core/identity"
 	"nightclip/core/proto"
 	"nightclip/core/store"
+	"nightclip/core/update"
 )
 
 // Version is the core version reported by the "version" method.
@@ -36,6 +37,14 @@ type Config struct {
 	Platform   string `json:"platform"` // "windows" | "android"
 	Listen     bool   `json:"listen"`
 	Port       int    `json:"port"`
+
+	// Self-update (docs/update.md). AppVersionCode is the installed build's
+	// monotonically increasing versionCode; 0 marks a development build and
+	// disables updates. UpdateURL is the build-time default server; a user
+	// override stored via update.config takes precedence.
+	AppVersionCode int64  `json:"app_version_code"`
+	AppVersionName string `json:"app_version_name"`
+	UpdateURL      string `json:"update_url"`
 }
 
 // Core is one running core instance. Exactly one is expected per process.
@@ -44,6 +53,7 @@ type Core struct {
 	cfg     Config
 	id      *identity.Identity
 	db      *store.DB
+	upd     *update.Manager
 	started bool
 	closed  bool
 
@@ -94,7 +104,13 @@ func (c *Core) Init(configJSON string) (err error) {
 		_ = db.Close()
 		return err
 	}
-	c.cfg, c.id, c.db, c.started = cfg, id, db, true
+	upd, err := c.newUpdateManager(cfg, db)
+	if err != nil {
+		_ = db.Close()
+		return err
+	}
+	c.cfg, c.id, c.db, c.upd, c.started = cfg, id, db, upd, true
+	upd.Run()
 	c.emit(map[string]any{"type": "core.started", "device_id": id.DeviceID})
 	return nil
 }
@@ -135,6 +151,9 @@ func (c *Core) Shutdown() {
 	}
 	c.closed = true
 	close(c.done)
+	if c.upd != nil {
+		c.upd.Close()
+	}
 	if c.db != nil {
 		_ = c.db.Close()
 	}
@@ -191,6 +210,8 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		return c.status()
 	case "identity.get":
 		return c.identity()
+	case "update.status", "update.check", "update.download", "update.config":
+		return c.updateCall(method, paramsJSON)
 	default:
 		return nil, proto.Errorf(proto.CodeMethodNotFound, "unknown method %q", method)
 	}

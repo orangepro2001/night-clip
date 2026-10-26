@@ -24,6 +24,10 @@ const (
 	CodeRateLimited    Code = "RATE_LIMITED"
 	CodeDBUnavailable  Code = "DB_UNAVAILABLE"
 	CodeKeyInvalid     Code = "KEY_INVALID"
+	// Self-update (docs/update.md).
+	CodeUpdateDisabled Code = "UPDATE_DISABLED" // no update URL or app version configured
+	CodeUpdateFailed   Code = "UPDATE_FAILED"   // network / HTTP failure; retryable
+	CodeUpdateRejected Code = "UPDATE_REJECTED" // manifest malformed or signature not trusted
 	CodeInvalid        Code = "INVALID"
 	CodeMethodNotFound Code = "METHOD_NOT_FOUND"
 	CodeNotInitialized Code = "NOT_INITIALIZED"
