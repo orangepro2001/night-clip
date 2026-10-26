@@ -3,7 +3,7 @@
 Windows ↔ Android clipboard sync and file transfer over a Tailscale tailnet.
 One Go core, two thin shells. Design documents live in [`docs/`](docs)
 (start with `docs/README.md`, then `adr/005-go-core-and-tailnet-p2p.md`).
-**Picking this up? Read [`HANDOFF.md`](HANDOFF.md) first** — current state, decisions, verification matrix and the detailed next steps. The persistence increment (the `store` data layer, now wired into the facade) has its own handoff: [`HANDOFF-STORE.md`](HANDOFF-STORE.md).
+**Using the app? See [`docs/user-guide.md`](docs/user-guide.md).** **Picking this up? Read [`HANDOFF.md`](HANDOFF.md) first** — current state, decisions, verification matrix and the detailed next steps. The persistence increment (the `store` data layer, now wired into the facade) has its own handoff: [`HANDOFF-STORE.md`](HANDOFF-STORE.md).
 
 ```text
 night-clip/

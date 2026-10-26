@@ -84,6 +84,8 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 
 | 文档 | 内容 |
 | --- | --- |
+| [user-guide.md](user-guide.md) | **使用说明书**：现在能做什么、安装、界面、更新、排错、计划中的用法 |
+| [update.md](update.md) | 自动更新与本机分发：信任模型、发布流程 |
 | [../HANDOFF.md](../HANDOFF.md) | **交接文档**：当前实现状态、验证矩阵、决策记录、详细下一步 |
 | [feasibility-analysis.md](feasibility-analysis.md) | v3 可行性、开源调研结论、PoC 与风险 |
 | [architecture.md](architecture.md) | 组件、DLL/AAR 边界、配对与信任、事件与序号、文件传输、故障降级 |
