@@ -6,8 +6,10 @@
 // connection the rest of the app uses; the listening side serves three routes, the dialing side
 // polls and pushes (docs/plan-vault.md §5).
 //
-// Nothing is shared with a peer unless the user switched "vault sync" on for it on this device, and
-// the other device has to do the same.
+// Every paired device is a full replica by default: pairing is the trust decision (mTLS + SAS, only
+// tailnet addresses are accepted), and the per-peer switch is an advanced opt-out. There is no central
+// vault node: a device always serves its own complete copy, so one unreachable device cannot take the
+// vault away from the others.
 package vsync
 
 import (

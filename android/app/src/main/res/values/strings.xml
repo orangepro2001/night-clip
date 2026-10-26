@@ -59,6 +59,8 @@
     <string name="toast_copy_failed">无法写入剪贴板，请打开应用后重试</string>
     <string name="toast_auto_copied">已自动复制来自 %1$s 的内容</string>
     <string name="msg_files_offered">已向对方发出 %1$d 个文件请求，等待对方确认</string>
+    <string name="msg_file_picker_failed">无法打开系统的文件选择器</string>
+    <string name="msg_file_send_failed">发送文件失败</string>
     <string name="tile_label">发送剪贴板</string>
 
     <!-- Devices -->

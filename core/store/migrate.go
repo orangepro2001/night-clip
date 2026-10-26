@@ -9,7 +9,7 @@ import (
 
 // migrations holds one entry per schema version. Entry i upgrades the database
 // from version i to i+1; never edit a published entry, append a new one.
-var migrations = [][]string{migrationV1(), migrationV2(), migrationV3(), migrationV4(), migrationV5()}
+var migrations = [][]string{migrationV1(), migrationV2(), migrationV3(), migrationV4(), migrationV5(), migrationV6()}
 
 func migrationV1() []string {
 	return []string{
@@ -154,6 +154,16 @@ func migrationV5() []string {
 		state      TEXT NOT NULL DEFAULT 'idle',
 		detail     TEXT NOT NULL DEFAULT ''
 	)`,
+	}
+}
+
+// migrationV6 makes the vault a full replica on every already-paired device by
+// default. The old per-peer switch stays as an advanced opt-out, but it must not
+// hide the feature from devices whose shell has no sync screen (Windows): a
+// paired device is trusted by the pairing (mTLS + SAS) and lives in the tailnet.
+func migrationV6() []string {
+	return []string{
+		`UPDATE peers SET vault_sync = 1 WHERE state = 'paired'`,
 	}
 }
 

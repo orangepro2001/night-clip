@@ -38,10 +38,13 @@ object VaultSyncLogic {
     /** The core stops a batch that deletes this many entries or more until the user approves. */
     const val DELETION_REVIEW_THRESHOLD = 5
 
+    const val LOCAL_COPY = "本机保存完整副本；对端设备离线不影响本机打开、读取密码库。"
+
     const val HINT_NO_VAULT = "已有密码库在另一台设备上？到“设备同步”里开启，再回来用那个库的主密码解锁。"
 
-    const val EXPLAINER = "同步只传输加密的密码库文件，对方没有主密码就读不了内容；两台设备都要为对方开启开关才会同步，默认什么都不共享。" +
-        "关掉某台设备只是停止之后的同步，不会清除它已经拿到的内容——如果那台设备丢了或不再可信，请更换主密码。"
+    const val EXPLAINER = "每台已配对设备都会保存完整的加密密码库副本，默认自动同步；没有主/从节点，任何一台离线都不影响本机打开密码库。" +
+        "连接只接受 tailnet 内、双方证书已配对（SAS 核对过）的设备；对方没有主密码仍然读不了内容。两台设备默认都开启，可在右侧单独关掉。" +
+        "对方更换主密码后需要输入对方的新主密码；如果设备丢了或不再可信，请更换主密码。"
 
     fun reviewKind(detail: String): ReviewKind {
         val d = detail.lowercase()
@@ -81,7 +84,7 @@ object VaultSyncLogic {
             STATE_PENDING_UNLOCK -> "已收到对方的修改，解锁密码库后会自动合并。"
             STATE_NEEDS_PASSWORD -> "对方更换了主密码，需要输入对方现在的主密码才能合并。"
             STATE_REVIEW -> reviewText(reviewKind(p.detail))
-            STATE_PEER_OFF -> "对方设备还没有为本机开启密码库同步"
+            STATE_PEER_OFF -> "对方设备还没有允许同步。新版默认开启；如果对方是旧版本，请升级或在对方设备上打开密码库同步。"
             STATE_ERROR -> if (p.detail.isBlank()) "同步失败，稍后会自动重试。" else "同步失败：" + p.detail.take(120)
             else -> ""
         }

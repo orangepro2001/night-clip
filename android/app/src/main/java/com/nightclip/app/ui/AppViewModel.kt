@@ -2,9 +2,11 @@ package com.nightclip.app.ui
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nightclip.app.ClipBridgeApp
+import com.nightclip.app.R
 import com.nightclip.app.core.ApiResult
 import com.nightclip.app.core.CoreApi
 import com.nightclip.app.core.CoreEvent
@@ -90,6 +92,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _messages.tryEmit(text)
     }
 
+    /** One-shot message from a screen that cannot reach [say] (for example a failed intent launch). */
+    fun report(text: String) = say(text)
+
     // ---- clipboard sending -----------------------------------------------------------------
 
     /** [to] null = every paired device. The text comes from a user action in a visible screen. */
@@ -127,16 +132,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun sendFiles(uris: List<Uri>, to: String) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
-            val opened = FileSender.open(app, uris)
-            val files = opened.mapNotNull { it.first }
-            opened.mapNotNull { it.second }.distinct().forEach(::say)
-            if (files.isEmpty()) return@launch
-            // The descriptors are detached: finish the hand-over even if this screen goes away.
-            app.appScope.launch {
-                val results = FileSender.offer(to, files)
-                val failed = results.firstOrNull { it.error != null }
-                _messages.tryEmit(failed?.error ?: app.getString(com.nightclip.app.R.string.msg_files_offered, results.size))
-                refreshTransfers()
+            try {
+                val opened = FileSender.open(app, uris)
+                val files = opened.mapNotNull { it.first }
+                opened.mapNotNull { it.second }.distinct().forEach(::say)
+                if (files.isEmpty()) return@launch
+                // The descriptors are detached: finish the hand-over even if this screen goes away.
+                app.appScope.launch {
+                    try {
+                        val results = FileSender.offer(to, files)
+                        val failed = results.firstOrNull { it.error != null }
+                        _messages.tryEmit(failed?.error ?: app.getString(com.nightclip.app.R.string.msg_files_offered, results.size))
+                        refreshTransfers()
+                    } catch (e: Exception) {
+                        Log.e("ClipBridge", "file offer failed", e)
+                        say(app.getString(R.string.msg_file_send_failed) + " (" + e.javaClass.simpleName + ")")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ClipBridge", "opening files failed", e)
+                say(app.getString(R.string.msg_file_send_failed) + " (" + e.javaClass.simpleName + ")")
             }
         }
     }

@@ -175,7 +175,7 @@ func finish(p JoinParams, cap *peer.Capture, st pairResponse) (store.Peer, error
 	return store.Peer{
 		DeviceID: st.DeviceID, Name: name, Platform: plat, CertFP: cap.FP(),
 		TailnetAddrs: addrs, Port: p.Link.Port, Role: "auto", State: "paired", ApplyMode: "notify",
-		PairedAt: p.Now().Unix(),
+		PairedAt: p.Now().Unix(), VaultSync: true,
 	}, nil
 }
 

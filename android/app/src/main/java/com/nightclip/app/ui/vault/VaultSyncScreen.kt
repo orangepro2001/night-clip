@@ -66,6 +66,7 @@ fun VaultSyncScreen(vm: VaultViewModel, sync: VaultSyncViewModel, onMessage: (St
         VaultTopBar(stringResource(R.string.vault_sync_title), onBack = { vm.closeSync() })
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             InfoCard { Text(VaultSyncLogic.EXPLAINER, style = MaterialTheme.typography.bodyMedium) }
+            if (vaultExists) HintText(VaultSyncLogic.LOCAL_COPY)
             if (!vaultExists && loaded) HintText(stringResource(R.string.vault_sync_no_vault))
             if (loaded && peers.isEmpty()) HintText(stringResource(R.string.vault_sync_no_devices))
             val nowS = System.currentTimeMillis() / 1000

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -87,18 +88,29 @@ class ShareActivity : ComponentActivity() {
             is SharePlan.Files -> {
                 val target = to?.singleOrNull() ?: return
                 lifecycleScope.launch {
-                    // Open every descriptor before this activity (and its URI grants) goes away.
-                    val opened = FileSender.open(this@ShareActivity, uris)
-                    val files = opened.mapNotNull { it.first }
-                    opened.firstNotNullOfOrNull { it.second }?.let { app.toastOnMain(it) }
-                    if (files.isNotEmpty()) {
-                        app.appScope.launch {
-                            val results = FileSender.offer(target, files)
-                            val failed = results.firstOrNull { it.error != null }
-                            app.toastOnMain(failed?.error ?: app.getString(R.string.msg_files_offered, results.size))
+                    try {
+                        // Open every descriptor before this activity (and its URI grants) goes away.
+                        val opened = FileSender.open(this@ShareActivity, uris)
+                        val files = opened.mapNotNull { it.first }
+                        opened.firstNotNullOfOrNull { it.second }?.let { app.toastOnMain(it) }
+                        if (files.isNotEmpty()) {
+                            app.appScope.launch {
+                                try {
+                                    val results = FileSender.offer(target, files)
+                                    val failed = results.firstOrNull { it.error != null }
+                                    app.toastOnMain(failed?.error ?: app.getString(R.string.msg_files_offered, results.size))
+                                } catch (e: Exception) {
+                                    Log.e("ClipBridge", "share: file offer failed", e)
+                                    app.toastOnMain(app.getString(R.string.msg_file_send_failed))
+                                }
+                            }
                         }
+                    } catch (e: Exception) {
+                        Log.e("ClipBridge", "share: opening files failed", e)
+                        app.toastOnMain(app.getString(R.string.msg_file_send_failed))
+                    } finally {
+                        finish()
                     }
-                    finish()
                 }
             }
             else -> finish()
@@ -108,17 +120,22 @@ class ShareActivity : ComponentActivity() {
     @Suppress("DEPRECATION")
     private fun streamUris(intent: Intent): List<Uri> {
         val found = LinkedHashSet<Uri>()
-        if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
-            val list = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
-            else intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
-            list?.let { found.addAll(it) }
-        } else {
-            val one = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-            else intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-            one?.let { found.add(it) }
-        }
-        intent.clipData?.let { clip ->
-            for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let { found.add(it) }
+        try {
+            if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+                val list = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)
+                list?.let { found.addAll(it) }
+            } else {
+                val one = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                one?.let { found.add(it) }
+            }
+            intent.clipData?.let { clip ->
+                for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let { found.add(it) }
+            }
+        } catch (e: Exception) {
+            // A malformed share from another app must not take this activity down.
+            Log.e("ClipBridge", "share: bad EXTRA_STREAM", e)
         }
         return found.toList()
     }

@@ -120,20 +120,20 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 
 ### 3.6 多设备同步（V2）
 
-设备之间传的**永远是加密的 `.kdbx` 文件**，不是明文条目：接收方先把对方的文件放在一边（`vault/incoming/<设备ID>.kdbx`），库**已解锁**时按 KeePass 规则合并（核心 `core/vault/merge.go`，有交换律/收敛性测试），合并后再把自己的最新文件传回去。传输复用现有的互相固定证书的 TLS 连接：监听方提供 `GET /v1/vault/head`、`GET /v1/vault/file`、`PUT /v1/vault/file`（仅限已配对且**对方设备已为本机开启**的设备），拨号方每 15 秒比较一次哈希，本机保存后立即推送。
+设备之间传的**永远是加密的 `.kdbx` 文件**，不是明文条目：接收方先把对方的文件放在一边（`vault/incoming/<设备ID>.kdbx`），库**已解锁**时按 KeePass 规则合并（核心 `core/vault/merge.go`，有交换律/收敛性测试），合并后再把自己的最新文件传回去。传输复用现有的互相固定证书的 TLS 连接：监听方提供 `GET /v1/vault/head`、`GET /v1/vault/file`、`PUT /v1/vault/file`（仅限已配对设备），拨号方每 15 秒比较一次哈希，本机保存后立即推送。
 
-**默认什么都不共享**：每台设备要对每个对端单独开启 `vault.sync_enable`，**两边都开启**才会同步。对端没有开启时，本机状态为 `peer_off`。
+**默认每台已配对设备都是完整副本**：配对（mTLS 证书固定 + SAS）即信任决定；schema v6 会把已配对设备的 `vault_sync` 置为开，新配对设备也默认开。没有中心节点，也没有主/从节点：本机始终用自己的完整文件提供密码库；一台设备离线不影响其它设备打开本地库，重新连接后自动合并。`vault.sync_enable{enabled:false}` 仍保留为高级的单台退出开关；关闭时对端看到 `peer_off`。
 
 | 方法 | 参数 | 结果 |
 | --- | --- | --- |
 | `vault.sync_status` | — | `{vault_exists, peers:[{device_id, name, enabled, connected, state, detail, last_ok_at, pending_incoming, incoming_sha256?}]}` |
-| `vault.sync_enable` | `device_id`, `enabled` | `{}`；关闭时丢弃已收到但未合并的文件 |
+| `vault.sync_enable` | `device_id`, `enabled` | `{}`；高级单台退出开关，默认开；关闭时丢弃已收到但未合并的文件 |
 | `vault.sync_resolve` | `device_id`, `approve?`, `sha256?`, `credParams?` | `{}`：为 `needs_password` 输入对方库的主密码，或为 `review` 点“批准”。**`approve` 必须同时给出 `sha256`**（取自 `vault.sync_status` 的 `incoming_sha256`，即用户看到的那个文件），文件在此期间变了就 `VAULT_REVIEW`。库必须已解锁，否则 `VAULT_LOCKED` |
 | `vault.sync_now` | — | `{}` |
 
-`state`：`idle`（正常）、`pending_unlock`（对方的修改已收到，等你解锁后合并）、`needs_password`（对方改了主密码，需要输入新密码才能合并）、`review`（需要批准：对方的文件**不是同一个库**，或这一批会**删除 5 个以上条目**）、`peer_off`（对方没有为本机开启）、`error`。
+`state`：`idle`（正常）、`pending_unlock`（对方的修改已收到，等你解锁后合并）、`needs_password`（对方改了主密码，需要输入新密码才能合并）、`review`（需要批准：对方的文件**不是同一个库**，或这一批会**删除 5 个以上条目**）、`peer_off`（对方仍关着单台开关，通常是旧版本客户端）、`error`。
 
-- **加入：** 一台还没有库的设备，在两边都开启后会直接收到对方的库文件（事件 `vault.joined`），库显示为“已存在、已锁定”，用**那个库的主密码**解锁即可。
+- **加入：** 一台还没有库的设备，配对并连接后会自动收到对方的库文件（事件 `vault.joined`），库显示为“已存在、已锁定”，用**那个库的主密码**解锁即可。
 - **事件：** `vault.sync {device_id, name, state, detail}`（状态变化）、`vault.changed {reason:"sync", device_id, stats}`（同步合并改动了本机库，壳应刷新列表）、`vault.joined {device_id, name}`。
 - **保护：** 单个文件 ≤64 MiB；同一时刻只处理一个上传（其余 429），每个对端每 2 秒最多上传一次；文件头的密钥派生成本超过“来自对端的文件”上限（Argon2 内存 > 128 MiB、迭代 > 16 等）直接拒绝，不会进行任何派生；收到的文件必须是结构正确的 KDBX，否则 400；一次同步将**删除超过 5 个或覆盖超过 50 个**条目，或 24 小时内累计删除超过 15 个，都需要批准（`review`）；比较“谁更新”时，对端晚于当前时间 10 分钟以上的时间戳按“现在 + 10 分钟”处理；同一个已经失败的文件不会重复尝试（直到新文件、输入密码或批准）；同步产生的快照至少间隔 60 秒，用户主动做的（手动/改主密码/升级/恢复/导入）快照单独保留最多 50 份，不会被例行快照挤掉。
 
@@ -167,4 +167,4 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 
 - 密码库复制的内容不会被自动广播（`vault_origin`，登记有效 1 小时）；用户显式用 `clip.send` 发送仍然可以。
 - 收到的剪贴板文本若被识别为敏感，依然永远不会自动写入（`plan-auto-broadcast.md`）。
-- 多设备同步见 §3.6：默认关闭，逐设备、双向开启；传输的是加密文件，合并在本机解锁后进行。
+- 多设备同步见 §3.6：匹配对设备默认自动同步、每台保存完整副本；传输的是加密文件，合并在本机解锁后进行；单台退出开关仍可用。

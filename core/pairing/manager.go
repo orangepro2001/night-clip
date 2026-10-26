@@ -372,7 +372,7 @@ func (m *Manager) servePair(w http.ResponseWriter, r *http.Request) {
 		expires: m.now().Add(m.timings.ConfirmTTL),
 		peer: store.Peer{
 			DeviceID: req.DeviceID, Name: req.Name, Platform: req.Platform, CertFP: req.CertFP,
-			TailnetAddrs: dedupe(addrs), Port: port, Role: "auto", State: "paired", ApplyMode: "notify",
+			TailnetAddrs: dedupe(addrs), Port: port, Role: "auto", State: "paired", ApplyMode: "notify", VaultSync: true,
 		},
 	}
 	m.pending[rq.pairID] = rq

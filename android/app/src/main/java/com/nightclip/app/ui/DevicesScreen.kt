@@ -1,6 +1,7 @@
 package com.nightclip.app.ui
 
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -64,7 +65,9 @@ fun DevicesScreen(vm: AppViewModel, onPair: () -> Unit, modifier: Modifier = Mod
     var changingMode by remember { mutableStateOf<PeerInfo?>(null) }
     var removing by remember { mutableStateOf<PeerInfo?>(null) }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris: List<Uri> ->
+    // GET_CONTENT is the most compatible picker across OEM file managers; OPEN_DOCUMENT is not
+    // implemented by a few ROMs and launching it there ends in ActivityNotFoundException.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
         val target = fileTarget
         fileTarget = null
         if (target != null) vm.sendFiles(uris, target)
@@ -112,7 +115,11 @@ fun DevicesScreen(vm: AppViewModel, onPair: () -> Unit, modifier: Modifier = Mod
                 onSendClipboard = { vm.sendText(ClipboardAccess.readText(context).orEmpty(), listOf(peer.deviceId)) },
                 onSendFile = {
                     fileTarget = peer.deviceId
-                    picker.launch(arrayOf("*/*"))
+                    runCatching { picker.launch("*/*") }.onFailure { e ->
+                        fileTarget = null
+                        Log.e("ClipBridge", "file picker failed", e)
+                        vm.report(context.getString(R.string.msg_file_picker_failed) + " (" + e.javaClass.simpleName + ")")
+                    }
                 },
                 onRename = { renaming = peer },
                 onMode = { changingMode = peer },

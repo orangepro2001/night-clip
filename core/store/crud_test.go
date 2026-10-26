@@ -1219,7 +1219,7 @@ func TestMigrationV4KeepsExistingPeersReceivingBroadcasts(t *testing.T) {
 	}
 }
 
-func TestMigrationV5AddsVaultSyncOff(t *testing.T) {
+func TestMigrationV6TurnsVaultSyncOnForExistingPeers(t *testing.T) {
 	dir := t.TempDir()
 	db, err := Open(dir, testKey(1))
 	if err != nil {
@@ -1238,11 +1238,19 @@ func TestMigrationV5AddsVaultSyncOff(t *testing.T) {
 	_ = db.Close()
 	db2 := openAt(t, dir, testKey(1))
 	p, found, err := db2.GetPeer("dev_old")
-	if err != nil || !found || p.VaultSync {
-		t.Fatalf("an existing peer must not get the vault: %+v %v %v", p, found, err)
+	if err != nil || !found || !p.VaultSync {
+		t.Fatalf("an existing paired device must get the vault by default: %+v %v %v", p, found, err)
 	}
 	if r, found, _ := db2.GetVaultSync("dev_old"); found || r.State != "idle" {
 		t.Fatalf("fresh row = %+v", r)
+	}
+	// the old per-peer switch survives as an advanced opt-out
+	p.VaultSync = false
+	if err := db2.PutPeer(p); err != nil {
+		t.Fatal(err)
+	}
+	if again, _, _ := db2.GetPeer("dev_old"); again.VaultSync {
+		t.Fatal("VaultSync opt-out was not stored")
 	}
 	p.VaultSync = true
 	if err := db2.PutPeer(p); err != nil {

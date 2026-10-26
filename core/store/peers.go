@@ -26,7 +26,8 @@ type Peer struct {
 	// enabled, so records built without the field keep working.
 	SendDisabled bool
 	// VaultSync lets this peer exchange the password vault file with us (docs/plan-vault.md §5).
-	// Off unless the user switched it on; both sides must.
+	// On by default for every paired device (schema v6); it is an advanced per-device opt-out,
+	// not a user onboarding step.
 	VaultSync bool
 }
 

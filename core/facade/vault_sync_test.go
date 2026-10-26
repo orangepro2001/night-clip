@@ -57,37 +57,43 @@ func enableBoth(win, pix *node, winID, pixID string) {
 	pix.call("vault.sync_enable", map[string]any{"device_id": winID, "enabled": true})
 }
 
-func TestVaultSyncNeedsBothSidesAndJoinsANewDevice(t *testing.T) {
-	win, pix, winID, pixID := pairedVaultPair(t)
+func TestVaultSyncJoinsANewDeviceByDefault(t *testing.T) {
+	_, pix, winID, _ := pairedVaultPair(t)
 
-	// nothing is shared by default
-	if st := syncState(pix, winID); st["enabled"] != false {
+	// Pairing is the trust decision: both sides default to on, so the phone joins
+	// the PC's vault without a separate "allow sync" step.
+	if st := syncState(pix, winID); st["enabled"] != true {
 		t.Fatalf("default state = %v", st)
 	}
-	time.Sleep(400 * time.Millisecond)
-	if pix.call("vault.status", nil)["exists"] != false {
-		t.Fatal("a vault appeared on a device that never asked for it")
-	}
-
-	// the phone says yes, the PC has not: the PC refuses
-	pix.call("vault.sync_enable", map[string]any{"device_id": winID, "enabled": true})
-	waitFor(t, "peer_off on the phone", func() bool { return syncState(pix, winID)["state"] == "peer_off" })
-	if pix.call("vault.status", nil)["exists"] != false {
-		t.Fatal("the PC served its vault although it had not agreed")
-	}
-
-	// both agree: the phone joins the PC's vault
-	win.call("vault.sync_enable", map[string]any{"device_id": pixID, "enabled": true})
 	pix.waitEvent("vault.joined", nil)
 	if st := pix.call("vault.status", nil); st["exists"] != true || st["unlocked"] != false {
 		t.Fatalf("after joining: %v", st)
 	}
 	pix.call("vault.unlock", map[string]any{"password": vpw})
-	if got := titles(pix); !got["from PC"] {
-		t.Fatalf("entries on the phone: %v", got)
-	}
+	// The phone may have joined the empty vault first; the entry added on the PC a moment
+	// later arrives on the next round.
+	waitFor(t, "the PC's entry on the phone", func() bool { return titles(pix)["from PC"] })
 	if r := pix.call("vault.reveal", map[string]any{"id": firstID(pix), "field": "password"}); r["value"] != "pc-secret" {
 		t.Fatalf("secret on the phone = %v", r)
+	}
+}
+
+func TestVaultSyncEachDeviceServesACompleteCopyAfterTheOtherStops(t *testing.T) {
+	win, pix, _, _ := pairedVaultPair(t)
+	pix.waitEvent("vault.joined", nil)
+	pix.call("vault.unlock", map[string]any{"password": vpw})
+	waitFor(t, "the phone to have a complete copy", func() bool { return titles(pix)["from PC"] })
+
+	// No central node: stopping the PC must not take the vault away from the phone.
+	win.c.Shutdown()
+	if st := pix.call("vault.status", nil); st["exists"] != true || st["unlocked"] != true {
+		t.Fatalf("phone after the PC stopped: %v", st)
+	}
+	if !titles(pix)["from PC"] {
+		t.Fatal("the phone lost its local copy when the PC stopped")
+	}
+	if r := pix.call("vault.reveal", map[string]any{"id": firstID(pix), "field": "password"}); r["value"] != "pc-secret" {
+		t.Fatalf("the phone's local secret = %v", r)
 	}
 }
 
@@ -155,9 +161,10 @@ func TestVaultSyncWaitsForUnlockAndForAPasswordChange(t *testing.T) {
 	})
 	win.call("vault.unlock", map[string]any{"password": vpw})
 	waitFor(t, "the PC to merge after unlock", func() bool { return titles(win)["while PC locked"] })
-	if st := syncState(win, pixID); st["pending_incoming"] != false || st["state"] != "idle" {
-		t.Fatalf("after the merge: %v", st)
-	}
+	waitFor(t, "the merge to settle", func() bool {
+		st := syncState(win, pixID)
+		return st["pending_incoming"] == false && st["state"] == "idle"
+	})
 
 	// the phone changes its master password: the PC cannot read the new file until it is told the password
 	pix.call("vault.change_master", map[string]any{"password": vpw, "new": map[string]any{"password": "a brand new master"}})

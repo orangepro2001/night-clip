@@ -74,7 +74,7 @@ class VaultSyncLogicTest {
     @Test
     fun peerOffTextMatchesTheSpec() {
         val p = peer(state = "peer_off")
-        assertEquals("对方设备还没有为本机开启密码库同步", VaultSyncLogic.stateExplanation(p))
+        assertEquals("对方设备还没有允许同步。新版默认开启；如果对方是旧版本，请升级或在对方设备上打开密码库同步。", VaultSyncLogic.stateExplanation(p))
         assertEquals("对方未开启", VaultSyncLogic.stateLabel(p))
     }
 
@@ -160,6 +160,8 @@ class VaultSyncLogicTest {
         assertTrue(VaultSyncLogic.EXPLAINER.contains("加密"))
         assertTrue(VaultSyncLogic.EXPLAINER.contains("两台设备"))
         assertTrue(VaultSyncLogic.EXPLAINER.contains("更换主密码"))
+        assertTrue(VaultSyncLogic.EXPLAINER.contains("默认自动同步"))
+        assertTrue(VaultSyncLogic.EXPLAINER.contains("完整"))
         assertTrue(VaultSyncLogic.HINT_NO_VAULT.contains("设备同步"))
         assertEquals("已加入 Tony-PC 的密码库，请用那个库的主密码解锁。", VaultSyncLogic.joinedText("Tony-PC"))
         assertTrue(VaultSyncLogic.joinedText("").contains("其他设备"))
