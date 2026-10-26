@@ -1048,3 +1048,219 @@ func TestIndexEscapesNotes(t *testing.T) {
 		t.Fatalf("release notes were not escaped:\n%s", page)
 	}
 }
+
+// ---- watch (real-time notification) -------------------------------------------
+
+func TestWatchEndpoint(t *testing.T) {
+	r := newRelease(t)
+	base := serve(t, NewHandler(r.dir, ""))
+
+	get := func(path string) (*http.Response, time.Duration) {
+		start := time.Now()
+		resp, err := http.Get(base + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp, time.Since(start)
+	}
+
+	// nothing published: 204 after the wait
+	if resp, took := get("/v1/android/watch?code=0&wait=0.3"); resp.StatusCode != 204 || took < 250*time.Millisecond {
+		t.Fatalf("empty watch = %d after %s", resp.StatusCode, took)
+	}
+
+	r.publish(t, PlatformAndroid, 5, "0.1.5", payloadBytes(100, 1), false)
+	// newer than what the caller knows: answered at once
+	if resp, took := get("/v1/android/watch?code=4&wait=5"); resp.StatusCode != 200 || took > time.Second {
+		t.Fatalf("immediate watch = %d after %s", resp.StatusCode, took)
+	}
+	// already knows it: waits, then 204
+	if resp, took := get("/v1/android/watch?code=5&wait=0.3"); resp.StatusCode != 204 || took < 250*time.Millisecond {
+		t.Fatalf("up-to-date watch = %d after %s", resp.StatusCode, took)
+	}
+
+	// a release published while the request is parked is delivered within the poll period
+	done := make(chan *http.Response, 1)
+	go func() {
+		resp, err := http.Get(base + "/v1/android/watch?code=5&wait=10")
+		if err != nil {
+			t.Error(err)
+		}
+		done <- resp
+	}()
+	time.Sleep(300 * time.Millisecond)
+	published := time.Now()
+	m := r.publish(t, PlatformAndroid, 6, "0.1.6", payloadBytes(100, 2), false)
+	select {
+	case resp := <-done:
+		defer resp.Body.Close()
+		var got Manifest
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil || got.VersionCode != 6 || got.SHA256 != m.SHA256 {
+			t.Fatalf("watch delivered %+v (%v)", got, err)
+		}
+		if lag := time.Since(published); lag > 2*time.Second {
+			t.Fatalf("delivery lag %s", lag)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("watch did not return after a publish")
+	}
+
+	for _, p := range []string{
+		"/v1/android/watch", "/v1/android/watch?code=abc", "/v1/android/watch?code=-1",
+		"/v1/android/watch?code=1&wait=x", "/v1/android/watch?code=1&wait=-2",
+	} {
+		if resp, _ := get(p); resp.StatusCode != 400 {
+			t.Errorf("GET %s = %d, want 400", p, resp.StatusCode)
+		}
+	}
+	if resp, _ := get("/v1/ios/watch?code=1"); resp.StatusCode != 404 {
+		t.Errorf("unknown platform = %d, want 404", resp.StatusCode)
+	}
+	if activeWatchers.Load() != 0 {
+		t.Errorf("%d watchers leaked", activeWatchers.Load())
+	}
+}
+
+func TestWatchReleasesWhenClientDisconnects(t *testing.T) {
+	r := newRelease(t)
+	base := serve(t, NewHandler(r.dir, ""))
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, "GET", base+"/v1/android/watch?code=0&wait=30", nil)
+	go func() { _, _ = http.DefaultClient.Do(req) }()
+	waitFor(t, "watcher to park", func() bool { return activeWatchers.Load() == 1 })
+	cancel()
+	waitFor(t, "watcher to be released", func() bool { return activeWatchers.Load() == 0 })
+}
+
+func TestClientWatch(t *testing.T) {
+	r := newRelease(t)
+	base := serve(t, NewHandler(r.dir, ""))
+	c := r.client(base, PlatformAndroid)
+	ctx := context.Background()
+
+	if m, err := c.Watch(ctx, 0, 200*time.Millisecond); m != nil || err != nil {
+		t.Fatalf("empty server: %v, %v; want nil, nil", m, err)
+	}
+	r.publish(t, PlatformAndroid, 3, "0.1.3", payloadBytes(50, 1), false)
+	m, err := c.Watch(ctx, 2, time.Second)
+	if err != nil || m == nil || m.VersionCode != 3 {
+		t.Fatalf("Watch = %+v, %v", m, err)
+	}
+	if m, err := c.Watch(ctx, 3, 200*time.Millisecond); m != nil || err != nil {
+		t.Fatalf("known version: %v, %v; want nil, nil", m, err)
+	}
+
+	other, _ := newKey(t)
+	bad := &Client{BaseURL: base, Platform: PlatformAndroid, Keys: []ed25519.PublicKey{other}}
+	if _, err := bad.Watch(ctx, 0, time.Second); code(err) != "UPDATE_REJECTED" {
+		t.Fatalf("untrusted signature via watch: %v", err)
+	}
+
+	old := serve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.NotFound(w, nil) }))
+	if _, err := r.client(old, PlatformAndroid).Watch(ctx, 0, time.Second); !errors.Is(err, ErrWatchUnsupported) {
+		t.Fatalf("old server: %v, want ErrWatchUnsupported", err)
+	}
+	if _, err := r.client("http://127.0.0.1:1", PlatformAndroid).Watch(ctx, 0, time.Second); code(err) != "UPDATE_FAILED" {
+		t.Fatalf("unreachable: %v", err)
+	}
+	cctx, cancel := context.WithTimeout(ctx, 150*time.Millisecond)
+	defer cancel()
+	if _, err := c.Watch(cctx, 3, 5*time.Second); err == nil {
+		t.Fatal("cancelled watch returned no error")
+	}
+}
+
+func TestManagerReceivesAPublishInRealTime(t *testing.T) {
+	r := newRelease(t)
+	r.publish(t, PlatformAndroid, 5, "0.1.5", payloadBytes(500, 1), false)
+	base := serve(t, NewHandler(r.dir, ""))
+	ev := &events{}
+	m := NewManager(Options{
+		Client: r.client(base, PlatformAndroid), Dir: t.TempDir(), CurrentCode: 5, Auto: true, Emit: ev.emit,
+		FirstDelay: 10 * time.Millisecond, WatchWait: time.Second, Interval: time.Hour,
+	})
+	m.Run()
+	t.Cleanup(m.Close)
+	waitFor(t, "first check", func() bool { return m.Status().CheckedAt != 0 })
+	if m.Status().State != StateUpToDate {
+		t.Fatalf("state = %s, want up_to_date", m.Status().State)
+	}
+
+	published := time.Now()
+	r.publish(t, PlatformAndroid, 6, "0.1.6", payloadBytes(500, 2), false)
+	waitFor(t, "ready", func() bool { return m.Status().State == StateReady })
+	if lag := time.Since(published); lag > 3*time.Second {
+		t.Fatalf("release reached the device after %s; the interval is 1h so this must be the watch", lag)
+	}
+	if s := m.Status(); s.Latest.VersionCode != 6 || ev.count("update.available") != 1 || ev.count("update.ready") != 1 {
+		t.Fatalf("status %+v, events %v", s, ev.types())
+	}
+
+	// a second release is picked up the same way
+	r.publish(t, PlatformAndroid, 7, "0.1.7", payloadBytes(500, 3), false)
+	waitFor(t, "second release", func() bool {
+		s := m.Status()
+		return s.Latest != nil && s.Latest.VersionCode == 7 && s.State == StateReady
+	})
+}
+
+func TestManagerFallsBackToPollingWithoutWatch(t *testing.T) {
+	r := newRelease(t)
+	r.publish(t, PlatformAndroid, 5, "0.1.5", payloadBytes(500, 1), false)
+	real := NewHandler(r.dir, "")
+	var watchCalls atomic.Int64
+	base := serve(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasSuffix(req.URL.Path, "/watch") {
+			watchCalls.Add(1)
+			http.NotFound(w, req) // an older cbdist
+			return
+		}
+		real.ServeHTTP(w, req)
+	}))
+	m := NewManager(Options{
+		Client: r.client(base, PlatformAndroid), Dir: t.TempDir(), CurrentCode: 5, Auto: true, Emit: (&events{}).emit,
+		FirstDelay: 10 * time.Millisecond, Interval: 100 * time.Millisecond,
+	})
+	m.Run()
+	t.Cleanup(m.Close)
+	waitFor(t, "first check", func() bool { return m.Status().CheckedAt != 0 })
+
+	r.publish(t, PlatformAndroid, 6, "0.1.6", payloadBytes(500, 2), false)
+	waitFor(t, "polled release", func() bool { return m.Status().State == StateReady })
+	if n := watchCalls.Load(); n != 1 {
+		t.Fatalf("watch was tried %d times, want exactly once before falling back", n)
+	}
+}
+
+func TestManagerBacksOffAfterFailuresAndRecovers(t *testing.T) {
+	r := newRelease(t)
+	r.publish(t, PlatformAndroid, 6, "0.1.6", payloadBytes(500, 2), false)
+	real := NewHandler(r.dir, "")
+	var down atomic.Bool
+	down.Store(true)
+	var calls atomic.Int64
+	base := serve(t, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		calls.Add(1)
+		if down.Load() {
+			http.Error(w, "down", 503)
+			return
+		}
+		real.ServeHTTP(w, req)
+	}))
+	m := NewManager(Options{
+		Client: r.client(base, PlatformAndroid), Dir: t.TempDir(), CurrentCode: 5, Auto: true, Emit: (&events{}).emit,
+		FirstDelay: 10 * time.Millisecond, Backoff: 100 * time.Millisecond, RetryAfter: 400 * time.Millisecond,
+		WatchWait: time.Second,
+	})
+	m.Run()
+	t.Cleanup(m.Close)
+
+	time.Sleep(1200 * time.Millisecond)
+	// backoff 100,200,400,400... ms: about 5 attempts in 1.2 s, never a hot loop
+	if n := calls.Load(); n < 3 || n > 12 {
+		t.Fatalf("%d requests in 1.2 s while down; backoff is not working", n)
+	}
+	down.Store(false)
+	waitFor(t, "recovery", func() bool { return m.Status().State == StateReady })
+}

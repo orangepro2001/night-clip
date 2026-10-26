@@ -142,6 +142,72 @@ func (c *Client) Latest(ctx context.Context) (*Manifest, error) {
 	return &m, nil
 }
 
+// ErrWatchUnsupported means the server has no watch endpoint (an older cbdist).
+var ErrWatchUnsupported = errors.New("server does not support watch")
+
+// watchHTTP allows a response header to arrive up to a minute after the request
+// (the server holds a watch for up to MaxWatchWait).
+var watchHTTP = &http.Client{
+	Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		TLSHandshakeTimeout:   15 * time.Second,
+		ResponseHeaderTimeout: MaxWatchWait + 20*time.Second,
+		MaxIdleConns:          1,
+		IdleConnTimeout:       90 * time.Second,
+	},
+	CheckRedirect: defaultHTTP.CheckRedirect,
+}
+
+// Watch blocks until the server has a release newer than `known`, and returns
+// its verified manifest; it returns (nil, nil) when `wait` elapsed with
+// nothing new (ask again) and ErrWatchUnsupported when the route is missing.
+func (c *Client) Watch(ctx context.Context, known int64, wait time.Duration) (*Manifest, error) {
+	if wait <= 0 || wait > MaxWatchWait {
+		wait = MaxWatchWait
+	}
+	url := fmt.Sprintf("%s?code=%d&wait=%s", c.endpoint("watch"), known, strconv.FormatFloat(wait.Seconds(), 'f', -1, 64))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, proto.Errorf(proto.CodeInvalid, "update url: %v", err)
+	}
+	hc := watchHTTP
+	if c.HTTP != nil {
+		hc = c.HTTP
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, failed("watch request: %v", err)
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return nil, nil
+	case http.StatusNotFound, http.StatusMethodNotAllowed:
+		return nil, ErrWatchUnsupported
+	case http.StatusOK:
+	default:
+		return nil, failed("watch request: HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxManifestBytes+1))
+	if err != nil {
+		return nil, failed("watch read: %v", err)
+	}
+	if len(body) > maxManifestBytes {
+		return nil, rejected("manifest too large")
+	}
+	var m Manifest
+	if err := json.Unmarshal(body, &m); err != nil {
+		return nil, rejected("not valid JSON")
+	}
+	if err := m.Verify(c.Keys); err != nil {
+		return nil, err
+	}
+	if m.Platform != c.Platform {
+		return nil, rejected("manifest is for %q, not %q", m.Platform, c.Platform)
+	}
+	return &m, nil
+}
+
 // Progress is called with the bytes on disk so far and the total.
 type Progress func(received, total int64)
 

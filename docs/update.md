@@ -66,13 +66,16 @@
 
 - 404 = 该平台尚未发布。
 - `GET {update_url}/v1/{platform}/files/{file}`：包本体，支持 `Range`；响应带 `X-Content-SHA256`。文件名内含版本号，内容永不改变。
-- `GET {update_url}/healthz`。
+- `GET {update_url}/v1/{platform}/download`：当前版本的固定地址（给人用，响应带 `Content-Disposition`）。
+- `GET {update_url}/v1/{platform}/watch?code=N&wait=S`：**实时通知**。客户端已知版本为 N 时，一旦服务器上出现更高的 `versionCode` 就立刻返回清单（发布后约 1 秒内）；`wait` 秒（最长 50）内没有新版本则返回 `204`，客户端立即再问。每次回答后连接即结束，不依赖长连接，能穿过 `tailscale serve`。
+- `GET {update_url}/healthz`、`GET {update_url}/`（给人看的下载页）。
 - 签名内容（逐行 `key=value`，固定顺序）：`clipbridge-release-v1`、`platform`、`versionCode`、`versionName`、`file`、`size`、`sha256`、`minVersionCode`、`publishedAt`、`notesSha256`（notes 的 SHA-256）。
 - 强制更新：发布时加 `--force`，`minVersionCode` 提升为该版本；低于它的客户端状态里 `mandatory=true`，UI 以醒目方式提示（核心不阻断剪贴板功能）。
 
 ## 4. 核心行为
 
-- `update.Manager` 在 `Init` 之后启动：首次检查延迟约 20 s，之后每 6 h（±10% 抖动）；失败后 30 min 重试。后台检查失败**不**发事件（离线时不打扰用户），只记入状态。
+- `update.Manager` 在 `Init` 之后启动：首次完整检查延迟约 20 s，之后**挂在 `watch` 上**，服务器发布新版本约 1 秒内就会收到 `update.available`（并按设置自动下载）。服务器不支持 `watch`（旧版 cbdist）时退回每 6 h 轮询。失败时指数退避（5 s 起，翻倍，最长 5 min）。后台检查失败**不**发事件（离线时不打扰用户），只记入状态。
+- 实时通知只在**核心进程运行时**有效：Windows 是程序开着的时候；Android 是前台服务（Start connected mode）或界面开着的时候。
 - 状态：`idle → checking → up_to_date | available | error`；`available → downloading → ready | error`。`ready` 表示磁盘上有一个**已校验**的安装包。
 - 自动下载（默认开）：发现新版本后立即下载；关闭后停在 `available`，等 `update.download`。
 - 已存在且校验通过的包不会重复下载；`up_to_date` 或装好新版本后，旧包与 `.part` 会被清理。
@@ -129,6 +132,10 @@ tailscale serve --bg --set-path /clipbridge http://127.0.0.1:18780
 `/clipbridge` 前缀由 tailscale 去掉后再转发（已在本机验证，`cbdist serve` 不需要 `-prefix`）。验证：`curl https://<本机>.ts.net/clipbridge/healthz`。
 
 给人用的下载入口：`/clipbridge/`（页面）、`/clipbridge/v1/android/download`、`/clipbridge/v1/windows/download`（固定地址，永远指向当前版本）。
+
+### 每个阶段性功能都发版
+
+约定：一个阶段性功能完成后依次 `git commit` → `git push` → `scripts/release-local.sh --notes "…"`。版本号是提交数，设备上已安装的应用会在约 1 秒内收到新版本并自动下载，Android 通知栏 / Windows 任务栏闪烁提示，点击即可安装体验。
 
 ## 7. 开发构建
 

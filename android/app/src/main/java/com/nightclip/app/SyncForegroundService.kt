@@ -31,7 +31,17 @@ class SyncForegroundService : Service() {
             while (running) {
                 val ev = CoreHost.nextEvent(1000) ?: continue
                 Log.d(TAG, "event type=${ev.optString("type")}")
-                if (ev.optString("type") == "update.ready") notifyUpdateReady(ev.optString("version_name"))
+                when (ev.optString("type")) {
+                    "update.ready" -> notifyUpdate(
+                        "ClipBridge update ready",
+                        "Version ${ev.optString("version_name")} is downloaded. Tap to install.",
+                    )
+                    // With automatic download on, "ready" follows by itself; otherwise ask the user.
+                    "update.available" -> if (!autoUpdateOn()) notifyUpdate(
+                        "ClipBridge update available",
+                        "Version ${ev.optString("version_name")} is available. Tap to download.",
+                    )
+                }
             }
         }, "clipbridge-events").also { it.start() }
         return START_STICKY
@@ -44,8 +54,14 @@ class SyncForegroundService : Service() {
         super.onDestroy()
     }
 
-    /** The core downloaded and verified an update; installing it needs the user's tap. */
-    private fun notifyUpdateReady(versionName: String) {
+    private fun autoUpdateOn(): Boolean = try {
+        CoreHost.call("update.status").optJSONObject("result")?.optBoolean("auto", true) ?: true
+    } catch (e: IllegalStateException) {
+        true
+    }
+
+    /** An update needs the user's tap (to download, or to install once the core verified it). */
+    private fun notifyUpdate(title: String, text: String) {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
             NotificationChannel(UPDATE_CHANNEL_ID, "Updates", NotificationManager.IMPORTANCE_DEFAULT)
@@ -57,8 +73,8 @@ class SyncForegroundService : Service() {
         nm.notify(
             UPDATE_NOTIFICATION_ID,
             Notification.Builder(this, UPDATE_CHANNEL_ID)
-                .setContentTitle("ClipBridge update ready")
-                .setContentText("Version $versionName is downloaded. Tap to install.")
+                .setContentTitle(title)
+                .setContentText(text)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
                 .setContentIntent(open)
                 .setAutoCancel(true)

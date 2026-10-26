@@ -33,7 +33,11 @@ public partial class MainWindow : Window
             {
                 Append("event  " + ev);
                 if (ev.TryGetProperty("type", out var t) && (t.GetString() ?? "").StartsWith("update."))
+                {
                     RefreshUpdate();
+                    // A new version (or a finished download) deserves attention even when minimised.
+                    if (t.GetString() is "update.available" or "update.ready") TaskbarFlash.Flash(this);
+                }
             });
             _core.Start(new
             {

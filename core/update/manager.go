@@ -67,8 +67,10 @@ type Options struct {
 	Emit        func(event map[string]any)
 
 	FirstDelay time.Duration // before the first background check (default 20s)
-	Interval   time.Duration // between successful checks (default 6h)
-	RetryAfter time.Duration // after a failed check (default 30m)
+	Interval   time.Duration // between checks when the server cannot push (default 6h)
+	RetryAfter time.Duration // ceiling for the retry backoff after failures (default 5m)
+	WatchWait  time.Duration // how long one watch request may block (default MaxWatchWait)
+	Backoff    time.Duration // first retry delay, doubled per consecutive failure (default 5s)
 }
 
 // Manager owns update state. All methods are safe for concurrent use.
@@ -84,6 +86,8 @@ type Manager struct {
 	dlDone   chan struct{}
 
 	runCancel context.CancelFunc
+	synced    bool // a full check succeeded since the client was (re)set
+	noWatch   bool // the server has no watch endpoint: fall back to polling
 	closed    bool
 	wg        sync.WaitGroup
 }
@@ -97,7 +101,13 @@ func NewManager(opt Options) *Manager {
 		opt.Interval = 6 * time.Hour
 	}
 	if opt.RetryAfter <= 0 {
-		opt.RetryAfter = 30 * time.Minute
+		opt.RetryAfter = 5 * time.Minute
+	}
+	if opt.WatchWait <= 0 {
+		opt.WatchWait = MaxWatchWait
+	}
+	if opt.Backoff <= 0 {
+		opt.Backoff = 5 * time.Second
 	}
 	if opt.Emit == nil {
 		opt.Emit = func(map[string]any) {}
@@ -151,6 +161,7 @@ func (m *Manager) SetClient(c *Client) {
 	m.mu.Lock()
 	m.client = c
 	m.latest = nil
+	m.synced, m.noWatch = false, false
 	m.st = Status{State: StateIdle, CurrentCode: m.opt.CurrentCode, CurrentName: m.opt.CurrentName}
 	m.mu.Unlock()
 }
@@ -164,6 +175,7 @@ func (m *Manager) Check(ctx context.Context) (Status, error) {
 		return Status{}, proto.Errorf(proto.CodeUpdateDisabled, "updates are not configured in this build")
 	}
 	if m.st.State == StateDownloading {
+		m.synced = true // the release is known; do not make the loop spin on Check
 		s := m.snapshotLocked()
 		m.mu.Unlock()
 		return s, nil
@@ -182,6 +194,7 @@ func (m *Manager) Check(ctx context.Context) (Status, error) {
 		return s, nil
 	}
 	m.st.CheckedAt = time.Now().Unix()
+	m.synced = err == nil || errors.Is(err, ErrNoRelease)
 	switch {
 	case errors.Is(err, ErrNoRelease):
 		m.settleUpToDateLocked()
@@ -348,8 +361,15 @@ func (m *Manager) pruneLocked(keep string) {
 	}
 }
 
-// Run starts the background loop: a first check after FirstDelay, then every
-// Interval (RetryAfter after a failure), until Close. It returns immediately.
+// Run starts the background loop and returns immediately:
+//
+//  1. after FirstDelay, a full Check (which also starts the download if auto is on);
+//  2. then it holds a watch request open, so a release published on the server
+//     reaches the device within about a second, not at the next poll;
+//  3. if the server has no watch endpoint it polls every Interval instead;
+//  4. after a failure it retries with exponential backoff (Backoff, 2x, ... RetryAfter).
+//
+// It runs until Close.
 func (m *Manager) Run() {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.mu.Lock()
@@ -359,24 +379,81 @@ func (m *Manager) Run() {
 	go func() {
 		defer m.wg.Done()
 		wait := m.opt.FirstDelay
+		failures := 0
+		backoff := func() time.Duration {
+			d := m.opt.Backoff << min(failures, 20)
+			failures++
+			return min(d, m.opt.RetryAfter)
+		}
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.After(jitter(wait)):
 			}
-			wait = m.opt.Interval
+			wait = 0
 			if !m.Enabled() {
+				wait = time.Minute
 				continue
 			}
-			cctx, ccancel := context.WithTimeout(ctx, 30*time.Second)
-			_, err := m.Check(cctx)
-			ccancel()
-			if err != nil {
-				wait = m.opt.RetryAfter
+
+			m.mu.Lock()
+			synced, noWatch, client := m.synced, m.noWatch, m.client
+			known := m.opt.CurrentCode
+			if m.latest != nil && m.latest.VersionCode > known {
+				known = m.latest.VersionCode
+			}
+			m.mu.Unlock()
+
+			if !synced {
+				cctx, ccancel := context.WithTimeout(ctx, 30*time.Second)
+				_, err := m.Check(cctx)
+				ccancel()
+				if err != nil {
+					wait = backoff()
+				} else {
+					failures = 0
+					if noWatch {
+						wait = m.opt.Interval
+						m.markStale()
+					}
+				}
+				continue
+			}
+			if noWatch {
+				wait = m.opt.Interval
+				m.markStale()
+				continue
+			}
+
+			mf, err := client.Watch(ctx, known, m.opt.WatchWait)
+			switch {
+			case ctx.Err() != nil:
+				return
+			case errors.Is(err, ErrWatchUnsupported):
+				m.mu.Lock()
+				m.noWatch = true
+				m.mu.Unlock()
+				wait = m.opt.Interval
+				m.markStale()
+			case err != nil:
+				wait = backoff()
+				m.markStale() // after an outage, re-check from scratch
+			case mf == nil:
+				failures = 0 // nothing new; ask again at once
+			default:
+				failures = 0
+				m.markStale() // a newer release exists: the next iteration runs a full Check
 			}
 		}
 	}()
+}
+
+// markStale makes the loop run a full Check before it watches again.
+func (m *Manager) markStale() {
+	m.mu.Lock()
+	m.synced = false
+	m.mu.Unlock()
 }
 
 // Close stops the loop and any download, and waits for them.

@@ -7,8 +7,21 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 )
+
+const (
+	// MaxWatchWait bounds how long one watch request may block. It stays below the
+	// 60 s idle limits of the usual reverse proxies.
+	MaxWatchWait    = 50 * time.Second
+	maxWatchers     = 64
+	watchPollPeriod = 250 * time.Millisecond
+)
+
+var activeWatchers atomic.Int64
 
 // NewHandler serves a release directory written by Publish:
 //
@@ -16,6 +29,7 @@ import (
 //	GET /v1/{platform}/latest              the signed manifest
 //	GET /v1/{platform}/files/{name}        a package; Range supported
 //	GET /v1/{platform}/download            the current package at a stable URL
+//	GET /v1/{platform}/watch?code=N&wait=S long poll: the manifest once versionCode > N, else 204
 //	GET /                                  a download page for people
 //
 // prefix, if set, is stripped from request paths (for a reverse proxy that
@@ -53,6 +67,9 @@ func NewHandler(dir, prefix string) http.Handler {
 			return
 		}
 		serveFile(w, r, dir, platform, m.File)
+	})
+	mux.HandleFunc("GET /v1/{platform}/watch", func(w http.ResponseWriter, r *http.Request) {
+		serveWatch(w, r, dir, r.PathValue("platform"))
 	})
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) { serveIndex(w, dir) })
 	var h http.Handler = mux
@@ -136,4 +153,76 @@ func humanSize(n int64) string {
 		return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/(1<<20)), ".0") + " MiB"
 	}
 	return strings.TrimSuffix(fmt.Sprintf("%.1f", float64(n)/1024), ".0") + " KiB"
+}
+
+// serveWatch is the "real-time" channel: a client that already knows version
+// `code` blocks here and is answered the moment a newer release is published
+// (or with 204 after `wait` seconds so it can simply ask again). No
+// connection is held open after the answer, so it works through any proxy
+// that allows ~1 minute requests.
+func serveWatch(w http.ResponseWriter, r *http.Request, dir, platform string) {
+	if !ValidPlatform(platform) {
+		http.NotFound(w, r)
+		return
+	}
+	known, err := strconv.ParseInt(r.URL.Query().Get("code"), 10, 64)
+	if err != nil || known < 0 {
+		http.Error(w, "code must be a non-negative integer", http.StatusBadRequest)
+		return
+	}
+	wait := MaxWatchWait
+	if v := r.URL.Query().Get("wait"); v != "" {
+		secs, err := strconv.ParseFloat(v, 64)
+		if err != nil || secs < 0 {
+			http.Error(w, "wait must be a non-negative number of seconds", http.StatusBadRequest)
+			return
+		}
+		wait = min(time.Duration(secs*float64(time.Second)), MaxWatchWait)
+	}
+	if activeWatchers.Add(1) > maxWatchers {
+		activeWatchers.Add(-1)
+		http.Error(w, "too many watchers", http.StatusServiceUnavailable)
+		return
+	}
+	defer activeWatchers.Add(-1)
+
+	newer := func() []byte {
+		m := currentManifest(dir, platform)
+		if m == nil || m.VersionCode <= known {
+			return nil
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, platform, "latest.json"))
+		if err != nil {
+			return nil
+		}
+		return raw
+	}
+	respond := func(raw []byte) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(raw)
+	}
+	if raw := newer(); raw != nil {
+		respond(raw)
+		return
+	}
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	tick := time.NewTicker(watchPollPeriod)
+	defer tick.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-deadline.C:
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		case <-tick.C:
+			if raw := newer(); raw != nil {
+				respond(raw)
+				return
+			}
+		}
+	}
 }
