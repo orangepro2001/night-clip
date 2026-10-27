@@ -8,7 +8,11 @@ internal static class ND
     public static NoteDetail Note(string rev = "r_1", string title = "", string body = "", bool deleted = false, string id = "nt_a") =>
         new(id, title, body, 1, rev, Array.Empty<string>(), 1, 2, deleted, "dev_me", 1, true, "");
 
-    public static NoteSaveResult Saved(string rev, bool merged = false, string conflict = "") => new(rev, merged, conflict);
+    /// <summary>An answer that stored a revision (<c>changed:true</c>).</summary>
+    public static NoteSaveResult Saved(string rev, bool merged = false, string conflict = "") => new(rev, merged, conflict, true);
+
+    /// <summary>An answer that stored nothing (<c>changed:false</c>): the revision is the note's current one.</summary>
+    public static NoteSaveResult Unchanged(string rev) => new(rev, false, "", false);
 }
 
 public class NoteEditorModelTests
@@ -114,7 +118,7 @@ public class NoteEditorModelTests
         Assert.True(m.IsSaving);
         Assert.Equal(EditorSaveState.Saving, m.State);
 
-        m.Complete(first, ND.Saved("r_2"), ownChild: true);
+        m.Complete(first, ND.Saved("r_2"));
         var second = Take(m, T0.AddSeconds(5));
         Assert.Equal("r_2", second.BaseRevId);               // the answer of the first became the base of the second
         Assert.Equal("one two", second.BodyChange);
@@ -137,12 +141,12 @@ public class NoteEditorModelTests
         m.Edit("New title", "body\n", T0);
         var titleOnly = m.TakeNow()!;
         Assert.Equal(("nt_a", "r_1", "New title", null), (titleOnly.NoteId, titleOnly.BaseRevId, titleOnly.TitleChange, titleOnly.BodyChange));
-        m.Complete(titleOnly, ND.Saved("r_2"), true);
+        m.Complete(titleOnly, ND.Saved("r_2"));
 
         m.Edit("New title", "body\nmore\n", T0);
         var bodyOnly = m.TakeNow()!;
         Assert.Equal(("r_2", null, "body\nmore\n"), (bodyOnly.BaseRevId, bodyOnly.TitleChange, bodyOnly.BodyChange));
-        m.Complete(bodyOnly, ND.Saved("r_3"), true);
+        m.Complete(bodyOnly, ND.Saved("r_3"));
 
         m.Edit("", "body\nmore\n", T0);                       // clearing the title is a change
         Assert.Equal("", m.TakeNow()!.TitleChange);
@@ -156,7 +160,7 @@ public class NoteEditorModelTests
         var m = Open();
         m.Edit("T", "new", T0);
         var req = m.TakeNow()!;
-        var outcome = m.Complete(req, ND.Saved("r_2"), true);
+        var outcome = m.Complete(req, ND.Saved("r_2"));
         Assert.Equal(SaveOutcomeKind.Saved, outcome.Kind);
         Assert.Equal("r_2", m.BaseRevId);
         Assert.False(m.Dirty);
@@ -170,7 +174,7 @@ public class NoteEditorModelTests
         m.Edit("T", "first", T0);
         var req = m.TakeNow()!;
         m.Edit("T", "first and more", T0.AddMilliseconds(30));
-        m.Complete(req, ND.Saved("r_2"), true);
+        m.Complete(req, ND.Saved("r_2"));
 
         Assert.True(m.Dirty);
         Assert.Equal("first and more", m.Body);               // nothing typed is lost
@@ -184,7 +188,7 @@ public class NoteEditorModelTests
         var m = Open();
         m.Edit("T", "mine", T0);
         var req = m.TakeNow()!;
-        var outcome = m.Complete(req, ND.Saved("r_m", merged: true), true);
+        var outcome = m.Complete(req, ND.Saved("r_m", merged: true));
 
         Assert.Equal(SaveOutcomeKind.NeedsReload, outcome.Kind);
         Assert.True(outcome.Merged);
@@ -203,22 +207,47 @@ public class NoteEditorModelTests
     {
         var m = Open();
         m.Edit("T", "mine", T0);
-        var outcome = m.Complete(m.TakeNow()!, ND.Saved("r_x", conflict: "nt_copy"), true);
+        var outcome = m.Complete(m.TakeNow()!, ND.Saved("r_x", conflict: "nt_copy"));
         Assert.Equal(SaveOutcomeKind.NeedsReload, outcome.Kind);
         Assert.Equal("nt_copy", outcome.ConflictNoteId);
         Assert.False(outcome.Merged);
     }
 
     [Fact]
-    public void ARevisionThatIsNotOurOwnChild_IsReloaded_NotAdoptedAsTheBase()
+    public void NothingStoredWhileTheNoteMovedOn_IsReloaded_NotAdoptedAsTheBase()
     {
-        // The core answers with the newest revision when the text came out like an older base: it does not hold our edit.
+        // changed:false with a revision other than the base: the text equals the old base, the core names the newer revision
+        // made elsewhere, which does not hold our edit.
         var m = Open();
         m.Edit("T", "typed", T0);
-        var outcome = m.Complete(m.TakeNow()!, ND.Saved("r_head"), ownChild: false);
+        var outcome = m.Complete(m.TakeNow()!, ND.Unchanged("r_head"));
         Assert.Equal(SaveOutcomeKind.NeedsReload, outcome.Kind);
         Assert.Equal("r_1", m.BaseRevId);
         Assert.True(m.Dirty);
+    }
+
+    [Fact]
+    public void NothingStoredWhileTheBaseIsStillTheNewest_IsJustSaved()
+    {
+        // e.g. only trailing blanks were typed: the core keeps the revision, so the text counts as saved and the base stays
+        var m = Open();
+        m.Edit("T", "alpha\n  ", T0);
+        var outcome = m.Complete(m.TakeNow()!, ND.Unchanged("r_1"));
+        Assert.Equal(SaveOutcomeKind.Saved, outcome.Kind);
+        Assert.Equal("r_1", m.BaseRevId);
+        Assert.False(m.Dirty);
+    }
+
+    [Fact]
+    public void ACoreThatDoesNotSayChanged_IsTakenToHaveStoredTheEdit()
+    {
+        var parsed = NoteSaveResult.FromJson(VJ.Parse("""{"rev_id":"r_2"}"""));
+        Assert.True(parsed.Changed);
+        var m = Open();
+        m.Edit("T", "typed", T0);
+        Assert.Equal(SaveOutcomeKind.Saved, m.Complete(m.TakeNow()!, parsed).Kind);
+        Assert.Equal("r_2", m.BaseRevId);
+        Assert.False(NoteSaveResult.FromJson(VJ.Parse("""{"rev_id":"r_2","changed":false}""")).Changed);
     }
 
     [Fact]
@@ -226,7 +255,7 @@ public class NoteEditorModelTests
     {
         var m = Open();
         m.Edit("T", "typed", T0);
-        Assert.Equal(SaveOutcomeKind.NeedsReload, m.Complete(m.TakeNow()!, ND.Saved(""), true).Kind);
+        Assert.Equal(SaveOutcomeKind.NeedsReload, m.Complete(m.TakeNow()!, ND.Saved("")).Kind);
     }
 
     [Fact]
@@ -235,7 +264,7 @@ public class NoteEditorModelTests
         var m = Open();
         m.Edit("T", "mine", T0);
         var req = m.TakeNow()!;
-        m.Complete(req, ND.Saved("r_m", merged: true), true);
+        m.Complete(req, ND.Saved("r_m", merged: true));
         m.Edit("T", "mine, still typing", T0.AddMilliseconds(20));
 
         var result = m.ApplyReload(ND.Note("r_m", "T", "mine + theirs\n"));
@@ -252,7 +281,7 @@ public class NoteEditorModelTests
         m.Edit("T", "x", T0);
         var req = m.TakeNow()!;
         Assert.Equal(ReloadResult.Ignored, m.ApplyReload(ND.Note("r_9", "T", "other")));
-        m.Complete(req, ND.Saved("r_2"), true);
+        m.Complete(req, ND.Saved("r_2"));
         Assert.Equal(ReloadResult.Ignored, m.ApplyReload(ND.Note("r_9", id: "nt_other")));
     }
 
@@ -297,7 +326,7 @@ public class NoteEditorModelTests
         Assert.Equal(RemoteAction.None, m.OnRemoteChange("nt_a", ""));
 
         m.Edit("T", "x", T0);
-        m.Complete(m.TakeNow()!, ND.Saved("r_2"), true);
+        m.Complete(m.TakeNow()!, ND.Saved("r_2"));
         Assert.Equal(RemoteAction.None, m.OnRemoteChange("nt_a", "r_2"));   // the event of our own save
         Assert.Equal(RemoteAction.Reload, m.OnRemoteChange("nt_a", "r_3"));
     }
@@ -309,7 +338,7 @@ public class NoteEditorModelTests
         m.Edit("T", "x", T0);
         var req = m.TakeNow()!;
         Assert.Equal(RemoteAction.None, m.OnRemoteChange("nt_a", "r_2"));   // arrives first: held back
-        var outcome = m.Complete(req, ND.Saved("r_2"), true);
+        var outcome = m.Complete(req, ND.Saved("r_2"));
         Assert.Equal("", outcome.PendingRemoteRev);                          // it was ours
     }
 
@@ -320,7 +349,7 @@ public class NoteEditorModelTests
         m.Edit("T", "x", T0);
         var req = m.TakeNow()!;
         m.OnRemoteChange("nt_a", "r_remote");
-        var outcome = m.Complete(req, ND.Saved("r_2"), true);
+        var outcome = m.Complete(req, ND.Saved("r_2"));
         Assert.Equal("r_remote", outcome.PendingRemoteRev);
         Assert.Equal(RemoteAction.Reload, m.OnRemoteChange("nt_a", outcome.PendingRemoteRev));
     }
@@ -427,7 +456,7 @@ public class NoteEditorModelTests
         var m = Open();
         m.Edit("T", "typing", T0);
         var req = m.TakeNow()!;
-        m.Complete(req, ND.Saved("r_m", merged: true), true);
+        m.Complete(req, ND.Saved("r_m", merged: true));
         m.Edit("T", "typing on", T0.AddMilliseconds(10));
         Assert.Equal(ReloadResult.Kept, m.ApplyReload(ND.Note("r_m", "T", "", deleted: true)));
         Assert.Equal("typing on", m.Body);
@@ -442,7 +471,7 @@ public class NoteEditorModelTests
         m.Edit("T", "x", T0);
         var req = m.TakeNow()!;
         m.Load(ND.Note("r_9", id: "nt_b", body: "other"));
-        Assert.Equal(SaveOutcomeKind.Stale, m.Complete(req, ND.Saved("r_2"), true).Kind);
+        Assert.Equal(SaveOutcomeKind.Stale, m.Complete(req, ND.Saved("r_2")).Kind);
         Assert.Equal("nt_b", m.NoteId);
         Assert.Equal("r_9", m.BaseRevId);
         m.Fail(req, "CONFLICT");                                // a late failure changes nothing either
@@ -473,7 +502,7 @@ public class NoteEditorModelTests
         m.Edit("标题：周末", text, T0);
         var req = m.TakeNow()!;
         Assert.Equal((text, "标题：周末"), (req.BodyChange, req.TitleChange));
-        m.Complete(req, ND.Saved("r_2"), true);
+        m.Complete(req, ND.Saved("r_2"));
         Assert.False(m.Dirty);
     }
 }

@@ -92,6 +92,12 @@ public static class NotePreviewStyle
 
     public static double HeadingSize(int level) => level switch { 1 => 24, 2 => 20, 3 => 17, 4 => 15, _ => 13 };
 
+    /// <summary>
+    /// Both kinds of line break are shown as a line break: a hard one (two spaces or a backslash at the end of a line) and a soft
+    /// one (the plain Enter of the source). That is the note-taking convention (Obsidian's default) and what the Android client does.
+    /// </summary>
+    public static bool IsLineBreak(InlineKind kind) => kind is InlineKind.HardBreak or InlineKind.SoftBreak;
+
     public static string BulletGlyph(int depth) => (depth % 3) switch { 0 => "•", 1 => "◦", _ => "▪" };
 
     /// <summary>The marker in front of list item <paramref name="index"/> (0-based): a checkbox for task items, a number or a bullet.</summary>

@@ -124,6 +124,43 @@ func TestConcurrentEditsOfDifferentBlocksMergeIdenticallyOnBothDevices(t *testin
 	}
 }
 
+func TestTwoPeopleEditingDifferentItemsOfOneListMergeWithoutAConflictCopy(t *testing.T) {
+	a, b, clk := twoDevices(t)
+	id := a.mustCreate("Shopping", "# Shopping\n\n- milk\n- eggs\n- bread\n- jam\n")
+	clk.tick()
+	a.syncWith(b)
+
+	clk.tick()
+	ga, _ := a.svc.Get(id, "")
+	_, _ = a.svc.Update(UpdateParams{NoteID: id, BaseRevID: ga.RevID, Body: strp("# Shopping\n\n- [x] milk\n- eggs\n- bread\n- jam\n")})
+	clk.tick()
+	gb, _ := b.svc.Get(id, "")
+	_, _ = b.svc.Update(UpdateParams{NoteID: id, BaseRevID: gb.RevID, Body: strp("# Shopping\n\n- milk\n- eggs\n- bread\n- jam\n- honey\n")})
+
+	a.syncWith(b)
+	sameView(t, a, b)
+	g, _ := a.svc.Get(id, "")
+	if g.Body != "# Shopping\n\n- [x] milk\n- eggs\n- bread\n- jam\n- honey\n" {
+		t.Fatalf("merged list = %q", g.Body)
+	}
+	if conf, _ := a.svc.Conflicts(10, ""); len(conf.Items) != 0 || len(a.snapshot()) != 1 {
+		t.Fatalf("a conflict copy was made for edits on different lines: %+v", conf)
+	}
+
+	// the same item edited on both sides is still a conflict, and still loses nothing
+	clk.tick()
+	ga, _ = a.svc.Get(id, "")
+	_, _ = a.svc.Update(UpdateParams{NoteID: id, BaseRevID: ga.RevID, Body: strp("# Shopping\n\n- [x] milk\n- eggs (a dozen)\n- bread\n- jam\n- honey\n")})
+	clk.tick()
+	gb, _ = b.svc.Get(id, "")
+	_, _ = b.svc.Update(UpdateParams{NoteID: id, BaseRevID: gb.RevID, Body: strp("# Shopping\n\n- [x] milk\n- eggs (free range)\n- bread\n- jam\n- honey\n")})
+	a.syncWith(b)
+	sameView(t, a, b)
+	if conf, _ := a.svc.Conflicts(10, ""); len(conf.Items) != 1 {
+		t.Fatalf("the same item edited twice must leave one copy: %+v", conf)
+	}
+}
+
 func TestConcurrentEditsOfTheSameBlockLeaveOneConflictCopyEverywhere(t *testing.T) {
 	a, b, clk := twoDevices(t)
 	id := a.mustCreate("Doc", "alpha\n\nbeta\n")
@@ -419,6 +456,10 @@ func TestDevicesConvergeWhateverTheOrderOfEditsAndSyncs(t *testing.T) {
 func randomBody(rng *rand.Rand) string {
 	var parts []string
 	for i := 0; i < 1+rng.Intn(4); i++ {
+		if rng.Intn(3) == 0 { // a list is one block: its items merge line by line
+			parts = append(parts, fmt.Sprintf("- item %d\n- item %d\n- item %d", rng.Intn(5), rng.Intn(5), rng.Intn(5)))
+			continue
+		}
 		parts = append(parts, fmt.Sprintf("para %d", rng.Intn(5)))
 	}
 	return strings.Join(parts, "\n\n") + "\n"
@@ -426,6 +467,22 @@ func randomBody(rng *rand.Rand) string {
 
 func mutateBody(rng *rand.Rand, body string) string {
 	parts := strings.Split(strings.TrimSuffix(body, "\n"), "\n\n")
+	if i := rng.Intn(len(parts)); strings.HasPrefix(parts[i], "- ") && rng.Intn(2) == 0 {
+		lines := strings.Split(parts[i], "\n")
+		switch rng.Intn(3) {
+		case 0:
+			lines = append(lines, fmt.Sprintf("- added %d", rng.Intn(50)))
+		case 1:
+			lines[rng.Intn(len(lines))] = fmt.Sprintf("- edited %d", rng.Intn(50))
+		default:
+			if len(lines) > 1 {
+				j := rng.Intn(len(lines))
+				lines = append(lines[:j], lines[j+1:]...)
+			}
+		}
+		parts[i] = strings.Join(lines, "\n")
+		return strings.Join(parts, "\n\n") + "\n"
+	}
 	switch rng.Intn(3) {
 	case 0:
 		parts = append(parts, fmt.Sprintf("added %d", rng.Intn(50)))

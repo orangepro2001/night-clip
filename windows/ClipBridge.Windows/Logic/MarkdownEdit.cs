@@ -406,6 +406,20 @@ public static class MarkdownEdit
             selStart + selected.Length + 3, Strings.EditPlaceholderUrl.Length);
     }
 
+    /// <summary>
+    /// Puts <paramref name="markdown"/> (the image or link syntax of a new attachment) on a line of its own after the selection:
+    /// a line break first unless the caret is at the start of a line, one after it. The selection is not replaced; the caret ends
+    /// up on the line below, ready for the next one.
+    /// </summary>
+    public static TextEdit InsertBlock(string text, int selStart, int selLength, string markdown, string? eol = null)
+    {
+        Clamp(text, ref selStart, ref selLength);
+        eol ??= DetectEol(text);
+        var at = selStart + selLength;
+        var insert = (at == 0 || text[at - 1] == '\n' ? "" : eol) + markdown + eol;
+        return new TextEdit(at, 0, insert, at + insert.Length, 0);
+    }
+
     private static bool PreviousLineBlank(string t, int lineStart)
     {
         if (lineStart == 0) return true;

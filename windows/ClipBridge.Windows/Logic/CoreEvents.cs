@@ -176,6 +176,12 @@ public sealed record NotesSyncConflictEvent : CoreEvent
     public string Reason { get; init; } = "";
 }
 
+/// <summary>An attachment (<see cref="BlobId"/>, 64 hex digits) just reached this device: notes that refer to it can show it now.</summary>
+public sealed record NotesAttachmentEvent : CoreEvent
+{
+    public string BlobId { get; init; } = "";
+}
+
 public sealed record UnknownEvent : CoreEvent;
 
 public static class CoreEventParser
@@ -296,6 +302,10 @@ public static class CoreEventParser
             case "notes.sync.conflict":
                 ev = new NotesSyncConflictEvent { NoteId = Id("note_id"), ConflictNoteId = Id("conflict_note_id"), Reason = Id("reason") };
                 id = Id("note_id");
+                break;
+            case "notes.attachment":
+                ev = new NotesAttachmentEvent { BlobId = Id("blob_id") };
+                id = Id("blob_id");
                 break;
             default:
                 if (type.StartsWith("update.", StringComparison.Ordinal))

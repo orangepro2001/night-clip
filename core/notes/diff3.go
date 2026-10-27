@@ -1,6 +1,9 @@
 package notes
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Block-level three-way merge (notes/docs/sync-model.md §4.1). A document is a list of canonical
 // Markdown blocks; two edited copies of a common base merge when their changes touch different
@@ -99,6 +102,13 @@ func overlap(a, b hunk) bool {
 // merge3 merges two edits of base. ok is false when both sides changed the same blocks differently;
 // the caller then keeps one side and sets the other aside as a conflict copy.
 func merge3(base, left, right []string) (merged []string, ok bool) {
+	return merge3Refined(base, left, right, nil)
+}
+
+// merge3Refined is merge3 with one more chance for the case where both sides edited the same single
+// block: refine may still combine the two edited blocks (merge3Blocks does so line by line). It must be
+// symmetric in its last two arguments, which keeps the whole merge symmetric.
+func merge3Refined(base, left, right []string, refine func(base, left, right string) (string, bool)) (merged []string, ok bool) {
 	lh, rh := diffHunks(base, left), diffHunks(base, right)
 	if len(lh) == 0 {
 		return append([]string(nil), right...), true
@@ -111,12 +121,24 @@ func merge3(base, left, right []string) (merged []string, ok bool) {
 	var all []hunk
 	used := make([]bool, len(rh))
 	for _, l := range lh {
-		all = append(all, l)
 		for i, r := range rh {
-			if !used[i] && l.start == r.start && l.end == r.end && sameLines(l.repl, r.repl) {
+			if used[i] || l.start != r.start || l.end != r.end {
+				continue
+			}
+			if sameLines(l.repl, r.repl) {
 				used[i] = true
+				break
+			}
+			// the same one block edited on both sides: maybe the two edits touch different lines of it
+			if refine != nil && l.end-l.start == 1 && len(l.repl) == 1 && len(r.repl) == 1 {
+				if m, ok := refine(base[l.start], l.repl[0], r.repl[0]); ok {
+					l.repl = []string{m}
+					used[i] = true
+					break
+				}
 			}
 		}
+		all = append(all, l)
 	}
 	for i, r := range rh {
 		if !used[i] {
@@ -147,6 +169,22 @@ func merge3(base, left, right []string) (merged []string, ok bool) {
 	}
 	merged = append(merged, base[pos:]...)
 	return merged, true
+}
+
+// mergeLines merges two edits of one block line by line, for blocks (lists, tables, code, paragraphs
+// with several lines) where two people changed different lines.
+func mergeLines(base, left, right string) (string, bool) {
+	m, ok := merge3(strings.Split(base, "\n"), strings.Split(left, "\n"), strings.Split(right, "\n"))
+	if !ok {
+		return "", false
+	}
+	return strings.Join(m, "\n"), true
+}
+
+// merge3Blocks merges two edits of a document given as canonical blocks: blocks changed on one side
+// only combine, and a block changed on both sides combines when the edits touch different lines.
+func merge3Blocks(base, left, right []string) ([]string, bool) {
+	return merge3Refined(base, left, right, mergeLines)
 }
 
 // merge3String is the three-way merge of one value (the title): a side that did not change yields

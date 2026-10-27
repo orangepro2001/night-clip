@@ -128,13 +128,6 @@ class NoteEditorLogic(private val now: () -> Long, private val debounceMs: Long 
     /** A save was merged into newer content: tell the user once the merged text is on screen. */
     private var mergeNoticePending = false
 
-    /**
-     * A revision made elsewhere was announced while the user was typing. If the next save then comes back as a plain
-     * success, the core did not make a revision of its own: the edit changed nothing once normalised (white space),
-     * and the answer is the newest revision of the other device. That revision is not what the editor shows.
-     */
-    private var foreignWhileTyping = false
-
     val state: EditorState
         get() = EditorState(
             phase = phase, noteId = noteId, baseRevId = baseRevId, title = title, body = body,
@@ -189,7 +182,6 @@ class NoteEditorLogic(private val now: () -> Long, private val debounceMs: Long 
         flushAfterSave = false
         reloadWhenClean = false
         mergeNoticePending = false
-        foreignWhileTyping = false
         editSeq++
     }
 
@@ -230,7 +222,6 @@ class NoteEditorLogic(private val now: () -> Long, private val debounceMs: Long 
         loadError = null
         phase = EditorPhase.READY
         dueAt = null
-        foreignWhileTyping = false
         editSeq++
         if (!mergeNoticePending) return emptyList()
         mergeNoticePending = false
@@ -295,8 +286,12 @@ class NoteEditorLogic(private val now: () -> Long, private val debounceMs: Long 
         )
     }
 
-    /** The core accepted the save. [noteId] is the note's id (the new one after a create). */
-    fun onSaved(ticket: Long, noteId: String, revId: String, merged: Boolean, conflictNoteId: String?): List<EditorCommand> {
+    /**
+     * The core accepted the save. [noteId] is the note's id (the new one after a create). [changed] false = the edit
+     * changed nothing once normalised (white space only): no revision was made and [revId] is just the note's current
+     * one, which after a stale base can be another device's revision.
+     */
+    fun onSaved(ticket: Long, noteId: String, revId: String, merged: Boolean, conflictNoteId: String?, changed: Boolean = true): List<EditorCommand> {
         val sent = inflight?.takeIf { it.ticket == ticket } ?: return emptyList()
         inflight = null
         val out = mutableListOf<EditorCommand>()
@@ -305,9 +300,8 @@ class NoteEditorLogic(private val now: () -> Long, private val debounceMs: Long 
         savedBody = sent.body
         saveError = null
         val clean = title == savedTitle && body == savedBody
-        val foreign = foreignWhileTyping
-        foreignWhileTyping = false
-        val diverged = merged || conflictNoteId != null || foreign
+        // Nothing changed and the note is somewhere else than the base: the editor does not show its text.
+        val diverged = merged || conflictNoteId != null || (!changed && revId != baseRevId)
         var reloading = false
         if (!diverged) {
             // The text sent is exactly what the newest revision holds: it is the next base.
@@ -377,10 +371,7 @@ class NoteEditorLogic(private val now: () -> Long, private val debounceMs: Long 
             return emptyList()
         }
         // Typing: the next save merges against the newest revision through its (older) base revision.
-        if (isDirty() || dueAt != null) {
-            foreignWhileTyping = true
-            return emptyList()
-        }
+        if (isDirty() || dueAt != null) return emptyList()
         if (loadTicket != null) return emptyList()
         return listOf(requestLoad())
     }

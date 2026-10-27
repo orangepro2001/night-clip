@@ -123,7 +123,69 @@ public static partial class Strings
     public static string NotesSyncPeerOld(string name) => $"{name} 使用了更新的笔记格式，笔记暂停同步。请先把这台电脑上的 ClipBridge 更新到最新版本。";
     public static string NotesSyncPending(int pending) => $"待发送 {pending} 条";
 
+    // ---- search ---------------------------------------------------------------------------
+    public const string NoteSearchHint = "搜索笔记（Ctrl+F）";
+    public const string NoteSearchDisabledInTrash = "回收站里的笔记不参与搜索";
+    public static string NotesSearchEmpty(string query) => $"没有找到包含“{query}”的笔记。";
+
+    // ---- menu: export, import, cleanup ------------------------------------------------------
+    public const string BtnNoteMore = "更多";
+    public const string MenuNoteExport = "导出全部笔记…";
+    public const string MenuNoteImport = "导入…";
+    public const string MenuNoteImportFolder = "导入文件夹…";
+    public const string MenuNoteCleanup = "清理未使用的附件";
+    public const string NoteExportTitle = "导出笔记";
+    public const string NoteExportIntro = "把所有笔记导出为一个 ZIP 压缩包：每篇笔记一个 .md 文件，文件开头记录标题和时间。附件不在压缩包里，笔记中的附件链接会原样保留。";
+    public const string NoteExportTrash = "包含回收站里的笔记";
+    public const string BtnNoteExportChoose = "选择位置并导出…";
+    public const string NoteExportSaveTitle = "导出笔记到";
+    public const string NoteZipFilter = "ZIP 压缩包 (*.zip)|*.zip";
+    public static string NotesExportFileName(string date) => $"ClipBridge 笔记 {date}.zip";
+    public static string NotesExportDone(int count, string size) => $"已导出 {count} 篇笔记（{size}）";
+    public const string NoteImportPickTitle = "选择要导入的笔记";
+    public const string NoteImportFilter = "笔记文件 (*.zip;*.md;*.markdown;*.txt)|*.zip;*.md;*.markdown;*.txt|所有文件 (*.*)|*.*";
+    public const string NoteImportFolderTitle = "选择要导入的文件夹";
+    public const string NoteImportResultTitle = "导入结果";
+    public const string NoteImportNote = "导入总是新建笔记，不会改动已有的笔记；重复导入会得到重复的笔记。";
+    public static string NotesImportDone(int imported) => $"导入了 {imported} 篇";
+    public static string NotesImportDoneSkipped(int imported, int skipped) => $"导入了 {imported} 篇，跳过 {skipped} 个";
+    public static string NoteImportSkippedHeader(int skipped) => $"跳过的文件（{skipped}）";
+    public const string NotesSkipNotRegular = "不是普通文件";
+    public const string NotesSkipTooLarge = "超过 1 MiB，一篇笔记放不下";
+    public const string NotesSkipUnreadable = "读不出来";
+    public const string NotesSkipNotText = "不是文本文件";
+    public const string NoteCleanupConfirm = "清理“任何笔记（包括历史版本）都不再用到”并且已经存在超过 7 天的附件？\n这些附件会被永久删除。";
+    public const string AttachmentCleanupNothing = "没有可以清理的附件（只有超过 7 天、任何笔记和历史都不再用到的附件才会被清理）";
+    public static string AttachmentCleanupDone(int removed, string size) => $"清理了 {removed} 个未使用的附件，释放了 {size}";
+
+    // ---- attachments ------------------------------------------------------------------------
+    public const string EditAttachLabel = "附件";
+    public const string EditAttachTip = "插入附件（图片或文件，最大 32 MiB）。也可以直接粘贴或拖进编辑区。";
+    public const string AttachPickTitle = "选择要插入的附件";
+    public const string AttachAdding = "正在添加附件…";
+    public static string AttachAdded(string name) => $"已插入附件：{name}";
+    public static string AttachFolder(string name) => $"“{name}”是文件夹，不能作为附件。";
+    public static string AttachFailed(string name, string reason) => $"“{name}”没有添加：{reason}";
+    public const string AttachSwitchedNote = "附件已经添加，但你换到了另一篇笔记，没有插入。";
+    public const string AttachNoTemp = "无法保存剪贴板里的图片。";
+    public static string AttachmentLabel(string name, string size) => $"{name}（{size}）";
+    public static string AttachmentChip(string label) => "📎 " + label;
+    public const string AttachmentPending = "附件同步中…";
+    public const string AttachmentImageLoading = "[图片加载中…]";
+    public const string AttachmentImageBroken = "[无法显示这张图片，点击可以用默认程序打开]";
+    public const string AttachmentFailedChip = "[附件无法读取]";
+    public const string AttachmentOpenTip = "点击用默认程序打开";
+    public const string AttachmentRiskyTitle = "打开附件";
+    public static string AttachmentRiskyText(string name) =>
+        $"“{name}”是程序或脚本，它来自笔记里的附件。打开它可能会运行其中的代码。\n\n确定要打开吗？";
+
     // ---- errors ---------------------------------------------------------------------------
+    public const string ErrAttachmentTooLarge = "附件太大：每个附件最大 32 MiB";
+    public const string ErrAttachmentInvalid = "这个文件不能作为附件：它不是文件，或者读不出来";
+    public const string ErrAttachmentNotFound = "这个附件还没有同步到这台电脑，等同步到了再试";
+    public const string ErrNotesTransferInvalid = "这个位置用不了：文件已经存在、路径不对，或者文件夹不存在";
+    public const string ErrNotesTransferNotFound = "找不到要导入的文件或文件夹";
+    public const string ErrNotesFileAccess = "无法读写这个文件或文件夹，请检查权限和磁盘空间";
     public const string ErrNoteNotFound = "找不到这篇笔记（可能已被清理）";
     public const string ErrNoteInTrash = "这篇笔记在回收站里，请先恢复再编辑";
     public const string ErrNoteTooLarge = "笔记太大：正文不能超过 1 MiB，标题不能超过 1 KiB";

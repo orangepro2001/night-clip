@@ -179,19 +179,22 @@ public class NoteEditorSessionTests
     }
 
     [Fact]
-    public async Task OwnChildCheck_ConfirmsTheStoredRevisionIsAChildOfTheBase()
+    public async Task ASuccessfulSave_NeedsNoExtraRead()
     {
+        // changed:true says the revision is ours: no notes.get to check it
         var h = new Harness().UpdateAnswers("r_2");
         h.Type("a");
         await h.Pause();
-        var get = Assert.Single(h.Core.ParamsOf("notes.get"));
-        Assert.Equal("r_2", get.GetProperty("rev_id").GetString());
+        Assert.Equal(0, h.Core.Count("notes.get"));
+        Assert.Equal("r_2", h.Session.Model.BaseRevId);
     }
 
     [Fact]
-    public async Task ANewestRevisionThatIsNotOurChild_IsReloaded_AndNothingIsAdoptedBlindly()
+    public async Task NothingStored_WhileTheNoteMovedOn_ReloadsTheNote_AndAdoptsNothingBlindly()
     {
-        var h = new Harness().UpdateAnswers("r_head");
+        // The text came out like the base, so the core stored nothing and names its newest revision, made elsewhere.
+        var h = new Harness();
+        h.Core.On("notes.update", """{"rev_id":"r_head","changed":false}""");
         h.Core.On("notes.get", """{"note_id":"nt_a","rev_id":"r_head","parents":["r_other"],"body":"remote\n","title":"T"}""");
 
         h.Type("typed");
@@ -201,6 +204,21 @@ public class NoteEditorSessionTests
         Assert.Equal(("T", "remote\n"), h.Replaced.Single());   // the box shows what the core holds
         Assert.Empty(h.Notices);                                // silent: nothing was merged
         Assert.Equal("r_head", h.Session.Model.BaseRevId);
+    }
+
+    [Fact]
+    public async Task NothingStored_WhileTheBaseIsStillNewest_IsSimplySaved()
+    {
+        var h = new Harness();
+        h.Core.On("notes.update", """{"rev_id":"r_1","changed":false}""");
+
+        h.Type("start\n  ");
+        await h.Pause();
+
+        Assert.Equal(0, h.Core.Count("notes.get"));
+        Assert.Empty(h.Replaced);
+        Assert.False(h.Session.Model.Dirty);
+        Assert.Equal("r_1", h.Session.Model.BaseRevId);
     }
 
     // ---- merges ------------------------------------------------------------------------------------------------

@@ -261,7 +261,7 @@ internal sealed partial class ShellController : IDisposable
                 case VaultChangedEvent:
                     VaultChanged?.Invoke();
                     break;
-                case NotesChangedEvent or NotesSyncUpdatedEvent or NotesSyncConflictEvent:
+                case NotesChangedEvent or NotesSyncUpdatedEvent or NotesSyncConflictEvent or NotesAttachmentEvent:
                     HandleNotesEvent(ev);
                     break;
             }

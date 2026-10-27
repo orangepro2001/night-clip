@@ -10,6 +10,7 @@
 | 2 | [sync-model.md](sync-model.md) | 多端怎么同步？冲突怎么办？离线了怎么办？"最终一致"靠什么保证？ |
 | 3 | [editor-and-markdown.md](editor-and-markdown.md) | 富文本和 Markdown 怎么共存？谁是权威？转换会丢什么？编辑器选哪个？ |
 | 4 | [development-plan.md](development-plan.md) | 分几期做？每期的验收标准是什么？风险在哪？ |
+| 4b | [crdt-evaluation.md](crdt-evaluation.md) | 为什么不用字符级 CRDT？什么情况下重新考虑？ |
 | 5 | [../api-spec.md](../api-spec.md) | 壳层调用核心的 `notes.*` 方法、事件、渲染树长什么样？ |
 
 ## 决策记录（ADR）

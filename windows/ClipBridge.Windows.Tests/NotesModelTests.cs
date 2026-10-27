@@ -213,11 +213,11 @@ public class NotesApiTests
     }
 
     [Fact]
-    public void Search_ReportsNotImplemented()
+    public void Search_PassesTheCoresErrorsThrough()
     {
-        var core = new ScriptedCore().On("notes.search", _ => throw new CoreException("NOT_IMPLEMENTED", "later"));
-        var ex = Assert.Throws<CoreException>(() => Api(core).Search("x"));
-        Assert.Equal("NOT_IMPLEMENTED", ex.Code);
+        var core = new ScriptedCore().On("notes.search", _ => throw new CoreException("INVALID", "empty query"));
+        var ex = Assert.Throws<CoreException>(() => Api(core).Search(""));
+        Assert.Equal("INVALID", ex.Code);
     }
 
     [Fact]

@@ -7,13 +7,13 @@ import (
 	"nightclip/core/notes/markdown"
 )
 
-// The one-line texts a list shows (title and preview) come from the render tree, so they are plain
-// text: no Markdown punctuation, no link syntax.
+// The one-line texts a list shows (title and preview) and the text the search looks through come from
+// the render tree, so they are plain text: no Markdown punctuation, no link syntax.
 
 const (
 	maxDisplayTitle = 80  // characters of a title taken from the body
 	maxPreviewRunes = 160 // characters of preview
-	maxTextLines    = 12  // blocks looked at: a list row never needs more
+	maxPreviewLines = 12  // blocks looked at for a list row: it never needs more
 )
 
 // inlineText flattens inline nodes to plain text.
@@ -34,13 +34,14 @@ func inlineText(in []markdown.Inline, out *strings.Builder) {
 
 func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-// textLines returns the plain text of the first text-carrying blocks of a body, one entry per block.
-func textLines(body string) []string {
+// textLines returns the plain text of the text-carrying blocks of a body, one entry per block, at most
+// max entries (max <= 0: all of them).
+func textLines(body string, max int) []string {
 	var lines []string
 	var walk func(blocks []markdown.RBlock)
 	walk = func(blocks []markdown.RBlock) {
 		for _, b := range blocks {
-			if len(lines) >= maxTextLines {
+			if max > 0 && len(lines) >= max {
 				return
 			}
 			var sb strings.Builder
@@ -58,11 +59,17 @@ func textLines(body string) []string {
 				}
 				continue
 			case "table":
-				for i, cell := range b.Header {
-					if i > 0 {
-						sb.WriteByte(' ')
-					}
+				for _, cell := range b.Header {
 					inlineText(cell, &sb)
+					sb.WriteByte(' ')
+				}
+				if max <= 0 { // search reads the whole table, a list row only its header
+					for _, row := range b.Rows {
+						for _, cell := range row {
+							inlineText(cell, &sb)
+							sb.WriteByte(' ')
+						}
+					}
 				}
 			default: // hr, html, unknown
 				continue
@@ -87,7 +94,7 @@ func cutRunes(s string, max int) string {
 // listTexts is the title and preview a list shows for a note: the stored title, else the first line of
 // the body (which the preview then does not repeat).
 func listTexts(title, body string) (display, preview string) {
-	lines := textLines(body)
+	lines := textLines(body, maxPreviewLines)
 	display = title
 	if display == "" && len(lines) > 0 {
 		display = cutTitle(normTitle(cutRunes(lines[0], maxDisplayTitle)), MaxTitleBytes)
@@ -95,3 +102,6 @@ func listTexts(title, body string) (display, preview string) {
 	}
 	return display, cutRunes(strings.Join(lines, " "), maxPreviewRunes)
 }
+
+// plainText is the whole text of a note body, blocks separated by line breaks.
+func plainText(body string) string { return strings.Join(textLines(body, 0), "\n") }

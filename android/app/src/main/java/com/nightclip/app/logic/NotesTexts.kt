@@ -77,9 +77,29 @@ object NotesTexts {
     const val RESTORED = "已恢复"
     const val CREATE_FAILED = "新建笔记失败"
 
+    // ---- search ------------------------------------------------------------------------------
+
+    const val SEARCH_NO_RESULTS = "没有找到相关的笔记"
+
+    // ---- attachments -------------------------------------------------------------------------
+
+    const val ATTACHMENT_SYNCING = "附件同步中…"
+    const val ATTACHMENT_FAILED = "附件无法显示"
+    const val ATTACHMENT_LOADING = "正在加载附件…"
+    const val ATTACHMENT_ADDED = "已插入附件"
+    const val ATTACHMENT_READ_ONLY = "回收站里的笔记不能插入附件，请先恢复"
+    const val ATTACHMENT_NO_APP = "没有可以打开这种文件的应用，可以保存或分享"
+    const val ATTACHMENT_SAVED = "已保存"
+    const val ATTACHMENT_NOT_OPENED_TITLE = "不直接打开这种文件"
+    const val ATTACHMENT_NOT_OPENED_TEXT = "安装包、脚本、网页这类文件不会从笔记里直接打开。可以先保存到手机，或分享给其他应用。"
+    const val ATTACHMENT_SAVE = "保存"
+    const val ATTACHMENT_SHARE = "分享"
+
     // ---- share target ------------------------------------------------------------------------
 
+    const val SHARE_SAVING = "正在保存为笔记…"
     const val SHARE_SAVED = "已保存为笔记"
+    const val SHARE_SAVED_PARTLY = "已保存为笔记，但有文件没能保存："
     const val SHARE_NOTHING = "没有可保存的文字"
     const val SHARE_TOO_LARGE = "太大（超过 1 MiB），无法保存为笔记"
 

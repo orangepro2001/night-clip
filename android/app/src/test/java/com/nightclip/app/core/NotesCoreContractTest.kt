@@ -2,7 +2,11 @@ package com.nightclip.app.core
 
 import com.nightclip.app.logic.EditorCommand
 import com.nightclip.app.logic.FlatBlock
+import com.nightclip.app.logic.AttachmentFiles
+import com.nightclip.app.logic.BlobAddress
 import com.nightclip.app.logic.NoteEditorLogic
+import com.nightclip.app.logic.NotesSearchLogic
+import com.nightclip.app.logic.NotesTransfer
 import com.nightclip.app.logic.NotesErrors
 import com.nightclip.app.logic.NotesRenderSpans
 import com.nightclip.app.logic.SpanStyle
@@ -153,7 +157,13 @@ class NotesCoreContractTest {
             "update_bad_base" to "NOT_FOUND",
             "get_bad_id" to "INVALID",
             "create_too_large" to "TOO_LARGE",
-            "search" to "NOT_IMPLEMENTED",
+            "search_empty" to "INVALID",
+            "attachment_add_too_large" to "TOO_LARGE",
+            "attachment_add_relative" to "INVALID",
+            "attachment_get_malformed" to "INVALID",
+            "attachment_export_missing" to "NOT_FOUND",
+            "export_exists" to "INVALID",
+            "render_body_and_id" to "INVALID",
         )
         for ((step, code) in expected) {
             val r = reply(step)
@@ -187,7 +197,7 @@ class NotesCoreContractTest {
 
         val para = flat[1] as FlatBlock.Paragraph
         val t = para.text.text
-        assertEquals("Hello em strong del code link [图片：pic] 😀 soft line\nhard line", t) // soft break = space, hard break = newline
+        assertEquals("Hello em strong del code link [图片：pic] 😀\nsoft line\nhard line", t) // soft and hard breaks are both line breaks
         val styles = para.text.spans.map { it.style }.toSet()
         assertEquals(setOf(SpanStyle.EM, SpanStyle.STRONG, SpanStyle.DEL, SpanStyle.CODE, SpanStyle.LINK), styles)
         val links = para.text.spans.filter { it.style == SpanStyle.LINK }
@@ -265,4 +275,149 @@ class NotesCoreContractTest {
             expectedBase = out.revId
         }
     }
+
+    // ---- phase 2: live preview, search, attachments, export and import -----------------------
+
+    @Test
+    fun updateTellsWhetherARevisionWasMade() {
+        assertTrue(NotesParsers.updated(result("update_plain")).changed)
+        val nothing = NotesParsers.updated(result("update_nochange"))
+        assertFalse(nothing.changed)
+        assertFalse(nothing.merged)
+        assertEquals(NotesParsers.updated(result("update_title_only")).revId, nothing.revId)
+    }
+
+    @Test
+    fun renderOfUnsavedTextHasNoNoteAndKeepsLineBreaks() {
+        val tree = NotesParsers.rendered(result("render_body"))
+        assertEquals("", tree.noteId)
+        assertEquals("", tree.revId)
+        val flat = NotesRenderSpans.flatten(tree.blocks)
+        assertEquals("Live", (flat[0] as FlatBlock.Heading).text.text)
+        assertEquals("unsaved text\nsecond line", (flat[1] as FlatBlock.Paragraph).text.text) // the soft break is a line break
+    }
+
+    @Test
+    fun searchHitsAndTheirHighlightsInCodePoints() {
+        val title = NotesParsers.search(result("search_title")).items.single()
+        assertEquals("Renamed", title.title)
+        assertEquals(listOf(Span(0, 7)), title.titleHighlights.map { Span(it.start, it.end) })
+        assertTrue(title.highlights.isEmpty())
+        assertFalse(title.snippet.contains('\n'))
+
+        val body = NotesParsers.search(result("search_body")).items.single()
+        assertTrue(body.highlights.isNotEmpty())
+        val words = NotesSearchLogic.toSpans(body.snippet, body.highlights).map { body.snippet.substring(it.start, it.end) }
+        assertEquals(listOf("last", "paragraph"), words)
+
+        assertTrue(NotesParsers.search(result("search_none")).items.isEmpty())
+    }
+
+    @Test
+    fun emojiBeforeAHighlightMoveItInUtf16() {
+        val hit = NotesParsers.search(result("search_emoji")).items.single()
+        assertEquals("😀 emoji 笔记", hit.title)
+        val titleSpan = NotesSearchLogic.toSpans(hit.title, hit.titleHighlights).single()
+        assertEquals("emoji", hit.title.substring(titleSpan.start, titleSpan.end))
+        val snippetSpan = NotesSearchLogic.toSpans(hit.snippet, hit.highlights).single()
+        assertEquals("emoji", hit.snippet.substring(snippetSpan.start, snippetSpan.end))
+        // Used as they are, the code point numbers would point at the wrong characters.
+        val raw = hit.highlights.single()
+        assertNotEquals("emoji", hit.snippet.substring(raw.start, raw.end))
+
+        val cjk = NotesParsers.search(result("search_cjk")).items.single()
+        val cjkSnippet = NotesSearchLogic.toSpans(cjk.snippet, cjk.highlights).single()
+        assertEquals("笔记", cjk.snippet.substring(cjkSnippet.start, cjkSnippet.end))
+        val cjkTitle = NotesSearchLogic.toSpans(cjk.title, cjk.titleHighlights).single()
+        assertEquals("笔记", cjk.title.substring(cjkTitle.start, cjkTitle.end))
+    }
+
+    @Test
+    fun searchPagesFollowTheCursor() {
+        val first = NotesParsers.search(result("search_page1"))
+        val second = NotesParsers.search(result("search_page2"))
+        assertEquals(1, first.items.size)
+        assertNotNull(first.nextCursor)
+        assertEquals(1, second.items.size)
+        assertNotEquals(first.items.single().noteId, second.items.single().noteId)
+        // The pages are put together the way the list does it.
+        val state = NotesSearchLogic.nextPage(NotesSearchLogic.firstPage("e", first), "e", first.nextCursor!!, second)
+        assertEquals(2, state.items.size)
+    }
+
+    @Test
+    fun attachmentReplies() {
+        val image = NotesParsers.attachment(result("attachment_add_image"))
+        assertTrue(BlobAddress.isBlobId(image.blobId))
+        assertEquals("image/png", image.mime)
+        assertTrue(image.present)
+        assertEquals(70L, image.size)
+        assertEquals("photo [1].png", image.name)
+        assertEquals("![photo \\[1\\].png](blob:${image.blobId})", image.markdown)
+        assertEquals(AttachmentFiles.Kind.PICTURE, AttachmentFiles.kindOf(image))
+
+        val file = NotesParsers.attachment(result("attachment_add_file"))
+        assertTrue(file.markdown.startsWith("[报告 notes.txt](blob:"))
+        assertEquals(AttachmentFiles.Kind.DOCUMENT, AttachmentFiles.kindOf(file))
+        assertTrue(AttachmentFiles.isSafeToOpen(file.name, file.mime))
+
+        assertEquals(image, NotesParsers.attachment(result("attachment_get_image")).copy(markdown = image.markdown))
+        val missing = NotesParsers.attachment(result("attachment_get_missing"))
+        assertFalse(missing.present)
+        assertEquals("", missing.name)
+        assertEquals(AttachmentFiles.Kind.ABSENT, AttachmentFiles.kindOf(missing))
+        assertTrue(NotesParsers.attachment(result("attachment_export_image")).present)
+
+        val cleanup = NotesParsers.cleanup(result("attachment_cleanup"))
+        assertEquals(0, cleanup.removed)
+        assertEquals(2, cleanup.kept)
+        assertEquals("没有可清理的附件", NotesTransfer.cleanupSummary(cleanup))
+    }
+
+    @Test
+    fun theRenderTreeOfANoteWithAttachmentsBecomesPicturesAndChips() {
+        val image = NotesParsers.attachment(result("attachment_add_image"))
+        val file = NotesParsers.attachment(result("attachment_add_file"))
+        val flat = NotesRenderSpans.flatten(NotesParsers.rendered(result("render_attachments")).blocks)
+        assertEquals(
+            listOf("Heading", "Image", "Paragraph", "File", "Image"),
+            flat.map { it::class.simpleName },
+        )
+        assertEquals(FlatBlock.Image(image.blobId, "photo [1].png", 0, 0), flat[1])
+        assertEquals("text with  inline", (flat[2] as FlatBlock.Paragraph).text.text)
+        assertEquals(FlatBlock.File(file.blobId, "报告 notes.txt", 0, 0), flat[3])
+        assertEquals("0".repeat(64), (flat[4] as FlatBlock.Image).blobId) // not on this device: the preview waits for it
+        assertEquals("missing", (flat[4] as FlatBlock.Image).alt)
+        // None of it is a web link.
+        assertTrue(flat.filterIsInstance<FlatBlock.Paragraph>().all { p -> p.text.spans.none { it.target != null } })
+    }
+
+    @Test
+    fun exportAndImportReplies() {
+        val export = NotesParsers.exported(result("export"))
+        assertEquals(6, export.count)
+        assertTrue(export.bytes > 0)
+        assertTrue(NotesTransfer.exportSummary(export).startsWith("已导出 6 篇笔记"))
+
+        val zip = NotesParsers.imported(result("import_zip"))
+        assertEquals(6, zip.imported)
+        assertTrue(zip.skipped.isEmpty())
+        assertTrue(zip.noteIds.isNotEmpty())
+        assertEquals("导入了 6 篇", NotesTransfer.importSummary(zip))
+        assertEquals(1, NotesParsers.imported(result("import_md")).imported)
+
+        val binary = NotesParsers.imported(result("import_binary"))
+        assertEquals(0, binary.imported)
+        assertEquals("binary.txt", binary.skipped.single().name)
+        assertEquals(listOf("binary.txt：不是文本文件"), NotesTransfer.skipLines(binary.skipped))
+
+        for (step in listOf("import_missing", "import_relative")) assertEquals("INVALID", reply(step).errorCode)
+    }
+
+    @Test
+    fun attachmentEventParses() {
+        assertEquals(CoreEvent.NotesAttachment("a".repeat(64)), CoreEvent.parse("""{"type":"notes.attachment","blob_id":"${"a".repeat(64)}"}"""))
+    }
+
+    private data class Span(val start: Int, val end: Int)
 }

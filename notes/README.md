@@ -59,7 +59,9 @@ android/app/                      笔记界面（Compose）
 | Go 核心（含合并与同步的收敛属性测试） | ✅ `make notes-check` |
 | 双端 UI | 见 [docs/development-plan.md](docs/development-plan.md) §8 |
 | 真机 / 真实 tailnet 验证 | ❓ 未做 |
-| 修订压缩、回收站清理、附件、全文搜索、导入导出 | ⛔ Phase 2 |
+| 全文搜索、导入导出、附件（核心） | ✅ Phase 2，界面见 [docs/development-plan.md](docs/development-plan.md) §8 |
+| 块级所见即所得编辑器 | 见 [docs/development-plan.md](docs/development-plan.md) §5 |
+| 修订压缩、回收站物理清理 | ⛔ 设计结论见 [docs/sync-model.md](docs/sync-model.md) §8 |
 
 状态标记沿用主仓库约定：✅ 已实现且有测试；🟡 已实现/仅编译，未经真机验证；⛔ 计划中；❓ 需要真机或用户决策。
 

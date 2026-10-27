@@ -46,7 +46,32 @@ object NotesApi {
 
     suspend fun render(noteId: String, revId: String? = null) = run("notes.render", idParams(noteId, revId), NotesParsers::rendered)
 
+    /** The live preview: renders TEXT that is not saved (and so has no note id or revision). */
+    suspend fun renderBody(body: String) = run("notes.render", JSONObject().put("body", body), NotesParsers::rendered)
+
     suspend fun normalize(body: String) = run("notes.normalize", JSONObject().put("body", body), NotesParsers::normalized)
+
+    // ---- search, attachments, export and import ----------------------------------------------
+
+    /** Full-text search of the live notes. Highlight offsets in the result are code points. */
+    suspend fun search(query: String, limit: Int, cursor: String?) = run("notes.search", searchParams(query, limit, cursor), NotesParsers::search)
+
+    /** Stores the file at the absolute [path] as an attachment; the result's `markdown` is what the note should contain. */
+    suspend fun attachmentAdd(path: String) = run("notes.attachment_add", JSONObject().put("path", path), NotesParsers::attachment)
+
+    suspend fun attachmentGet(blobId: String) = run("notes.attachment_get", JSONObject().put("blob_id", blobId), NotesParsers::attachment)
+
+    /** Writes the attachment to the absolute [path] (the folder must exist; an existing file is replaced). */
+    suspend fun attachmentExport(blobId: String, path: String) =
+        run("notes.attachment_export", JSONObject().put("blob_id", blobId).put("path", path), NotesParsers::attachment)
+
+    suspend fun attachmentCleanup() = run("notes.attachment_cleanup", parse = NotesParsers::cleanup)
+
+    /** Writes a ZIP to [path], which must not exist. */
+    suspend fun export(path: String, includeTrash: Boolean) = run("notes.export", exportParams(path, includeTrash), NotesParsers::exported)
+
+    /** Imports the .zip / .md / .txt file at [path]; always makes new notes. */
+    suspend fun import(path: String) = run("notes.import", JSONObject().put("path", path), NotesParsers::imported)
 
     // ---- sync --------------------------------------------------------------------------------
 
@@ -70,6 +95,19 @@ object NotesApi {
         if (limit > 0) p.put("limit", limit)
         if (!cursor.isNullOrEmpty()) p.put("cursor", cursor)
         if (deleted) p.put("deleted", true)
+        return p
+    }
+
+    internal fun searchParams(query: String, limit: Int, cursor: String?): JSONObject {
+        val p = JSONObject().put("query", query)
+        if (limit > 0) p.put("limit", limit)
+        if (!cursor.isNullOrEmpty()) p.put("cursor", cursor)
+        return p
+    }
+
+    internal fun exportParams(path: String, includeTrash: Boolean): JSONObject {
+        val p = JSONObject().put("path", path)
+        if (includeTrash) p.put("include_trash", true)
         return p
     }
 

@@ -15,6 +15,17 @@
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
                 <ToggleButton x:Name="TrashToggle" Style="{StaticResource NotesModeToggle}" Margin="0,0,8,0"
                               Content="{x:Static local:Strings.BtnNoteTrash}" Click="Trash_Click" />
+                <Button x:Name="MenuButton" Content="{x:Static local:Strings.BtnNoteMore}" Click="Menu_Click">
+                    <Button.ContextMenu>
+                        <ContextMenu x:Name="NotesMenu">
+                            <MenuItem Header="{x:Static local:Strings.MenuNoteExport}" Click="Export_Click" />
+                            <MenuItem Header="{x:Static local:Strings.MenuNoteImport}" Click="Import_Click" />
+                            <MenuItem Header="{x:Static local:Strings.MenuNoteImportFolder}" Click="ImportFolder_Click" />
+                            <Separator />
+                            <MenuItem Header="{x:Static local:Strings.MenuNoteCleanup}" Click="Cleanup_Click" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
                 <Button x:Name="NewButton" Content="{x:Static local:Strings.BtnNoteNew}" Click="New_Click" Style="{StaticResource PrimaryButton}" />
             </StackPanel>
             <StackPanel>
@@ -51,18 +62,25 @@
             <!-- the notes -->
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <ListBox x:Name="NoteList" Grid.Row="0" HorizontalContentAlignment="Stretch"
+                <Grid Grid.Row="0" Margin="0,0,0,6">
+                    <TextBox x:Name="SearchBox" MaxLength="200" Padding="8,5" TextChanged="SearchBox_TextChanged"
+                             PreviewKeyDown="SearchBox_PreviewKeyDown" />
+                    <TextBlock x:Name="SearchHint" Text="{x:Static local:Strings.NoteSearchHint}" Foreground="{DynamicResource AppFaint}"
+                               IsHitTestVisible="False" Margin="10,0,0,0" VerticalAlignment="Center" />
+                </Grid>
+                <ListBox x:Name="NoteList" Grid.Row="1" HorizontalContentAlignment="Stretch"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="NoteList_SelectionChanged">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <StackPanel Margin="2,3">
-                                <TextBlock Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Text="{Binding Preview, Mode=OneWay}" Foreground="{DynamicResource AppMuted}" FontSize="12"
-                                           TextTrimming="CharacterEllipsis" Margin="0,1,0,0"
-                                           Visibility="{Binding HasPreview, Converter={StaticResource B2V}}" />
+                                <views:HighlightText Segments="{Binding TitleSegments, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <views:HighlightText Segments="{Binding PreviewSegments, Mode=OneWay}" Foreground="{DynamicResource AppMuted}" FontSize="12"
+                                                     TextTrimming="CharacterEllipsis" Margin="0,1,0,0"
+                                                     Visibility="{Binding HasPreview, Converter={StaticResource B2V}}" />
                                 <DockPanel Margin="0,3,0,0">
                                     <Border DockPanel.Dock="Right" CornerRadius="4" Padding="5,0" Background="{DynamicResource AppWarningSoft}"
                                             Visibility="{Binding HasBadge, Converter={StaticResource B2V}}">
@@ -74,9 +92,9 @@
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-                <TextBlock x:Name="EmptyText" Grid.Row="0" Foreground="{DynamicResource AppMuted}" TextWrapping="Wrap" TextAlignment="Center"
+                <TextBlock x:Name="EmptyText" Grid.Row="1" Foreground="{DynamicResource AppMuted}" TextWrapping="Wrap" TextAlignment="Center"
                            HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12" Visibility="Collapsed" />
-                <Button x:Name="MoreButton" Grid.Row="1" Content="{x:Static local:Strings.BtnNoteLoadMore}" Click="More_Click"
+                <Button x:Name="MoreButton" Grid.Row="2" Content="{x:Static local:Strings.BtnNoteLoadMore}" Click="More_Click"
                         Margin="0,6,0,0" Visibility="Collapsed" />
             </Grid>
 

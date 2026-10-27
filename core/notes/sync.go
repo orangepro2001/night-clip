@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"sync"
 	"time"
@@ -30,6 +32,8 @@ const (
 	pathDigest = "/v1/notes/digest"
 	pathPull   = "/v1/notes/pull"
 	pathPush   = "/v1/notes/push"
+	pathBlobs  = "/v1/notes/blob_have"
+	pathBlob   = "/v1/notes/blob/"
 
 	digestPage   = 500      // notes per digest page
 	pullNotes    = 50       // notes per pull request
@@ -39,6 +43,7 @@ const (
 	maxBodyRead  = 10 << 20 // a request body larger than this is refused outright
 	maxPullIDs   = 50       // notes named in one pull request
 	maxPushRevs  = 2 * maxBatchRevs
+	maxBlobIDs   = 500 // attachments named in one blob_have request
 )
 
 // Sync states, as shown to the user.
@@ -58,11 +63,14 @@ type syncState struct {
 	mu     sync.Mutex
 	run    bool
 	live   map[string]bool // peers a round is running for
+	// blobSem lets one attachment upload be read at a time
+	blobSem chan struct{}
 }
 
 func (s *Service) initSync() {
 	s.sync.kick = make(chan struct{}, 1)
 	s.sync.live = map[string]bool{}
+	s.sync.blobSem = make(chan struct{}, 1)
 	s.sync.ctx, s.sync.cancel = context.WithCancel(context.Background())
 	if s.e == nil {
 		return
@@ -71,6 +79,9 @@ func (s *Service) initSync() {
 	s.e.Handle("GET "+pathDigest, http.HandlerFunc(s.serveDigest), false)
 	s.e.Handle("POST "+pathPull, http.HandlerFunc(s.servePull), false)
 	s.e.Handle("POST "+pathPush, http.HandlerFunc(s.servePush), false)
+	s.e.Handle("POST "+pathBlobs, http.HandlerFunc(s.serveBlobHave), false)
+	s.e.Handle("GET "+pathBlob+"{id}", http.HandlerFunc(s.serveBlobGet), false)
+	s.e.Handle("PUT "+pathBlob+"{id}", http.HandlerFunc(s.serveBlobPut), false)
 }
 
 // Start begins polling the peers we dial.
@@ -219,6 +230,14 @@ type rejection struct {
 	Reason string `json:"reason"`
 }
 
+type blobHaveRequest struct {
+	IDs []string `json:"ids"`
+}
+
+type blobHaveReply struct {
+	Have []string `json:"have"`
+}
+
 type pushReply struct {
 	Accepted int         `json:"accepted"` // revisions now stored (new or already there)
 	Inserted int         `json:"inserted"` // of those, how many were new
@@ -296,6 +315,94 @@ func (s *Service) servePush(w http.ResponseWriter, r *http.Request) {
 	}
 	rep, err := s.doPush(req)
 	s.reply(w, rep, err)
+}
+
+func (s *Service) serveBlobHave(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.caller(w, r); !ok {
+		return
+	}
+	var req blobHaveRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, string(proto.CodeInvalid), "malformed request")
+		return
+	}
+	rep, err := s.doBlobHave(req)
+	s.reply(w, rep, err)
+}
+
+func (s *Service) doBlobHave(req blobHaveRequest) (blobHaveReply, error) {
+	if len(req.IDs) > maxBlobIDs {
+		return blobHaveReply{}, proto.Errorf(proto.CodeInvalid, "too many attachments")
+	}
+	for _, id := range req.IDs {
+		if !blobIDRe.MatchString(id) {
+			return blobHaveReply{}, proto.Errorf(proto.CodeInvalid, "malformed attachment id")
+		}
+	}
+	have, err := s.storedAmong(req.IDs)
+	if have == nil {
+		have = []string{}
+	}
+	return blobHaveReply{Have: have}, err
+}
+
+func (s *Service) serveBlobGet(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.caller(w, r); !ok {
+		return
+	}
+	id := r.PathValue("id")
+	if !blobIDRe.MatchString(id) {
+		writeErr(w, http.StatusBadRequest, string(proto.CodeInvalid), "malformed attachment id")
+		return
+	}
+	d, found, err := s.heldBlob(id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, string(proto.CodeDBUnavailable), "temporarily unavailable")
+		return
+	}
+	if !found {
+		writeErr(w, http.StatusNotFound, string(proto.CodeNotFound), "no such attachment")
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("X-Blob-Name", url.PathEscape(d.Name))
+	w.Header().Set("X-Blob-Mime", d.Mime)
+	_, _ = w.Write(d.Data)
+}
+
+func (s *Service) serveBlobPut(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.caller(w, r); !ok {
+		return
+	}
+	id := r.PathValue("id")
+	if !blobIDRe.MatchString(id) {
+		writeErr(w, http.StatusBadRequest, string(proto.CodeInvalid), "malformed attachment id")
+		return
+	}
+	// One body is read at a time: a waiting upload is turned away instead of holding up to 32 MiB in memory.
+	select {
+	case s.sync.blobSem <- struct{}{}:
+		defer func() { <-s.sync.blobSem }()
+	default:
+		w.Header().Set("Retry-After", "2")
+		writeErr(w, http.StatusTooManyRequests, string(proto.CodeRateLimited), "another upload is being processed")
+		return
+	}
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBlobBytes+1))
+	if err != nil {
+		writeErr(w, http.StatusRequestEntityTooLarge, string(proto.CodeTooLarge), "too large")
+		return
+	}
+	name, _ := url.PathUnescape(r.Header.Get("X-Blob-Name"))
+	if err := s.storeReceivedBlob(id, blobData{Name: name, Mime: r.Header.Get("X-Blob-Mime"), Data: data}); err != nil {
+		if errors.Is(err, errBlobRefused) {
+			writeErr(w, http.StatusBadRequest, string(proto.CodeInvalid), "attachment refused")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, string(proto.CodeDBUnavailable), "temporarily unavailable")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Service) reply(w http.ResponseWriter, rep any, err error) {

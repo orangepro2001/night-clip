@@ -140,6 +140,9 @@ sealed interface CoreEvent {
         override val logId get() = noteId
     }
 
+    /** An attachment (`blob:<id>` in some note) has just reached this device: whatever shows a placeholder for it can load it now. */
+    data class NotesAttachment(val blobId: String) : CoreEvent { override val type = "notes.attachment" }
+
     data class Unknown(override val type: String) : CoreEvent
 
     companion object {
@@ -217,6 +220,7 @@ sealed interface CoreEvent {
             "vault.joined" -> VaultJoined(o.optString("device_id"), o.optString("name"))
             "notes.changed" -> NotesChanged(o.optString("note_id"), o.optString("rev_id"))
             "notes.sync.updated" -> NotesSyncUpdated(o.optString("peer_id"), o.optString("state"), o.optInt("behind"))
+            "notes.attachment" -> NotesAttachment(o.optString("blob_id"))
             "notes.sync.conflict" -> NotesSyncConflict(o.optString("note_id"), o.optString("conflict_note_id"), o.optString("reason"))
             else -> Unknown(type)
         }

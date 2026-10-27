@@ -55,8 +55,8 @@ Windows（WPF 壳）                                 Android（Kotlin Compose �
 | `notes` 表 | 每篇笔记的**当前状态**（由 head 修订推导，可重建）：`note_id`（`nt_` + 随机 base32）、标题、预览、`head_rev`、`updated_at`、`deleted`、`conflict_of` |
 | `note_revs` 表 | 不可变修订：`rev_id`（内容寻址）、`parents`（父修订数组）、`title`、`body`（规范化 Markdown）、`origin_device`、`created_at`、`deleted`、`conflict_of`，以及 `is_head` 标记。同步的是**修订**，不是整库 |
 | `note_peer_state` 表 | 每个对端的同步记账：状态、上次成功时间、两端计数器、落后/领先数 |
-| 附件 | **未实现**（Phase 2） |
-| 全文索引 | **未实现**（Phase 2，FTS5，只存派生数据） |
+| `note_blobs` / `note_blob_refs` 表 | 附件（按内容哈希、加密存储）与"每篇笔记当前引用了哪些附件"（迁移 V8），见 [sync-model.md](sync-model.md) §10 |
+| 全文索引 | 只在内存里，不落盘（笔记在库里是加密的，FTS5 会写出明文索引），见 sync-model.md §11 |
 
 标题、正文、预览在库里用现有数据库密钥（AES-256-GCM，绑定到行与列）加密，与身份私钥等私有列一致；`rev_id`、时间、`deleted` 等不涉及内容的列是明文，便于索引。
 
@@ -64,7 +64,7 @@ Windows（WPF 壳）                                 Android（Kotlin Compose �
 
 决策（Phase 0 / P0-3 的结论，见 [development-plan.md](development-plan.md) §3）：**不**把笔记帧塞进剪贴板/文件共用的 WebSocket，而是在同一个 mTLS 服务器上加四条 HTTP 路由，做法与密码库同步（`core/vsync`）相同：
 
-- `GET /v1/notes/head`、`GET /v1/notes/digest`、`POST /v1/notes/pull`、`POST /v1/notes/push`（流程见 [sync-model.md](sync-model.md) §3）。
+- `GET /v1/notes/head`、`GET /v1/notes/digest`、`POST /v1/notes/pull`、`POST /v1/notes/push`，以及附件的 `POST /v1/notes/blob_have`、`GET|PUT /v1/notes/blob/<id>`（流程见 [sync-model.md](sync-model.md) §3、§10）。
 - **同一端口、同一证书固定、同一"只有已配对设备可访问"的检查**，不新增防火墙规则、不新增监听端口；每个请求都重新读取配对状态（撤销配对后立即拒绝）。
 - **方向**：沿用现有规则——由拨号方发起；Android 只出站拨号，Windows 监听 tailnet 地址。监听侧只应答。
 - **与剪贴板/文件通道隔离**：笔记不使用事件序号、发件箱、TTL，也就不会被大文件传输的尾延迟拖慢，不影响现有测试。
@@ -109,4 +109,4 @@ Windows（WPF 壳）                                 Android（Kotlin Compose �
 1. ~~笔记帧是复用现有 WebSocket 连接还是新开专用连接？~~ **已决定**：都不是——用同一 mTLS 服务器上的 HTTP 路由（§4）。
 2. Android 后台同步在 Doze 下的可靠性，以及是否需要前台服务常驻：**待真机验证**。目前 Android 在应用前台/打开笔记页时立即同步（`notes.sync_now`），应用进程存活期间（含已有的实时前台服务）每 10 秒轮询；没有为笔记单独新增后台机制。
 3. 富文本编辑器选型：MVP 两端都用**源码编辑 + 实时预览**（核心渲染树绘制），不引入第三方控件；块级所见即所得编辑器留到 Phase 2（见 editor-and-markdown.md §4）。
-4. 附件大小上限与是否允许视频：**待定**（附件整体是 Phase 2）。
+4. 附件大小上限与是否允许视频：**已定**——任意文件，单个上限 32 MiB，不做视频专门处理（视频只是一个大文件，按普通附件链接显示）。

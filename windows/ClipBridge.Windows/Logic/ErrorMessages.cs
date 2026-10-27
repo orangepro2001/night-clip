@@ -66,7 +66,25 @@ public static class ErrorMessages
         "UNSUPPORTED_FORMAT" => Strings.ErrNoteUnsupportedFormat,
         "NOT_IMPLEMENTED" => Strings.ErrNotImplemented,
         "NOT_PAIRED" => Strings.ErrNotPaired,
+        "IO" => Strings.ErrNotesFileAccess, // not a core code: the shell could not read or write a file itself
         _ => ForCode(code),
+    };
+
+    /// <summary>Message for a failed notes.attachment_* call: TOO_LARGE is the 32 MiB limit of a file here, not the size of a note.</summary>
+    public static string ForNotesAttachment(string? code) => code switch
+    {
+        "TOO_LARGE" => Strings.ErrAttachmentTooLarge,
+        "INVALID" => Strings.ErrAttachmentInvalid,
+        "NOT_FOUND" => Strings.ErrAttachmentNotFound,
+        _ => ForNotes(code),
+    };
+
+    /// <summary>Message for a failed notes.export or notes.import call.</summary>
+    public static string ForNotesTransfer(string? code) => code switch
+    {
+        "INVALID" => Strings.ErrNotesTransferInvalid,
+        "NOT_FOUND" => Strings.ErrNotesTransferNotFound,
+        _ => ForNotes(code),
     };
 
     /// <summary>Message for a failed file transfer; checksum failures get the dedicated wording.</summary>

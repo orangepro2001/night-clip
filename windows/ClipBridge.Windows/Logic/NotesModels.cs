@@ -61,14 +61,17 @@ public sealed record NoteCreated(string NoteId, string RevId)
 }
 
 /// <summary>
-/// <c>notes.update</c>: <see cref="RevId"/> is the revision the note has now. <see cref="Merged"/> says the edit was
-/// combined with changes made elsewhere; <see cref="ConflictNoteId"/> names the copy set aside when both sides edited the
-/// same block (the newer text is the note, the older one the copy).
+/// <c>notes.update</c>: <see cref="RevId"/> is the revision the note has now. <see cref="Changed"/> is false when the edit
+/// stored nothing (the text came out like the base revision): <see cref="RevId"/> is then just the note's current revision,
+/// which may be one made elsewhere. <see cref="Merged"/> says the edit was combined with changes made elsewhere;
+/// <see cref="ConflictNoteId"/> names the copy set aside when both sides edited the same block (the newer text is the note,
+/// the older one the copy).
 /// </summary>
-public sealed record NoteSaveResult(string RevId, bool Merged, string ConflictNoteId)
+public sealed record NoteSaveResult(string RevId, bool Merged, string ConflictNoteId, bool Changed = true)
 {
+    /// <summary>A core that does not send <c>changed</c> is taken to have stored the edit.</summary>
     public static NoteSaveResult FromJson(JsonElement r) => new(
-        JsonRead.Str(r, "rev_id"), JsonRead.Bool(r, "merged"), JsonRead.Str(r, "conflict_note_id"));
+        JsonRead.Str(r, "rev_id"), JsonRead.Bool(r, "merged"), JsonRead.Str(r, "conflict_note_id"), JsonRead.Bool(r, "changed", true));
 }
 
 /// <summary>One revision of <c>notes.history</c> (no text: fetch it with <c>notes.get</c> and the revision id).</summary>
@@ -114,6 +117,79 @@ public sealed record NoteConflictPage(IReadOnlyList<NoteConflict> Items, string 
     public static NoteConflictPage FromJson(JsonElement r) => new(
         JsonRead.Arr(r, "items").Select(NoteConflict.FromJson).Where(i => i.NoteId.Length > 0 && i.ConflictNoteId.Length > 0).ToList(),
         JsonRead.Str(r, "next_cursor"));
+}
+
+// ---- search (notes.search) -----------------------------------------------------------------------------------------
+
+/// <summary>A highlighted stretch of a title or snippet. The core counts in Unicode CODE POINTS, not UTF-16 units: see <see cref="CodePointText"/>.</summary>
+public readonly record struct CodePointRange(int Start, int End)
+{
+    internal static CodePointRange FromJson(JsonElement e) => new((int)Math.Clamp(JsonRead.Long(e, "start"), 0, int.MaxValue), (int)Math.Clamp(JsonRead.Long(e, "end"), 0, int.MaxValue));
+
+    internal static IReadOnlyList<CodePointRange> ListFromJson(JsonElement e, string name) =>
+        JsonRead.Arr(e, name).Where(r => r.ValueKind == JsonValueKind.Object).Select(FromJson).ToList();
+}
+
+/// <summary>One hit of <c>notes.search</c>; <see cref="Highlights"/> are in <see cref="Snippet"/>, <see cref="TitleHighlights"/> in <see cref="Title"/>.</summary>
+public sealed record NoteSearchHit(
+    string NoteId, string Title, long UpdatedAt, string Snippet, IReadOnlyList<CodePointRange> Highlights,
+    IReadOnlyList<CodePointRange> TitleHighlights, string ConflictOf)
+{
+    public bool IsConflictCopy => ConflictOf.Length > 0;
+
+    public static NoteSearchHit FromJson(JsonElement e) => new(
+        JsonRead.Str(e, "note_id"), JsonRead.Str(e, "title"), JsonRead.Long(e, "updated_at"), JsonRead.Str(e, "snippet"),
+        CodePointRange.ListFromJson(e, "highlights"), CodePointRange.ListFromJson(e, "title_highlights"), JsonRead.Str(e, "conflict_of"));
+}
+
+public sealed record NoteSearchPage(IReadOnlyList<NoteSearchHit> Items, string NextCursor)
+{
+    public bool HasMore => NextCursor.Length > 0;
+
+    public static NoteSearchPage FromJson(JsonElement r) => new(
+        JsonRead.Arr(r, "items").Select(NoteSearchHit.FromJson).Where(i => i.NoteId.Length > 0).ToList(),
+        JsonRead.Str(r, "next_cursor"));
+}
+
+// ---- attachments (notes.attachment_*) ---------------------------------------------------------------------------
+
+/// <summary>
+/// An attachment as the core describes it. <see cref="Present"/> is false when a note refers to it but its file has not
+/// reached this device yet (all other fields are then empty). <see cref="Markdown"/> is what to insert into a note
+/// (only <c>notes.attachment_add</c> sends it).
+/// </summary>
+public sealed record NoteAttachment(string BlobId, string Name, string Mime, long Size, bool Present, string Markdown)
+{
+    public static NoteAttachment FromJson(JsonElement r) => new(
+        JsonRead.Str(r, "blob_id"), JsonRead.Str(r, "name"), JsonRead.Str(r, "mime"), JsonRead.Long(r, "size"),
+        JsonRead.Bool(r, "present"), JsonRead.Str(r, "markdown"));
+}
+
+/// <summary><c>notes.attachment_cleanup</c>.</summary>
+public sealed record AttachmentCleanupResult(int Removed, long FreedBytes, int Kept)
+{
+    public static AttachmentCleanupResult FromJson(JsonElement r) => new(
+        (int)Math.Clamp(JsonRead.Long(r, "removed"), 0, int.MaxValue), Math.Max(0, JsonRead.Long(r, "freed_bytes")),
+        (int)Math.Clamp(JsonRead.Long(r, "kept"), 0, int.MaxValue));
+}
+
+// ---- export and import (notes.export, notes.import) --------------------------------------------------------------
+
+public sealed record NoteExportResult(string Path, int Count, long Bytes)
+{
+    public static NoteExportResult FromJson(JsonElement r) => new(
+        JsonRead.Str(r, "path"), (int)Math.Clamp(JsonRead.Long(r, "count"), 0, int.MaxValue), Math.Max(0, JsonRead.Long(r, "bytes")));
+}
+
+/// <summary>A file that was not imported and why (<see cref="Reason"/> is the core's English text; see <see cref="NotesTransferText"/>).</summary>
+public sealed record NoteSkip(string Name, string Reason);
+
+public sealed record NoteImportResult(int Imported, IReadOnlyList<NoteSkip> Skipped, IReadOnlyList<string> NoteIds)
+{
+    public static NoteImportResult FromJson(JsonElement r) => new(
+        (int)Math.Clamp(JsonRead.Long(r, "imported"), 0, int.MaxValue),
+        JsonRead.Arr(r, "skipped").Where(s => s.ValueKind == JsonValueKind.Object).Select(s => new NoteSkip(JsonRead.Str(s, "name"), JsonRead.Str(s, "reason"))).ToList(),
+        JsonRead.StrArr(r, "note_ids"));
 }
 
 /// <summary>The values of the <c>action</c> of <c>notes.sync_resolve</c>.</summary>
@@ -297,5 +373,6 @@ public sealed record NotesResult<T>(T? Value, string? ErrorCode, string? Error)
 
     public static NotesResult<T> Success(T value) => new(value, null, null);
 
-    public static NotesResult<T> Fail(string code) => new(default, code, ErrorMessages.ForNotes(code));
+    /// <param name="message">Words for the code; the notes wording unless the call has its own (attachments, export, import).</param>
+    public static NotesResult<T> Fail(string code, Func<string?, string>? message = null) => new(default, code, (message ?? ErrorMessages.ForNotes)(code));
 }

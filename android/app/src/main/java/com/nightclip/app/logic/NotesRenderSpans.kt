@@ -61,7 +61,19 @@ sealed interface FlatBlock {
 
     /** HTML and syntax the core does not support: shown literally in monospace, never interpreted. */
     data class Literal(val text: String, override val quoteDepth: Int, override val indent: Int) : FlatBlock
+
+    /** An attachment shown as a picture (`![alt](blob:<id>)`). [alt] is the placeholder text while it is not there. */
+    data class Image(val blobId: String, val alt: String, override val quoteDepth: Int, override val indent: Int) : FlatBlock
+
+    /** An attachment shown as a chip (`[name](blob:<id>)`). */
+    data class File(val blobId: String, val name: String, override val quoteDepth: Int, override val indent: Int) : FlatBlock
 }
+
+/** An attachment found in inline content: `blob:<id>` is an address in the notes' file store, never a web link. */
+data class AttachmentRef(val blobId: String, val name: String, val image: Boolean)
+
+/** Inline content split into the text that is drawn as text and the attachments that are drawn as blocks of their own. */
+data class InlineParts(val text: StyledText, val attachments: List<AttachmentRef>)
 
 /** Turns the render tree of `notes.render` into [FlatBlock]s. Pure Kotlin; the only place that maps tree to text. */
 object NotesRenderSpans {
@@ -85,8 +97,16 @@ object NotesRenderSpans {
 
     private fun block(b: NoteBlock, quoteDepth: Int, indent: Int, listLevel: Int, out: MutableList<FlatBlock>) {
         when (b) {
-            is NoteBlock.Heading -> out += FlatBlock.Heading(b.level, styled(b.inline), quoteDepth, indent)
-            is NoteBlock.Paragraph -> out += FlatBlock.Paragraph(styled(b.inline), quoteDepth, indent)
+            is NoteBlock.Heading -> {
+                val parts = inlineParts(b.inline)
+                if (parts.text.text.isNotBlank() || parts.attachments.isEmpty()) out += FlatBlock.Heading(b.level, parts.text, quoteDepth, indent)
+                attachmentBlocks(parts, quoteDepth, indent, out)
+            }
+            is NoteBlock.Paragraph -> {
+                val parts = inlineParts(b.inline)
+                if (parts.text.text.isNotBlank() || parts.attachments.isEmpty()) out += FlatBlock.Paragraph(parts.text, quoteDepth, indent)
+                attachmentBlocks(parts, quoteDepth, indent, out)
+            }
             is NoteBlock.CodeBlock -> out += FlatBlock.Code(b.lang, b.text, quoteDepth, indent)
             is NoteBlock.Quote -> for (c in b.children) block(c, quoteDepth + 1, indent, listLevel, out)
             is NoteBlock.ListBlock -> list(b, quoteDepth, indent, listLevel, out)
@@ -116,12 +136,13 @@ object NotesRenderSpans {
      */
     private fun listItem(item: ListItem, marker: String, tight: Boolean, quoteDepth: Int, indent: Int, listLevel: Int, out: MutableList<FlatBlock>) {
         val first = item.blocks.firstOrNull()
-        val text = when (first) {
-            is NoteBlock.Paragraph -> styled(first.inline)
-            is NoteBlock.Heading -> styled(first.inline)
-            else -> StyledText.EMPTY
+        val parts = when (first) {
+            is NoteBlock.Paragraph -> inlineParts(first.inline)
+            is NoteBlock.Heading -> inlineParts(first.inline)
+            else -> InlineParts(StyledText.EMPTY, emptyList())
         }
-        out += FlatBlock.Item(marker, item.checked, text, tight, quoteDepth, indent)
+        out += FlatBlock.Item(marker, item.checked, parts.text, tight, quoteDepth, indent)
+        attachmentBlocks(parts, quoteDepth, indent + 1, out)
         val rest = if (first is NoteBlock.Paragraph || first is NoteBlock.Heading) item.blocks.drop(1) else item.blocks
         for (c in rest) block(c, quoteDepth, indent + 1, listLevel + 1, out)
     }
@@ -168,48 +189,95 @@ object NotesRenderSpans {
 
     // ---- inline ------------------------------------------------------------------------------
 
-    /** Soft line breaks are spaces, as CommonMark renders them; hard breaks are line breaks. */
-    private const val SOFT_BREAK = " "
+    /** Soft line breaks are line breaks, as in most note apps (Obsidian's default); the Windows client does the same. */
+    private const val SOFT_BREAK = "\n"
 
-    fun styled(inlines: List<NoteInline>): StyledText {
-        val sb = StringBuilder()
-        val spans = mutableListOf<StyledSpan>()
-        append(inlines, sb, spans)
-        // Outer ranges first; an outer span is added after its children, so the list is not in start order yet.
-        return StyledText(sb.toString(), spans.sortedWith(compareBy<StyledSpan> { it.start }.thenByDescending { it.end }))
-    }
+    /** Text for a line of inline content. Attachments stay in the text as plain words (table cells, tests). */
+    fun styled(inlines: List<NoteInline>): StyledText = Collector(extract = false).collect(inlines).text
 
-    private fun append(inlines: List<NoteInline>, sb: StringBuilder, spans: MutableList<StyledSpan>) {
-        for (n in inlines) {
-            when (n) {
-                is NoteInline.Text -> sb.append(n.text)
-                is NoteInline.Em -> styledRun(SpanStyle.EM, null, n.children, sb, spans)
-                is NoteInline.Strong -> styledRun(SpanStyle.STRONG, null, n.children, sb, spans)
-                is NoteInline.Del -> styledRun(SpanStyle.DEL, null, n.children, sb, spans)
-                is NoteInline.Code -> {
-                    val start = sb.length
-                    sb.append(n.text)
-                    if (sb.length > start) spans += StyledSpan(start, sb.length, SpanStyle.CODE)
-                }
-                is NoteInline.Link -> {
-                    val target = NoteLinks.openable(n.href)
-                    if (target != null) styledRun(SpanStyle.LINK, target, n.children, sb, spans) else append(n.children.ifEmpty { listOf(NoteInline.Text(n.href)) }, sb, spans)
-                }
-                is NoteInline.Image -> {
-                    val start = sb.length
-                    sb.append(imageText(n.alt, n.title))
-                    NoteLinks.openable(n.href)?.let { spans += StyledSpan(start, sb.length, SpanStyle.LINK, it) }
-                }
-                NoteInline.HardBreak -> sb.append('\n')
-                NoteInline.SoftBreak -> sb.append(SOFT_BREAK)
-                is NoteInline.Other -> if (n.children.isNotEmpty()) append(n.children, sb, spans) else sb.append(n.text)
-            }
+    /** Like [styled], but attachments are taken out of the text, in order, to be drawn as pictures and chips. */
+    fun inlineParts(inlines: List<NoteInline>): InlineParts = Collector(extract = true).collect(inlines)
+
+    private fun attachmentBlocks(parts: InlineParts, quoteDepth: Int, indent: Int, out: MutableList<FlatBlock>) {
+        for (a in parts.attachments) {
+            out += if (a.image) FlatBlock.Image(a.blobId, a.name, quoteDepth, indent) else FlatBlock.File(a.blobId, a.name, quoteDepth, indent)
         }
     }
 
-    private fun styledRun(style: SpanStyle, target: String?, children: List<NoteInline>, sb: StringBuilder, spans: MutableList<StyledSpan>) {
-        val start = sb.length
-        append(children, sb, spans)
-        if (sb.length > start) spans += StyledSpan(start, sb.length, style, target)
+    private fun trimmed(t: StyledText): StyledText {
+        var s = 0
+        var e = t.text.length
+        while (s < e && t.text[s].isWhitespace()) s++
+        while (e > s && t.text[e - 1].isWhitespace()) e--
+        if (s == 0 && e == t.text.length) return t
+        val spans = t.spans.mapNotNull { sp ->
+            val a = maxOf(sp.start, s) - s
+            val b = minOf(sp.end, e) - s
+            if (b > a) sp.copy(start = a, end = b) else null
+        }
+        return StyledText(t.text.substring(s, e), spans)
+    }
+
+    private class Collector(private val extract: Boolean) {
+        private val sb = StringBuilder()
+        private val spans = mutableListOf<StyledSpan>()
+        private val refs = mutableListOf<AttachmentRef>()
+
+        fun collect(inlines: List<NoteInline>): InlineParts {
+            append(inlines)
+            // Outer ranges first; an outer span is added after its children, so the list is not in start order yet.
+            val text = StyledText(sb.toString(), spans.sortedWith(compareBy<StyledSpan> { it.start }.thenByDescending { it.end }))
+            // What is left around a picture (a line break, a space) is not text.
+            return InlineParts(if (refs.isEmpty()) text else trimmed(text), refs.toList())
+        }
+
+        private fun append(inlines: List<NoteInline>) {
+            for (n in inlines) {
+                when (n) {
+                    is NoteInline.Text -> sb.append(n.text)
+                    is NoteInline.Em -> styledRun(SpanStyle.EM, null, n.children)
+                    is NoteInline.Strong -> styledRun(SpanStyle.STRONG, null, n.children)
+                    is NoteInline.Del -> styledRun(SpanStyle.DEL, null, n.children)
+                    is NoteInline.Code -> {
+                        val start = sb.length
+                        sb.append(n.text)
+                        if (sb.length > start) spans += StyledSpan(start, sb.length, SpanStyle.CODE)
+                    }
+                    is NoteInline.Link -> link(n)
+                    is NoteInline.Image -> image(n)
+                    NoteInline.HardBreak -> sb.append('\n')
+                    NoteInline.SoftBreak -> sb.append(SOFT_BREAK)
+                    is NoteInline.Other -> if (n.children.isNotEmpty()) append(n.children) else sb.append(n.text)
+                }
+            }
+        }
+
+        private fun link(n: NoteInline.Link) {
+            val blob = BlobAddress.parse(n.href)
+            if (blob != null && extract) {
+                refs += AttachmentRef(blob, Collector(extract = false).collect(n.children).text.text.trim().ifEmpty { "file" }, image = false)
+                return
+            }
+            // `blob:` is never a web address: without extraction it is just its text, and NoteLinks refuses it as a link.
+            val target = NoteLinks.openable(n.href)
+            if (target != null) styledRun(SpanStyle.LINK, target, n.children) else append(n.children.ifEmpty { listOf(NoteInline.Text(n.href)) })
+        }
+
+        private fun image(n: NoteInline.Image) {
+            val blob = BlobAddress.parse(n.href)
+            if (blob != null && extract) {
+                refs += AttachmentRef(blob, n.alt.ifBlank { n.title }.trim(), image = true)
+                return
+            }
+            val start = sb.length
+            sb.append(imageText(n.alt, n.title))
+            NoteLinks.openable(n.href)?.let { spans += StyledSpan(start, sb.length, SpanStyle.LINK, it) }
+        }
+
+        private fun styledRun(style: SpanStyle, target: String?, children: List<NoteInline>) {
+            val start = sb.length
+            append(children)
+            if (sb.length > start) spans += StyledSpan(start, sb.length, style, target)
+        }
     }
 }

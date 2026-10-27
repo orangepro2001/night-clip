@@ -93,7 +93,7 @@ public class NotesInteropTests
     {
         Assert.Equal("NOT_FOUND", Code(() => _api.Get("nt_" + new string('a', 26))));
         Assert.Equal("INVALID", Code(() => _api.Get("garbage")));
-        Assert.Equal("NOT_IMPLEMENTED", Code(() => _api.Search("anything")));
+        Assert.Equal("INVALID", Code(() => _api.Search("")));                 // search exists now; an empty query is the one thing it refuses
         var id = _api.Create("big", "").NoteId;
         Assert.Equal("TOO_LARGE", Code(() => _api.Update(id, "", null, new string('x', NoteLimits.MaxBodyBytes + 10))));
         Assert.Equal("TOO_LARGE", Code(() => _api.Update(id, "", new string('t', NoteLimits.MaxTitleBytes + 1), null)));

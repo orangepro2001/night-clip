@@ -30,7 +30,7 @@ type RBlock struct {
 	Inline   []Inline     `json:"inline,omitempty"`
 	Children []RBlock     `json:"children,omitempty"`
 	Ordered  bool         `json:"ordered,omitempty"`
-	Start    int          `json:"start,omitempty"`
+	Start    *int         `json:"start,omitempty"`
 	Tight    bool         `json:"tight,omitempty"`
 	Items    []RItem      `json:"items,omitempty"`
 	Align    []string     `json:"align,omitempty"`
@@ -123,7 +123,8 @@ func renderBlock(n *node) RBlock {
 	case kList:
 		b.Ordered, b.Tight = n.ordered, n.tight
 		if n.ordered {
-			b.Start = n.start
+			start := n.start
+			b.Start = &start // a pointer: a list that starts at 0 must say so
 		}
 		b.Items = make([]RItem, 0, len(n.kids))
 		for _, it := range n.kids {

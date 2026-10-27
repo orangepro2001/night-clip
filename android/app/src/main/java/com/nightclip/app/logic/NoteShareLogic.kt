@@ -1,9 +1,12 @@
 package com.nightclip.app.logic
 
-/** What a text shared to "save as note" turns into. Pure: no Intent class. */
+/** What a text or file shared to "save as note" turns into. Pure: no Intent class. */
 sealed interface NoteSharePlan {
     /** [title] may be empty: the core then uses the first line of the text. */
     data class Create(val title: String, val body: String) : NoteSharePlan
+
+    /** Shared files (`EXTRA_STREAM`): each becomes an attachment of a new note. [text] is a caption some apps add, may be empty. */
+    data class Attach(val title: String, val text: String) : NoteSharePlan
     data object TooLarge : NoteSharePlan
     data object Nothing : NoteSharePlan
 }
@@ -17,24 +20,33 @@ object NoteShareLogic {
     /** The core refuses a title over 1 KiB; titles from other apps are cut well below that. */
     const val MAX_TITLE_CHARS = 200
 
+    /** At most this many files of one share are attached. */
+    const val MAX_FILES = 20
+
     /**
-     * [extraText] is the shared text (a browser sends the link), [extraSubject] the page title some apps add.
-     * A subject becomes the note title; a share that has only a subject saves the subject as the text.
+     * [extraText] is the shared text (a browser sends the link), [extraSubject] the page title some apps add,
+     * [hasStream] whether the share carries files. Text wins when there is any (as in the send-to-device target); files
+     * come next; a share with only a subject saves the subject as the text. A subject becomes the note title.
      */
-    fun plan(action: String?, mimeType: String?, extraText: CharSequence?, extraSubject: CharSequence?): NoteSharePlan {
+    fun plan(action: String?, mimeType: String?, extraText: CharSequence?, extraSubject: CharSequence?, hasStream: Boolean = false): NoteSharePlan {
         if (action != ACTION_SEND) return NoteSharePlan.Nothing
-        if (mimeType != null && !mimeType.startsWith("text/")) return NoteSharePlan.Nothing
+        val isText = mimeType == null || mimeType.startsWith("text/")
         val body = extraText?.toString().orEmpty()
         val subject = oneLine(extraSubject?.toString().orEmpty())
+        val tooBig = body.toByteArray(Charsets.UTF_8).size > MAX_BODY_BYTES
         return when {
-            body.isNotBlank() -> {
-                if (body.toByteArray(Charsets.UTF_8).size > MAX_BODY_BYTES) NoteSharePlan.TooLarge
-                else NoteSharePlan.Create(cut(subject, MAX_TITLE_CHARS), body)
-            }
+            isText && body.isNotBlank() ->
+                if (tooBig) NoteSharePlan.TooLarge else NoteSharePlan.Create(cut(subject, MAX_TITLE_CHARS), body)
+            hasStream -> if (tooBig) NoteSharePlan.TooLarge else NoteSharePlan.Attach(cut(subject, MAX_TITLE_CHARS), body.trim())
+            !isText -> NoteSharePlan.Nothing
             subject.isNotBlank() -> NoteSharePlan.Create("", subject)
             else -> NoteSharePlan.Nothing
         }
     }
+
+    /** The text of a note made from shared files: one paragraph per attachment, then the caption. */
+    fun attachmentBody(markdowns: List<String>, caption: String): String =
+        (markdowns + listOfNotNull(caption.trim().takeIf { it.isNotEmpty() })).joinToString("\n\n")
 
     private fun oneLine(s: String): String = s.replace(Regex("\\s+"), " ").trim()
 

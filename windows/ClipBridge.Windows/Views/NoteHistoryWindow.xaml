@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:ClipBridge.Windows"
+        xmlns:views="clr-namespace:ClipBridge.Windows.Views"
         Title="ClipBridge" Width="780" Height="520" MinWidth="620" MinHeight="380"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
     <Grid Margin="16">
@@ -34,8 +35,20 @@
         </DockPanel>
 
         <DockPanel Grid.Row="0" Grid.Column="2">
+            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,6">
+                <ToggleButton x:Name="ShowSource" Style="{StaticResource NotesModeToggle}" Content="{x:Static local:Strings.NoteViewSource}"
+                              IsChecked="True" Click="ShowSource_Click" />
+                <ToggleButton x:Name="ShowRendered" Style="{StaticResource NotesModeToggle}" Margin="-1,0,0,0"
+                              Content="{x:Static local:Strings.NoteViewPreview}" Click="ShowRendered_Click" />
+            </StackPanel>
             <TextBlock x:Name="InfoText" DockPanel.Dock="Top" Foreground="{DynamicResource AppMuted}" TextWrapping="Wrap" Margin="0,0,0,6" />
-            <TextBox x:Name="BodyBox" Style="{StaticResource NotesEditorBox}" IsReadOnly="True" />
+            <Grid>
+                <TextBox x:Name="BodyBox" Style="{StaticResource NotesEditorBox}" IsReadOnly="True" />
+                <Border x:Name="RenderedFrame" Visibility="Collapsed" BorderThickness="1" CornerRadius="7"
+                        BorderBrush="{DynamicResource AppBorder}" Background="{DynamicResource AppSurfaceAlt}">
+                    <views:NotePreview x:Name="Rendered" />
+                </Border>
+            </Grid>
         </DockPanel>
 
         <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">

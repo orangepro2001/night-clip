@@ -9,7 +9,7 @@ import (
 
 // migrations holds one entry per schema version. Entry i upgrades the database
 // from version i to i+1; never edit a published entry, append a new one.
-var migrations = [][]string{migrationV1(), migrationV2(), migrationV3(), migrationV4(), migrationV5(), migrationV6(), migrationV7()}
+var migrations = [][]string{migrationV1(), migrationV2(), migrationV3(), migrationV4(), migrationV5(), migrationV6(), migrationV7(), migrationV8()}
 
 func migrationV1() []string {
 	return []string{
@@ -215,6 +215,30 @@ func migrationV7() []string {
 		`CREATE UNIQUE INDEX idx_note_revs_arrival ON note_revs(arrival)`,
 		`CREATE INDEX idx_notes_updated ON notes(deleted, updated_at DESC, note_id)`,
 		`CREATE INDEX idx_notes_conflict ON notes(conflict_of) WHERE conflict_of != ''`,
+	}
+}
+
+// migrationV8 adds note attachments (notes/docs/sync-model.md §10): files stored by the SHA-256 of
+// their content, sealed with the database key, and the list of blobs each note's current text refers
+// to (what sync moves between devices).
+func migrationV8() []string {
+	return []string{
+		`CREATE TABLE note_blobs (
+		blob_id    TEXT PRIMARY KEY,
+		size       INTEGER NOT NULL,
+		mime       TEXT NOT NULL,
+		name_enc   BLOB NOT NULL,
+		data_enc   BLOB NOT NULL,
+		created_at INTEGER NOT NULL
+	)`,
+
+		`CREATE TABLE note_blob_refs (
+		note_id TEXT NOT NULL,
+		blob_id TEXT NOT NULL,
+		PRIMARY KEY (note_id, blob_id)
+	)`,
+
+		`CREATE INDEX idx_note_blob_refs_blob ON note_blob_refs(blob_id)`,
 	}
 }
 

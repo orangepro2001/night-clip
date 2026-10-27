@@ -2,8 +2,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using ClipBridge.Windows.Logic;
+using Microsoft.Win32;
 
 namespace ClipBridge.Windows.Views;
 
@@ -41,10 +43,23 @@ public partial class NoteEditorPane : UserControl
     public event Action<NotesViewMode>? ViewModeChanged;
     public event Action<string>? LinkClicked;
 
+    /// <summary>
+    /// Files to store as attachments and insert (picked with the button, dropped, or pasted from the clipboard). The flag says the
+    /// files are temporary copies (a pasted picture) that the receiver deletes after the core has read them.
+    /// </summary>
+    public event Action<IReadOnlyList<string>, bool>? AttachRequested;
+
+    /// <summary>A short message for the status line (a pasted picture could not be saved).</summary>
+    public event Action<string>? Message;
+
+    /// <summary>The preview, so that the page can hand it the attachments.</summary>
+    internal NotePreview PreviewControl => Preview;
+
     public NoteEditorPane()
     {
         InitializeComponent();
         Preview.LinkClicked += href => LinkClicked?.Invoke(href);
+        DataObject.AddPastingHandler(SourceBox, Source_Pasting);
         IsKeyboardFocusWithinChanged += (_, e) => { if (!(bool)e.NewValue) FocusLeft?.Invoke(); };
         SetViewMode(NotesViewModes.Default, notify: false);
     }
@@ -230,10 +245,17 @@ public partial class NoteEditorPane : UserControl
     private void ApplyFormat(MarkdownAction action)
     {
         if (SourceBox.IsReadOnly || SourceBox.Visibility != Visibility.Visible) return;
+        ApplyEdit((text, from, length) => MarkdownEdit.Apply(action, text, from, length, Environment.NewLine));
+        SourceBox.Focus();
+    }
+
+    /// <summary>Makes the edit that <paramref name="plan"/> works out for the text and the selection (indexes into the text).</summary>
+    private void ApplyEdit(Func<string, int, int, TextEdit> plan)
+    {
         var text = SourceBox.Text;
         var from = ToIndex(text, SourceBox.SelectionStart);
         var to = ToIndex(text, SourceBox.SelectionStart + SourceBox.SelectionLength);
-        var edit = MarkdownEdit.Apply(action, text, from, to - from, Environment.NewLine);
+        var edit = plan(text, from, to - from);
 
         var start = ToPosition(text, edit.Start);
         SourceBox.Select(start, ToPosition(text, edit.Start + edit.RemoveLength) - start);
@@ -242,7 +264,92 @@ public partial class NoteEditorPane : UserControl
         var after = SourceBox.Text;
         var selStart = ToPosition(after, edit.SelectionStart);
         SourceBox.Select(selStart, ToPosition(after, edit.SelectionStart + edit.SelectionLength) - selStart);
-        SourceBox.Focus();
+    }
+
+    /// <summary>Puts the Markdown of a new attachment on a line of its own at the caret.</summary>
+    public void InsertBlock(string markdown)
+    {
+        if (SourceBox.IsReadOnly) return;
+        ApplyEdit((text, from, length) => MarkdownEdit.InsertBlock(text, from, length, markdown, Environment.NewLine));
+    }
+
+    // ---- attachments: button, paste, drop -------------------------------------------------------------
+
+    private void Attach_Click(object sender, RoutedEventArgs e)
+    {
+        if (SourceBox.IsReadOnly) return;
+        var dialog = new OpenFileDialog { Title = Strings.AttachPickTitle, Multiselect = true, CheckFileExists = true };
+        if (dialog.ShowDialog(Window.GetWindow(this)) == true && dialog.FileNames.Length > 0) AttachRequested?.Invoke(dialog.FileNames, false);
+    }
+
+    /// <summary>
+    /// Pasting a picture or files stores them as attachments. Text always wins (Excel puts a picture next to the cells' text, and a
+    /// copied file name is text too), so ordinary pastes are left to the text box.
+    /// </summary>
+    private void Source_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (SourceBox.IsReadOnly) return;
+        var data = e.DataObject;
+        if (data.GetDataPresent(DataFormats.UnicodeText) || data.GetDataPresent(DataFormats.Text)) return;
+        if (data.GetDataPresent(DataFormats.FileDrop) && data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files)
+        {
+            e.CancelCommand();
+            AttachRequested?.Invoke(files, false);
+        }
+        else if (data.GetDataPresent(DataFormats.Bitmap) && data.GetData(DataFormats.Bitmap) is BitmapSource picture)
+        {
+            e.CancelCommand();
+            if (SavePastedPicture(picture) is { } path) AttachRequested?.Invoke(new[] { path }, true);
+            else Message?.Invoke(Strings.AttachNoTemp);
+        }
+    }
+
+    /// <summary>The picture of the clipboard as a PNG in its own temporary folder (so the attachment gets a clean name), or null.</summary>
+    private static string? SavePastedPicture(BitmapSource picture)
+    {
+        try
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "ClipBridge-notes", "paste-" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, AttachmentPolicy.PastedImageName(DateTimeOffset.Now));
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(picture));
+            using (var stream = File.Create(path)) encoder.Save(stream);
+            return path;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Deletes a temporary file made by <see cref="SavePastedPicture"/> together with its folder.</summary>
+    internal static void DeleteTemporary(string path)
+    {
+        try
+        {
+            File.Delete(path);
+            var dir = Path.GetDirectoryName(path);
+            if (dir is not null && Path.GetFileName(dir).StartsWith("paste-", StringComparison.Ordinal)) Directory.Delete(dir);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* temp files are cleaned up by the system one day */ }
+    }
+
+    private void Source_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (SourceBox.IsReadOnly || !e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    private void Source_PreviewDrop(object sender, DragEventArgs e)
+    {
+        if (SourceBox.IsReadOnly || !e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } files) return;
+        e.Handled = true;
+        var index = SourceBox.GetCharacterIndexFromPoint(e.GetPosition(SourceBox), snapToText: true);
+        if (index >= 0) SourceBox.Select(index, 0); // the Markdown goes where the files were dropped
+        AttachRequested?.Invoke(files, false);
     }
 
     // ---- buttons ------------------------------------------------------------------------------------------

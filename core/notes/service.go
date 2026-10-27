@@ -53,8 +53,9 @@ type Service struct {
 	now    func() time.Time
 	timing Timing
 
-	mu   sync.Mutex // one local write at a time (the database serializes anyway; this keeps the events in order)
-	sync syncState
+	mu    sync.Mutex // one local write at a time (the database serializes anyway; this keeps the events in order)
+	sync  syncState
+	index searchIndex
 }
 
 // New creates the service. When an engine is given it registers the sync routes on it, so it must be

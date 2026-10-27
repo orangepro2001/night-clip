@@ -31,6 +31,15 @@ public partial class NoteHistoryWindow : Window
         Title = Strings.NoteHistoryTitle;
         RevList.ItemsSource = _rows;
         InfoText.Text = Strings.NoteHistoryLoading;
+        Rendered.ResolveAttachment = (blobId, wantPicture) => Task.Run(() =>
+        {
+            try { return _shell.Attachments.Resolve(blobId, wantPicture); }
+            catch (Exception) { return AttachmentView.Failure(blobId, "INTERNAL"); }
+        });
+        Rendered.LinkClicked += href =>
+        {
+            if (_shell.OpenNoteLink(href) is { } error) InfoText.Text = error;
+        };
         Loaded += async (_, _) => await LoadPageAsync();
         PreviewKeyDown += (_, e) => { if (e.Key == System.Windows.Input.Key.Escape) Close(); };
     }
@@ -87,6 +96,39 @@ public partial class NoteHistoryWindow : Window
         InfoText.Text = d.Deleted ? Strings.NoteRevisionDeletedInfo
             : Strings.NoteRevisionInfo(d.Title.Length > 0 ? d.Title : Strings.Untitled, d.IsHead);
         UseButton.IsEnabled = _canRestore && !d.Deleted && !d.IsHead;
+        if (_rendered) await RenderShownAsync(generation);
+    }
+
+    // ---- source or rendered ----------------------------------------------------------------------
+
+    private bool _rendered;
+
+    private void ShowSource_Click(object sender, RoutedEventArgs e) => SetRendered(false);
+
+    private void ShowRendered_Click(object sender, RoutedEventArgs e) => SetRendered(true);
+
+    private async void SetRendered(bool rendered)
+    {
+        _rendered = rendered;
+        ShowSource.IsChecked = !rendered;
+        ShowRendered.IsChecked = rendered;
+        BodyBox.Visibility = rendered ? Visibility.Collapsed : Visibility.Visible;
+        RenderedFrame.Visibility = rendered ? Visibility.Visible : Visibility.Collapsed;
+        if (rendered) await RenderShownAsync(_generation);
+    }
+
+    /// <summary>Draws the revision that is shown from the core's render tree of that revision (<c>notes.render {note_id, rev_id}</c>).</summary>
+    private async Task RenderShownAsync(int generation)
+    {
+        if (_shown is not { Deleted: false } d)
+        {
+            Rendered.Clear();
+            return;
+        }
+        var r = await _shell.NotesCallAsync(api => api.Render(_noteId, d.RevId));
+        if (generation != _generation) return;
+        if (r.Ok) Rendered.Show(r.Value);
+        else InfoText.Text = r.Error;
     }
 
     private void Use_Click(object sender, RoutedEventArgs e)

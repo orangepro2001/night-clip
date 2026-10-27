@@ -114,7 +114,59 @@ func (c *Core) notesCall(method, params string) (any, error) {
 		}
 		return map[string]any{"body_norm": norm, "body_hash": hash}, nil
 	case "notes.search":
-		return nil, proto.Errorf(proto.CodeNotImplemented, "note search is not available yet")
+		var p struct {
+			Query  string `json:"query"`
+			Limit  int    `json:"limit"`
+			Cursor string `json:"cursor"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		return s.Search(p.Query, p.Limit, p.Cursor)
+	case "notes.export":
+		var p struct {
+			Path         string `json:"path"`
+			IncludeTrash bool   `json:"include_trash"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		return s.Export(p.Path, p.IncludeTrash)
+	case "notes.import":
+		var p struct {
+			Path string `json:"path"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		return s.Import(p.Path)
+	case "notes.attachment_add":
+		var p struct {
+			Path string `json:"path"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		return s.AttachmentAdd(p.Path)
+	case "notes.attachment_get":
+		var p struct {
+			BlobID string `json:"blob_id"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		return s.AttachmentGet(p.BlobID)
+	case "notes.attachment_export":
+		var p struct {
+			BlobID string `json:"blob_id"`
+			Path   string `json:"path"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		return s.AttachmentExport(p.BlobID, p.Path)
+	case "notes.attachment_cleanup":
+		return s.AttachmentCleanup()
 	case "notes.sync_status":
 		return s.Status()
 	case "notes.sync_now":

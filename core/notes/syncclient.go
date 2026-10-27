@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 
 	"nightclip/core/peer"
@@ -67,6 +68,9 @@ type remote interface {
 	digest(ctx context.Context, after string) (digestReply, error)
 	pull(ctx context.Context, req pullRequest) (pullReply, error)
 	push(ctx context.Context, req pushRequest) (pushReply, error)
+	blobHave(ctx context.Context, ids []string) ([]string, error)
+	blobGet(ctx context.Context, id string) (blobData, error)
+	blobPut(ctx context.Context, id string, d blobData) error
 }
 
 type httpRemote struct {
@@ -96,6 +100,52 @@ func (h httpRemote) pull(ctx context.Context, req pullRequest) (rep pullReply, e
 func (h httpRemote) push(ctx context.Context, req pushRequest) (rep pushReply, err error) {
 	err = httpDo(ctx, h.c, http.MethodPost, h.base+pathPush, req, &rep)
 	return
+}
+
+func (h httpRemote) blobHave(ctx context.Context, ids []string) ([]string, error) {
+	var rep blobHaveReply
+	err := httpDo(ctx, h.c, http.MethodPost, h.base+pathBlobs, blobHaveRequest{IDs: ids}, &rep)
+	return rep.Have, err
+}
+
+func (h httpRemote) blobGet(ctx context.Context, id string) (blobData, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.base+pathBlob+id, nil)
+	if err != nil {
+		return blobData{}, err
+	}
+	resp, err := h.c.Do(req)
+	if err != nil {
+		return blobData{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return blobData{}, &peerHTTPError{status: resp.StatusCode}
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxBlobBytes+1))
+	if err != nil {
+		return blobData{}, err
+	}
+	name, _ := url.PathUnescape(resp.Header.Get("X-Blob-Name"))
+	return blobData{Name: name, Mime: resp.Header.Get("X-Blob-Mime"), Data: data}, nil
+}
+
+func (h httpRemote) blobPut(ctx context.Context, id string, d blobData) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, h.base+pathBlob+id, bytes.NewReader(d.Data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("X-Blob-Name", url.PathEscape(d.Name))
+	req.Header.Set("X-Blob-Mime", d.Mime)
+	resp, err := h.c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return &peerHTTPError{status: resp.StatusCode}
+	}
+	return nil
 }
 
 // setSync updates the sync row of a peer and tells the shells when the visible state changed.
@@ -307,7 +357,81 @@ func (s *Service) exchange(ctx context.Context, peerID string, r remote) (res ex
 	if err := s.db.NotesView(func(tx *store.NotesTx) (err error) { res.ourSeq, err = tx.Seq(); return }); err != nil {
 		return res, err
 	}
-	return res, s.push(ctx, peerID, r, theirs)
+	if err := s.push(ctx, peerID, r, theirs); err != nil {
+		return res, err
+	}
+	return res, s.syncBlobs(ctx, peerID, r)
+}
+
+const blobBatch = 200
+
+// syncBlobs moves the attachments that notes refer to: what this device lacks and the peer has is
+// fetched, what the peer lacks and this device has is sent. A file that neither has is left alone (the
+// device that made it will bring it when it syncs).
+func (s *Service) syncBlobs(ctx context.Context, peerID string, r remote) error {
+	missing, held, err := s.missingAndHeld()
+	if err != nil {
+		return err
+	}
+	for len(missing) > 0 {
+		n := min(blobBatch, len(missing))
+		batch := missing[:n]
+		missing = missing[n:]
+		have, err := r.blobHave(ctx, batch)
+		if err != nil {
+			return err
+		}
+		for _, id := range have {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if !s.stillPaired(peerID) {
+				return nil
+			}
+			d, err := r.blobGet(ctx, id)
+			if err != nil {
+				return err
+			}
+			if err := s.storeReceivedBlob(id, d); err != nil && !errors.Is(err, errBlobRefused) {
+				return err
+			}
+		}
+	}
+	for len(held) > 0 {
+		n := min(blobBatch, len(held))
+		batch := held[:n]
+		held = held[n:]
+		peerHas, err := r.blobHave(ctx, batch)
+		if err != nil {
+			return err
+		}
+		has := make(map[string]bool, len(peerHas))
+		for _, id := range peerHas {
+			has[id] = true
+		}
+		for _, id := range batch {
+			if has[id] {
+				continue
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if !s.stillPaired(peerID) {
+				return nil
+			}
+			d, found, err := s.heldBlob(id)
+			if err != nil {
+				return err
+			}
+			if !found {
+				continue
+			}
+			if err := r.blobPut(ctx, id, d); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // firstUnsupported turns a rejection for a too-new format into the error that reports it.

@@ -66,6 +66,7 @@ public sealed class NotesApi
     }
 
     // ---- rendering ---------------------------------------------------------------------------
+    /// <summary>The render tree of a stored revision (the newest, or <paramref name="revId"/>): for history views.</summary>
     public RenderTree Render(string noteId, string revId = "")
     {
         var p = new Dictionary<string, object?> { ["note_id"] = noteId };
@@ -73,15 +74,46 @@ public sealed class NotesApi
         return RenderTree.FromJson(_core.Call("notes.render", p));
     }
 
+    /// <summary>The render tree of a text that is not saved (the live preview). The answer has no note or revision id.</summary>
+    public RenderTree RenderBody(string body) => RenderTree.FromJson(_core.Call("notes.render", new { body }));
+
     public NoteNormalized Normalize(string body) => NoteNormalized.FromJson(_core.Call("notes.normalize", new { body }));
 
-    /// <summary>Full-text search. The core answers NOT_IMPLEMENTED until the search index exists (Phase 2).</summary>
-    public NotesPage Search(string query, int limit = NotesList.PageSize, string cursor = "")
+    /// <summary>
+    /// Full-text search over the notes that are not in the trash (every word must occur). An empty query is INVALID: the
+    /// caller shows the normal list instead. Highlights are in code points (<see cref="CodePointText"/>).
+    /// </summary>
+    public NoteSearchPage Search(string query, int limit = NoteSearchResults.PageSize, string cursor = "")
     {
         var p = new Dictionary<string, object?> { ["query"] = query, ["limit"] = limit };
         if (cursor.Length > 0) p["cursor"] = cursor;
-        return NotesPage.FromJson(_core.Call("notes.search", p));
+        return NoteSearchPage.FromJson(_core.Call("notes.search", p));
     }
+
+    // ---- attachments -------------------------------------------------------------------------
+    /// <summary>Stores the file at the absolute <paramref name="path"/> (at most 32 MiB); the answer's Markdown is what to insert into the note.</summary>
+    public NoteAttachment AttachmentAdd(string path) => NoteAttachment.FromJson(_core.Call("notes.attachment_add", new { path }));
+
+    public NoteAttachment AttachmentGet(string blobId) => NoteAttachment.FromJson(_core.Call("notes.attachment_get", new { blob_id = blobId }));
+
+    /// <summary>Writes the attachment to the absolute <paramref name="path"/> (an existing plain file is replaced; the folder must exist). NOT_FOUND when it is not here.</summary>
+    public NoteAttachment AttachmentExport(string blobId, string path) =>
+        NoteAttachment.FromJson(_core.Call("notes.attachment_export", new { blob_id = blobId, path }));
+
+    /// <summary>Deletes attachments that no revision of any note refers to any more (and are older than a week).</summary>
+    public AttachmentCleanupResult AttachmentCleanup() => AttachmentCleanupResult.FromJson(_core.Call("notes.attachment_cleanup"));
+
+    // ---- export and import ---------------------------------------------------------------------
+    /// <summary>Writes a ZIP of all notes to the absolute <paramref name="path"/>. The core never overwrites: INVALID when the file exists.</summary>
+    public NoteExportResult Export(string path, bool includeTrash)
+    {
+        var p = new Dictionary<string, object?> { ["path"] = path };
+        if (includeTrash) p["include_trash"] = true;
+        return NoteExportResult.FromJson(_core.Call("notes.export", p));
+    }
+
+    /// <summary>Imports a .zip, a .md/.markdown/.txt file or a folder (absolute path) as new notes.</summary>
+    public NoteImportResult Import(string path) => NoteImportResult.FromJson(_core.Call("notes.import", new { path }));
 
     // ---- sync --------------------------------------------------------------------------------
     public NotesSyncStatus SyncStatus() => NotesSyncStatus.FromJson(_core.Call("notes.sync_status"));

@@ -50,8 +50,12 @@ data class NoteDoc(
 /** `notes.create`. */
 data class NoteCreated(val noteId: String, val revId: String)
 
-/** `notes.update`: [revId] is the newest revision after the call; [conflictNoteId] set = the older side became a copy. */
-data class UpdateOutcome(val revId: String, val merged: Boolean, val conflictNoteId: String? = null)
+/**
+ * `notes.update`: [revId] is the newest revision after the call; [conflictNoteId] set = the older side became a copy.
+ * [changed] false = the edit changed nothing once normalised: no revision was made and [revId] is simply the note's
+ * current one, which after a stale base may be another device's revision and not the result of this edit.
+ */
+data class UpdateOutcome(val revId: String, val merged: Boolean, val conflictNoteId: String? = null, val changed: Boolean = true)
 
 /** One revision in `notes.history` (no body: ask `notes.get` with the [revId]). */
 data class RevisionInfo(
@@ -90,6 +94,47 @@ data class NotesSyncStatus(val peers: List<NotesPeerStatus>, val pendingPush: In
 data class NoteConflict(val noteId: String, val conflictNoteId: String, val title: String, val createdAt: Long)
 
 data class ConflictPage(val items: List<NoteConflict>, val nextCursor: String?)
+
+/** A range of a [SearchHit] title or snippet. Offsets count Unicode CODE POINTS, not UTF-16 units (see NotesSearchLogic). */
+data class Highlight(val start: Int, val end: Int)
+
+/** One result of `notes.search`. */
+data class SearchHit(
+    val noteId: String,
+    val title: String,
+    val updatedAt: Long,
+    val snippet: String,
+    val highlights: List<Highlight>,
+    val titleHighlights: List<Highlight>,
+    val conflictOf: String = "",
+) {
+    val isConflictCopy: Boolean get() = conflictOf.isNotEmpty()
+}
+
+data class SearchPage(val items: List<SearchHit>, val nextCursor: String?)
+
+/** `notes.attachment_add` / `_get` / `_export`. When [present] is false the file has not reached this device yet and the other fields are empty. */
+data class AttachmentInfo(
+    val blobId: String,
+    val name: String,
+    val mime: String,
+    val size: Long,
+    val present: Boolean,
+    /** What to put into the note (only `notes.attachment_add` sets it). */
+    val markdown: String = "",
+)
+
+/** `notes.attachment_cleanup`. */
+data class CleanupResult(val removed: Int, val freedBytes: Long, val kept: Int)
+
+/** `notes.export`. */
+data class ExportResult(val path: String, val count: Int, val bytes: Long)
+
+/** A file `notes.import` did not turn into a note; [reason] is the core's English text. */
+data class ImportSkip(val name: String, val reason: String)
+
+/** `notes.import`. */
+data class ImportResult(val imported: Int, val skipped: List<ImportSkip>, val noteIds: List<String>)
 
 data class TocEntry(val blockId: String, val level: Int, val text: String)
 
@@ -201,7 +246,8 @@ object NotesParsers {
 
     fun created(o: JSONObject) = NoteCreated(o.str("note_id"), o.str("rev_id"))
 
-    fun updated(o: JSONObject) = UpdateOutcome(o.str("rev_id"), o.bool("merged"), o.strOrNull("conflict_note_id"))
+    // A core without the field made a revision whenever it said so by merged / a new id: absent counts as changed.
+    fun updated(o: JSONObject) = UpdateOutcome(o.str("rev_id"), o.bool("merged"), o.strOrNull("conflict_note_id"), o.bool("changed", true))
 
     fun revision(o: JSONObject) = RevisionInfo(
         revId = o.str("rev_id"),
@@ -234,6 +280,41 @@ object NotesParsers {
 
     fun conflicts(o: JSONObject) =
         ConflictPage(o.optJSONArray("items").objects().map(::conflict).filter { it.noteId.isNotEmpty() && it.conflictNoteId.isNotEmpty() }, o.strOrNull("next_cursor"))
+
+    private fun highlights(a: JSONArray?): List<Highlight> =
+        a.objects().map { Highlight(it.int("start"), it.int("end")) }.filter { it.end > it.start && it.start >= 0 }
+
+    fun hit(o: JSONObject) = SearchHit(
+        noteId = o.str("note_id"),
+        title = o.str("title"),
+        updatedAt = o.long("updated_at"),
+        snippet = o.str("snippet"),
+        highlights = highlights(o.optJSONArray("highlights")),
+        titleHighlights = highlights(o.optJSONArray("title_highlights")),
+        conflictOf = o.str("conflict_of"),
+    )
+
+    fun search(o: JSONObject) =
+        SearchPage(o.optJSONArray("items").objects().map(::hit).filter { it.noteId.isNotEmpty() }, o.strOrNull("next_cursor"))
+
+    fun attachment(o: JSONObject) = AttachmentInfo(
+        blobId = o.str("blob_id"),
+        name = o.str("name"),
+        mime = o.str("mime"),
+        size = o.long("size"),
+        present = o.bool("present"),
+        markdown = o.str("markdown"),
+    )
+
+    fun cleanup(o: JSONObject) = CleanupResult(o.int("removed"), o.long("freed_bytes"), o.int("kept"))
+
+    fun exported(o: JSONObject) = ExportResult(o.str("path"), o.int("count"), o.long("bytes"))
+
+    fun imported(o: JSONObject) = ImportResult(
+        imported = o.int("imported"),
+        skipped = o.optJSONArray("skipped").objects().map { ImportSkip(it.str("name"), it.str("reason")) },
+        noteIds = o.optJSONArray("note_ids").strings(),
+    )
 
     fun normalized(o: JSONObject) = Normalized(o.str("body_norm"), o.str("body_hash"))
 

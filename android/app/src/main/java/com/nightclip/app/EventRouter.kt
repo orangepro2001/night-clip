@@ -78,7 +78,7 @@ class EventRouter(private val app: ClipBridgeApp) {
             }
             is CoreEvent.FileState, is CoreEvent.FileProgress, is CoreEvent.FileDone, is CoreEvent.FileFailed -> onTransferEvent(ev)
             // Notes only change screens in this version (no notifications); the session keeps what must survive a missing screen.
-            is CoreEvent.NotesChanged, is CoreEvent.NotesSyncUpdated, is CoreEvent.NotesSyncConflict -> NotesSession.onEvent(ev)
+            is CoreEvent.NotesChanged, is CoreEvent.NotesSyncUpdated, is CoreEvent.NotesSyncConflict, is CoreEvent.NotesAttachment -> NotesSession.onEvent(ev)
             is CoreEvent.PeerRevoked ->
                 Notifications.postInfo(app, "revoked-${ev.deviceId}", app.getString(R.string.notif_peer_revoked_title), app.getString(R.string.notif_peer_revoked_text, ev.name.ifBlank { Strings.UNKNOWN_DEVICE }))
             is CoreEvent.UpdateReady ->

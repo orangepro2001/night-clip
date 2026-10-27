@@ -119,8 +119,8 @@ public sealed class NoteEditorSession
             if (request is null) break;
             try
             {
-                var (result, ownChild) = _gateway.Run(api => Save(api, request));
-                Model.Complete(request, result, ownChild);
+                var result = _gateway.Run(api => Save(api, request));
+                Model.Complete(request, result);
             }
             catch (Exception ex) when (IsCoreFailure(ex))
             {
@@ -146,8 +146,8 @@ public sealed class NoteEditorSession
         SaveOutcome outcome;
         try
         {
-            var (result, ownChild) = await _gateway.RunAsync(api => Save(api, request));
-            outcome = Model.Complete(request, result, ownChild);
+            var result = await _gateway.RunAsync(api => Save(api, request));
+            outcome = Model.Complete(request, result);
         }
         catch (Exception ex) when (IsCoreFailure(ex))
         {
@@ -171,14 +171,8 @@ public sealed class NoteEditorSession
         }
     }
 
-    /// <summary>One notes.update, and the check that what came back is a child of the base revision.</summary>
-    private static (NoteSaveResult Result, bool OwnChild) Save(NotesApi api, SaveRequest request)
-    {
-        var result = api.Update(request.NoteId, request.BaseRevId, request.TitleChange, request.BodyChange);
-        if (result.Merged || result.ConflictNoteId.Length > 0 || result.RevId == request.BaseRevId) return (result, true);
-        try { return (result, api.Get(request.NoteId, result.RevId).Parents.Contains(request.BaseRevId)); }
-        catch (Exception ex) when (IsCoreFailure(ex)) { return (result, false); } // unsure: read the note again
-    }
+    private static NoteSaveResult Save(NotesApi api, SaveRequest request) =>
+        api.Update(request.NoteId, request.BaseRevId, request.TitleChange, request.BodyChange);
 
     // ---- reading the note again ---------------------------------------------------------------------------------------
 

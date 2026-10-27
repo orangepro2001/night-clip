@@ -298,7 +298,7 @@ func TestNotesMigrationIsInThePublishedChain(t *testing.T) {
 	if err := db.SetSetting("capture", "on"); err != nil {
 		t.Fatal(err)
 	}
-	for _, stmt := range []string{`DROP TABLE note_peer_state`, `DROP TABLE note_revs`, `DROP TABLE notes`, `UPDATE schema_version SET version = 6`} {
+	for _, stmt := range []string{`DROP TABLE note_blob_refs`, `DROP TABLE note_blobs`, `DROP TABLE note_peer_state`, `DROP TABLE note_revs`, `DROP TABLE notes`, `UPDATE schema_version SET version = 6`} {
 		if _, err := db.sql.Exec(stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
 		}

@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The Go core downloads packages to <filesDir>/clipbridge/updates (CoreHost passes
-     <filesDir>/clipbridge as data_dir). Only that folder is shareable. -->
+<!-- What the app's FileProvider may share, and nothing else:
+     - the update package: the Go core downloads it to <filesDir>/clipbridge/updates (CoreHost passes <filesDir>/clipbridge as data_dir);
+     - notes attachments the user opens or shares: copies the app writes to <cacheDir>/notes-open/<attachment>/<name>. -->
 <paths>
     <files-path name="updates" path="clipbridge/updates/" />
+    <cache-path name="notes_open" path="notes-open/" />
 </paths>

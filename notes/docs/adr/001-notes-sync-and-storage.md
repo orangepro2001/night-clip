@@ -27,7 +27,7 @@
 4. **分叉处理 = 块级自动合并，不能合并则确定性胜出 + 冲突副本**：基于两端的共同祖先，若改动落在不同 Markdown 块则合并；否则按 `(created_at, origin_device, rev_id)` 确定性选出主线，落后版本保留为独立笔记（其 `note_id` 由被放在一边的内容决定，各设备得到同一篇）并在 UI 提示。**永不静默丢弃用户输入。**
 5. **删除是墓碑修订**，按"删除只胜过没动过的对象"传播；回收站 30 天后物理清理。
 6. **同步传输是同一 mTLS 服务器上的 HTTP 路由**（`/v1/notes/head|digest|pull|push`），按修订搬运，拨号方发起、监听方应答；不占用剪贴板/文件的 WebSocket 通道（做法同密码库同步）。
-7. **存储**：同一个 SQLite 库，新增 `notes_*` 表；正文 = 规范化 Markdown；全文索引用 FTS5，仅存派生数据。
+7. **存储**：同一个 SQLite 库，新增 `notes`、`note_revs` 等表；正文 = 规范化 Markdown；全文索引**只放在内存里**（不是最初写的 FTS5：笔记在库里是加密的，FTS5 会把明文倒排索引写到磁盘）。
 8. **MVP 不做字符级 CRDT**（见替代方案）。
 
 ## 替代方案
@@ -59,7 +59,8 @@
 
 - ✅ Go 核心：存储迁移 V7、修订图、块级三路合并、head 解析、冲突副本、同步路由与客户端、`notes.*` 门面。证据：`core/notes`、`core/store/notes_test.go`、`core/facade/notes_test.go`；`make notes-check`。收敛性由随机属性测试证明（见 [sync-model.md](../sync-model.md) §7）。
 - 🟡 双端界面：见 [development-plan.md](../development-plan.md) §8。
-- ⛔ 修订链压缩/淘汰、回收站物理清理、附件、全文搜索：未实现。
+- ✅ Phase 2：全文搜索（内存索引）、导入导出、附件（含同步）、块内按行合并，见 [development-plan.md](../development-plan.md) §5。
+- ⛔ 修订链压缩/淘汰、回收站物理清理：未实现，设计结论见 [sync-model.md](../sync-model.md) §8。
 - ❓ 真机 / 真实 Tailscale 网络验证：未做。
 
 实现与最初草案的差异（`parents` 数组、HTTP 路由、确定性的冲突副本 id 等）逐条记录在 [sync-model.md](../sync-model.md) §9。

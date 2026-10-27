@@ -157,6 +157,28 @@ func (l localRemote) push(_ context.Context, req pushRequest) (rep pushReply, er
 	return
 }
 
+func (l localRemote) blobHave(_ context.Context, ids []string) ([]string, error) {
+	var in blobHaveRequest
+	if err := roundTrip(blobHaveRequest{IDs: ids}, &in); err != nil {
+		return nil, err
+	}
+	rep, err := l.s.doBlobHave(in)
+	return rep.Have, err
+}
+
+func (l localRemote) blobGet(_ context.Context, id string) (blobData, error) {
+	d, found, err := l.s.heldBlob(id)
+	if err == nil && !found {
+		err = &peerHTTPError{status: 404}
+	}
+	return d, err
+}
+
+// blobPut applies the same checks the HTTP handler does (storeReceivedBlob is the shared core).
+func (l localRemote) blobPut(_ context.Context, id string, d blobData) error {
+	return l.s.storeReceivedBlob(id, d)
+}
+
 // syncWith runs one full round in which d dials other.
 func (d *device) syncWith(other *device) {
 	d.t.Helper()

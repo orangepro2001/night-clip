@@ -52,6 +52,22 @@ object MarkdownEdit {
         }
     }
 
+    /**
+     * Puts [line] (the Markdown of an attachment) into the text as a paragraph of its own: after the selection, with a
+     * blank line before and after so it never becomes part of the text around it. The selection is not replaced. The
+     * caret ends up on the line after the inserted one.
+     */
+    fun insertLine(text: String, selStart: Int, selEnd: Int, line: String): EditResult {
+        val at = maxOf(selStart, selEnd).coerceIn(0, text.length)
+        val before = text.substring(0, at)
+        val after = text.substring(at)
+        val lead = if (before.isEmpty()) 0 else 2 - before.takeLastWhile { it == '\n' }.length.coerceAtMost(2)
+        val trail = if (after.isEmpty()) 1 else 2 - after.takeWhile { it == '\n' }.length.coerceAtMost(2)
+        val inserted = "\n".repeat(lead) + line + "\n".repeat(trail)
+        val caret = at + lead + line.length + 1
+        return EditResult(before + inserted + after, caret, caret)
+    }
+
     // ---- inline marks --------------------------------------------------------------------------
 
     /**

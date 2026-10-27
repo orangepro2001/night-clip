@@ -30,6 +30,21 @@ public sealed class NoteRow
         Preview = item.Preview;
         TimeText = NotesTime.Relative(item.UpdatedAt, now);
         ConflictBadge = item.IsConflictCopy ? Strings.NoteConflictBadge : "";
+        TitleSegments = CodePointText.Plain(Title);
+        PreviewSegments = CodePointText.Plain(Preview);
+    }
+
+    /// <summary>A hit of the search: the title and the snippet carry the words that were found as highlighted pieces.</summary>
+    public NoteRow(NoteSearchHit hit, DateTimeOffset now)
+    {
+        Item = new NoteListItem(hit.NoteId, hit.Title, hit.UpdatedAt, false, hit.Snippet, hit.ConflictOf);
+        NoteId = hit.NoteId;
+        Title = hit.Title.Length > 0 ? hit.Title : Strings.Untitled;
+        Preview = hit.Snippet;
+        TimeText = NotesTime.Relative(hit.UpdatedAt, now);
+        ConflictBadge = hit.IsConflictCopy ? Strings.NoteConflictBadge : "";
+        TitleSegments = hit.Title.Length > 0 ? CodePointText.Segments(hit.Title, hit.TitleHighlights) : CodePointText.Plain(Title);
+        PreviewSegments = CodePointText.Segments(hit.Snippet, hit.Highlights);
     }
 
     public NoteListItem Item { get; }
@@ -38,11 +53,16 @@ public sealed class NoteRow
     public string Preview { get; }
     public string TimeText { get; }
     public string ConflictBadge { get; }
+    public IReadOnlyList<TextSegment> TitleSegments { get; }
+    public IReadOnlyList<TextSegment> PreviewSegments { get; }
     public bool HasPreview => Preview.Length > 0;
     public bool HasBadge => ConflictBadge.Length > 0;
 
     public static IReadOnlyList<NoteRow> From(IEnumerable<NoteListItem> items, DateTimeOffset now) =>
         items.Select(i => new NoteRow(i, now)).ToList();
+
+    public static IReadOnlyList<NoteRow> From(IEnumerable<NoteSearchHit> hits, DateTimeOffset now) =>
+        hits.Select(h => new NoteRow(h, now)).ToList();
 }
 
 /// <summary>

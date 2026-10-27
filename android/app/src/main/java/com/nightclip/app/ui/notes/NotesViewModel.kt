@@ -1,22 +1,34 @@
 package com.nightclip.app.ui.notes
 
 import android.app.Application
+import android.net.Uri
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nightclip.app.core.ApiResult
 import com.nightclip.app.core.CoreEvent
 import com.nightclip.app.core.CoreHost
 import com.nightclip.app.core.CoreState
+import com.nightclip.app.core.ImportResult
 import com.nightclip.app.core.NoteConflict
 import com.nightclip.app.core.NoteSummary
 import com.nightclip.app.core.NotesApi
 import com.nightclip.app.core.NotesSyncStatus
+import com.nightclip.app.logic.LatestWins
 import com.nightclip.app.logic.NotesErrors
 import com.nightclip.app.logic.NotesListLogic
 import com.nightclip.app.logic.NotesListState
+import com.nightclip.app.logic.NotesSearchLogic
 import com.nightclip.app.logic.NotesSyncLogic
 import com.nightclip.app.logic.NotesTexts
+import com.nightclip.app.logic.NotesTransfer
+import com.nightclip.app.logic.SearchState
+import com.nightclip.app.platform.NotesTransferRunner
 import com.nightclip.app.platform.NotesSession
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,6 +70,35 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _undo = MutableSharedFlow<UndoRequest>(extraBufferCapacity = 4)
     val undo: SharedFlow<UndoRequest> = _undo.asSharedFlow()
 
+    // ---- search state ----
+
+    private val _searchOpen = MutableStateFlow(false)
+    val searchOpen: StateFlow<Boolean> = _searchOpen.asStateFlow()
+
+    /** The text of the search box: Compose state, not a flow, so a composition in progress is never interrupted. */
+    var searchField by mutableStateOf(TextFieldValue(""))
+        private set
+
+    private val _search = MutableStateFlow(SearchState())
+    val search: StateFlow<SearchState> = _search.asStateFlow()
+
+    private val searchRunner = LatestWins<String>({ System.currentTimeMillis() }, NotesSearchLogic.DEBOUNCE_MS)
+    private var searchTimer: Job? = null
+    private var searchLimit = NotesSearchLogic.PAGE_SIZE
+    private var searchingMore = false
+
+    // ---- export, import, attachment cleanup ----
+
+    private val _busy = MutableStateFlow<String?>(null)
+
+    /** What is being done that the user has to wait for (null = nothing). */
+    val busy: StateFlow<String?> = _busy.asStateFlow()
+
+    private val _importResult = MutableStateFlow<ImportResult?>(null)
+
+    /** The result of the last import, until the user has read it. */
+    val importResult: StateFlow<ImportResult?> = _importResult.asStateFlow()
+
     private var sessionCounter = 0L
     private var reloadScheduled = false
     private var loadingMore = false
@@ -89,6 +130,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             is CoreEvent.NotesChanged -> {
                 scheduleReload()
                 refreshConflictsSoon()
+                refreshSearchSoon()
             }
             is CoreEvent.NotesSyncUpdated -> {
                 val updated = NotesSyncLogic.applyUpdated(_sync.value, ev.peerId, ev.state, ev.behind)
@@ -180,6 +222,137 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             } finally {
                 _refreshing.value = false
             }
+        }
+    }
+
+    // ---- search ------------------------------------------------------------------------------
+
+    fun openSearch() {
+        _searchOpen.value = true
+    }
+
+    /** Closes the search and goes back to the normal list. */
+    fun closeSearch() {
+        _searchOpen.value = false
+        searchField = TextFieldValue("")
+        resetSearch()
+    }
+
+    private fun resetSearch() {
+        searchRunner.reset()
+        searchTimer?.cancel()
+        searchTimer = null
+        _search.value = SearchState()
+    }
+
+    fun onSearchChange(v: TextFieldValue) {
+        searchField = v
+        val query = NotesSearchLogic.normalize(v.text)
+        if (query.isEmpty()) {
+            resetSearch() // an empty box is the normal list
+            return
+        }
+        searchLimit = NotesSearchLogic.PAGE_SIZE
+        searchRunner.submit(query)
+        scheduleSearchTimer()
+    }
+
+    private fun scheduleSearchTimer() {
+        searchTimer?.cancel()
+        searchTimer = null
+        val due = searchRunner.nextDueAt() ?: return
+        searchTimer = viewModelScope.launch {
+            delay((due - System.currentTimeMillis()).coerceAtLeast(0))
+            searchTimer = null
+            runSearch()
+        }
+    }
+
+    private fun runSearch() {
+        val request = searchRunner.tick()
+        if (request == null) {
+            scheduleSearchTimer()
+            return
+        }
+        val limit = searchLimit
+        viewModelScope.launch {
+            when (val r = NotesApi.search(request.value, limit, null)) {
+                is ApiResult.Ok -> if (searchRunner.finish(request.seq, ok = true)) _search.value = NotesSearchLogic.firstPage(request.value, r.value)
+                is ApiResult.Fail -> if (searchRunner.finish(request.seq, ok = false)) {
+                    // The hits already shown stay; the box says what went wrong.
+                    _search.update { it.copy(error = NotesErrors.message(r.code, NotesErrors.Context.SEARCH)) }
+                }
+            }
+            scheduleSearchTimer() // something typed meanwhile
+        }
+    }
+
+    /** A note changed while hits are shown: the same search is repeated shortly, for as many hits as are shown. */
+    private fun refreshSearchSoon() {
+        if (!_searchOpen.value || _search.value.query.isEmpty()) return
+        searchLimit = NotesSearchLogic.reloadLimit(_search.value)
+        searchRunner.invalidate(afterMs = RELOAD_DELAY_MS)
+        scheduleSearchTimer()
+    }
+
+    fun loadMoreSearch() {
+        val state = _search.value
+        val cursor = state.nextCursor ?: return
+        if (searchingMore) return
+        searchingMore = true
+        viewModelScope.launch {
+            try {
+                val r = NotesApi.search(state.query, NotesSearchLogic.PAGE_SIZE, cursor)
+                if (r is ApiResult.Ok) _search.update { NotesSearchLogic.nextPage(it, state.query, cursor, r.value) }
+            } finally {
+                searchingMore = false
+            }
+        }
+    }
+
+    // ---- export, import, attachments ---------------------------------------------------------
+
+    private fun runBusy(text: String, block: suspend () -> Unit) {
+        if (_busy.value != null) return
+        _busy.value = text
+        viewModelScope.launch {
+            try {
+                block()
+            } finally {
+                _busy.value = null
+            }
+        }
+    }
+
+    /** Writes all notes as a ZIP into the document [target] the user picked. */
+    fun exportTo(target: Uri, includeTrash: Boolean) = runBusy(NotesTransfer.BUSY_EXPORT) {
+        when (val r = NotesTransferRunner.export(getApplication(), target, includeTrash)) {
+            is NotesTransferRunner.Outcome.Done -> say(r.value)
+            is NotesTransferRunner.Outcome.Failed -> say(r.message)
+        }
+    }
+
+    /** Imports the picked .zip / .md / .txt; the result is shown by [importResult]. */
+    fun importFrom(source: Uri) = runBusy(NotesTransfer.BUSY_IMPORT) {
+        when (val r = NotesTransferRunner.import(getApplication(), source)) {
+            is NotesTransferRunner.Outcome.Done -> {
+                _importResult.value = r.value
+                reloadNow()
+                refreshConflicts()
+            }
+            is NotesTransferRunner.Outcome.Failed -> say(r.message)
+        }
+    }
+
+    fun dismissImportResult() {
+        _importResult.value = null
+    }
+
+    /** The menu item "clean up unused attachments". */
+    fun cleanupAttachments() = runBusy(NotesTransfer.BUSY_CLEANUP) {
+        when (val r = NotesApi.attachmentCleanup()) {
+            is ApiResult.Ok -> say(NotesTransfer.cleanupSummary(r.value))
+            is ApiResult.Fail -> say(NotesErrors.message(r.code, NotesErrors.Context.ATTACH))
         }
     }
 

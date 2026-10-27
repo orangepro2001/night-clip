@@ -10,6 +10,14 @@
     <string name="notes_trash">回收站</string>
     <string name="notes_back_to_notes">返回笔记</string>
     <string name="notes_sync_now">立即同步</string>
+    <string name="notes_search">搜索</string>
+    <string name="notes_search_hint">搜索标题和正文</string>
+    <string name="notes_search_empty_hint">换个关键词试试。多个词用空格隔开，每个词都要出现。</string>
+    <string name="notes_export">导出笔记…</string>
+    <string name="notes_import">导入笔记…</string>
+    <string name="notes_cleanup_attachments">清理未使用的附件</string>
+    <string name="notes_export_choose_file">选择保存位置</string>
+    <string name="notes_import_details">查看详情</string>
     <string name="notes_new">新建笔记</string>
     <string name="notes_empty_title">还没有笔记</string>
     <string name="notes_empty_hint">点右下角的按钮写第一篇。已配对的设备上的笔记也会同步到这里。</string>
@@ -40,7 +48,7 @@
     <string name="notes_leave_keep">继续编辑</string>
     <string name="notes_leave_discard">放弃并离开</string>
     <string name="notes_preview_empty">还没有内容</string>
-    <string name="notes_preview_stale">有修改还没能保存，预览显示的是上次保存的内容。</string>
+    <string name="notes_preview_failed">预览暂时无法更新，显示的是上一次的结果。</string>
     <string name="notes_open_link_failed">无法打开这个链接</string>
 
     <!-- Formatting toolbar (content descriptions) -->
@@ -60,6 +68,8 @@
     <string name="tool_code_block">代码块</string>
     <string name="tool_link">链接</string>
     <string name="tool_rule">分隔线</string>
+    <string name="tool_attach_file">插入附件</string>
+    <string name="tool_attach_image">插入图片</string>
 
     <!-- History -->
     <string name="notes_history_empty">没有历史版本</string>

@@ -54,11 +54,16 @@
 
 ## 5. Phase 2：增强
 
-- 块级富文本编辑器（替换源码编辑，保留 Markdown 权威）。
-- 附件：图片粘贴/拍照、按需拉取、大小上限、清理策略。
-- 全文搜索：FTS5，增量更新，支持标题/正文/标签（标签是否引入待定）。
-- 导入导出：标准 Markdown 文件集、ZIP 归档（退出成本 = 数据可移植）。
-- 字符级 CRDT 评估（仅评估，未必实现）。
+| 项 | 状态 | 说明 / 证据 |
+| --- | --- | --- |
+| 全文搜索 | ✅ 核心；🟡 两端界面（编译 + 单元/互操作测试，未运行） | `core/notes/search.go`、`search_test.go`、`facade/notes_test.go`。**与计划的差异**：内存索引而不是 FTS5（FTS5 会把明文写到磁盘，笔记在库里是加密的）。标签未引入 |
+| 导入导出 | ✅ 核心；🟡 两端界面（同上；导出的 ZIP 不含附件） | `core/notes/portable.go`：ZIP（每篇一个带 front matter 的 `.md`）、导入 ZIP / 单个文件 / 文件夹，总是新建笔记 |
+| 附件 | ✅ 核心；🟡 两端界面（选择/粘贴/拖放、预览、用系统程序打开、分享入口：同上） | 迁移 V8、`core/notes/blobs.go`、同步路由、`core/store/blobs.go`；两个真实 Core 经 mTLS 传附件的测试。图片粘贴/拍照由壳完成（写临时文件再 `notes.attachment_add`） |
+| 块内按行合并 | ✅ | 清单里两人各改一项不再产生副本（见 sync-model.md §4） |
+| 实时预览（`notes.render {body}`） | ✅ 核心；🟡 两端已接入（停顿 150 ms 后渲染未保存文本） | |
+| 字符级 CRDT | 📄 已评估，**不采用** | [crdt-evaluation.md](crdt-evaluation.md) |
+| 块级富文本（所见即所得）编辑器 | ⛔ **未做** | 现在两端是"源码编辑 + 格式工具栏 + 实时预览"。设计不变：底层仍是 Markdown，按 `block_id` 用 `notes.update` 的 `patch` 提交；需要真机反复调输入法与焦点，所以没有在没有设备的情况下硬做 |
+| 修订链压缩、回收站物理清理 | ⛔ 有设计结论、未实现 | sync-model.md §8：需要双向确认水位，风险高于收益 |
 
 ## 6. 风险
 
@@ -90,16 +95,16 @@
 
 ### 验证记录（2026-10-27）
 
-`make check`（vet、Go 全部包 `-race`、Linux 与 Wine 下的 DLL 冒烟、C# 互操作测试、Windows 应用 Release 构建、AAR、Android 单元测试与 debug APK）全部通过：
+Phase 1 与 Phase 2 的最终代码树上，`make check`（vet、Go 全部包 `-race`、Linux 与 Wine 下的 DLL 冒烟、C# 互操作测试、Windows 应用 Release 构建、AAR、Android 单元测试与 debug APK）全部通过：
 
 | 项 | 结果 |
 | --- | --- |
 | Go（`go test -race ./...`） | 全部包 ok，含 `core/notes`、`core/notes/markdown`、`core/store`、`core/facade`、`core/pipe` |
-| C#（`windows/ClipBridge.Windows.Tests`，对真实 Linux 核心） | 758 通过 / 0 失败（其中笔记相关 215） |
+| C#（`windows/ClipBridge.Windows.Tests`，对真实 Linux 核心） | 935 通过 / 0 失败 |
 | Windows 应用构建（Release，含 XAML 编译） | 0 警告 / 0 错误 |
-| Android（`testDebugUnitTest` + `assembleDebug`） | 647 通过 / 0 失败（本模块新增约 199） |
-| `make notes-check` | 通过（本模块的 Go 包 + 两端笔记测试） |
+| Android（`testDebugUnitTest` + `assembleDebug`） | 764 通过 / 0 失败（含用真实核心录制的 66 条回复的回放测试） |
+| `make notes-check` | 本模块的 Go 包 + 两端笔记测试 |
 
-**没有验证过**：真实 WPF 渲染与交互（布局、预览绘制、工具栏选区编辑、焦点丢失保存、对话框）；Android 设备上的界面、输入法组合输入、工具栏在软键盘上方的位置、分享菜单；真实 Tailscale 网络上两台真机的同步；Doze 下的后台同步。Android 模拟器冒烟测试曾尝试，软件模拟的系统进程约 20 分钟后崩溃，没有结果。
+一次整体运行中 `xfer`、`peer` 和 facade 的文件传输测试（与笔记无关的时序用例）超时失败；单独重跑这几个包通过（facade 文件传输测试连跑 3 次），再次整体运行全部通过。这台机器当时有一个占 50% CPU 的模拟器，判断为负载引起的偶发，没有找到别的原因。
 
-已知的、需要真机确认的取舍：预览在 MVP 里取自核心渲染的"已保存修订"（保存间隔 500 ms，所以预览略滞后；核心已提供 `notes.render {body}` 渲染未保存文本，界面尚未接入）。
+**没有验证过**：真实 WPF 渲染与交互（布局、预览绘制与图片/附件、搜索结果的高亮、对话框、拖放、剪贴板图片粘贴、焦点丢失保存）；Android 设备上的界面、输入法组合输入、工具栏在软键盘上方的位置、选择器（`CreateDocument`/`OpenDocument`/`PickVisualMedia`）、FileProvider 打开附件、分享菜单、大图解码与内存；真实 Tailscale 网络上两台真机的同步（包括附件）；Doze 下的后台同步。Android 模拟器冒烟测试曾尝试，软件模拟的系统进程约 20 分钟后崩溃，没有结果。

@@ -157,6 +157,89 @@ func TestMerge3HugeDocumentsDoNotBlowUp(t *testing.T) {
 	}
 }
 
+func TestMerge3BlocksCombinesEditsToDifferentLinesOfOneBlock(t *testing.T) {
+	list := "- milk\n- eggs\n- bread\n- jam"
+	cases := []struct {
+		name              string
+		base, left, right []string
+		want              []string
+		ok                bool
+	}{
+		{"different items of one list", []string{"# T", list}, []string{"# T", "- MILK\n- eggs\n- bread\n- jam"}, []string{"# T", "- milk\n- eggs\n- bread\n- JAM"},
+			[]string{"# T", "- MILK\n- eggs\n- bread\n- JAM"}, true},
+		{"an item added on each side", []string{list}, []string{"- milk\n- eggs\n- tea\n- bread\n- jam"}, []string{list + "\n- honey"},
+			[]string{"- milk\n- eggs\n- tea\n- bread\n- jam\n- honey"}, true},
+		{"the same item edited twice", []string{list}, []string{"- milk\n- EGGS\n- bread\n- jam"}, []string{"- milk\n- eggs!\n- bread\n- jam"}, nil, false},
+		{"one item deleted, a neighbour edited", []string{list}, []string{"- milk\n- bread\n- jam"}, []string{"- milk\n- eggs\n- bread\n- JAM"},
+			[]string{"- milk\n- bread\n- JAM"}, true},
+		{"one item deleted, the same item edited", []string{list}, []string{"- milk\n- bread\n- jam"}, []string{"- milk\n- EGGS\n- bread\n- jam"}, nil, false},
+		{"two lines of a paragraph", []string{"first line\nsecond line\nthird line"}, []string{"FIRST line\nsecond line\nthird line"},
+			[]string{"first line\nsecond line\nTHIRD line"}, []string{"FIRST line\nsecond line\nTHIRD line"}, true},
+		{"one line paragraphs still conflict", []string{"one line"}, []string{"one LINE"}, []string{"ONE line"}, nil, false},
+		{"a block split in two by one side cannot be refined", []string{list}, []string{"- milk\n- eggs", "- bread\n- jam"}, []string{"- MILK\n- eggs\n- bread\n- jam"}, nil, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, ok := merge3Blocks(c.base, c.left, c.right)
+			got2, ok2 := merge3Blocks(c.base, c.right, c.left)
+			if ok != ok2 || ok && !sameLines(got, got2) {
+				t.Fatalf("not symmetric: %v/%v vs %v/%v", got, ok, got2, ok2)
+			}
+			if ok != c.ok || ok && !sameLines(got, c.want) {
+				t.Fatalf("merge = %q ok=%v, want %q ok=%v", got, ok, c.want, c.ok)
+			}
+		})
+	}
+}
+
+func TestMerge3BlocksIsSymmetricOnRandomMultiLineBlocks(t *testing.T) {
+	rng := rand.New(rand.NewSource(3))
+	block := func() string {
+		var ls []string
+		for i, n := 0, 1+rng.Intn(4); i < n; i++ {
+			ls = append(ls, fmt.Sprintf("l%d", rng.Intn(5)))
+		}
+		return strings.Join(ls, "\n")
+	}
+	refined := 0
+	for n := 0; n < 4000; n++ {
+		var base []string
+		for i, k := 0, 1+rng.Intn(3); i < k; i++ {
+			base = append(base, block())
+		}
+		edit := func() []string {
+			out := append([]string(nil), base...)
+			i := rng.Intn(len(out))
+			ls := strings.Split(out[i], "\n")
+			switch rng.Intn(3) {
+			case 0:
+				ls = append(ls, fmt.Sprintf("n%d", rng.Intn(9)))
+			case 1:
+				ls[rng.Intn(len(ls))] = fmt.Sprintf("e%d", rng.Intn(9))
+			default:
+				if len(ls) > 1 {
+					j := rng.Intn(len(ls))
+					ls = append(ls[:j], ls[j+1:]...)
+				}
+			}
+			out[i] = strings.Join(ls, "\n")
+			return out
+		}
+		l, r := edit(), edit()
+		a, okA := merge3Blocks(base, l, r)
+		b, okB := merge3Blocks(base, r, l)
+		if okA != okB || okA && !sameLines(a, b) {
+			t.Fatalf("not symmetric: base=%q left=%q right=%q -> %q/%v vs %q/%v", base, l, r, a, okA, b, okB)
+		}
+		if _, plain := merge3(base, l, r); !plain && okA {
+			refined++
+		}
+	}
+	if refined < 100 {
+		t.Fatalf("only %d pairs needed (and got) the line-level merge: the generator is off", refined)
+	}
+}
+
 func TestMerge3String(t *testing.T) {
 	for _, c := range []struct {
 		base, l, r, want string

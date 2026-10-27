@@ -1,6 +1,10 @@
 package facade
 
 import (
+	"bytes"
+	"encoding/base64"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -86,8 +90,12 @@ func TestNotesMethodsThroughTheFacade(t *testing.T) {
 		t.Fatalf("restored note missing: %v", live)
 	}
 
-	if c := n.errorCode("notes.search", map[string]any{"query": "x"}); c != "NOT_IMPLEMENTED" {
-		t.Fatalf("notes.search = %s", c)
+	found := n.call("notes.search", map[string]any{"query": "three"})["items"].([]any)
+	if len(found) != 1 || found[0].(map[string]any)["note_id"] != id || !strings.Contains(found[0].(map[string]any)["snippet"].(string), "three") {
+		t.Fatalf("notes.search = %v", found)
+	}
+	if c := n.errorCode("notes.search", map[string]any{"query": " "}); c != "INVALID" {
+		t.Fatalf("empty search = %s", c)
 	}
 	if c := n.errorCode("notes.get", map[string]any{"note_id": "nt_" + strings.Repeat("a", 26)}); c != "NOT_FOUND" {
 		t.Fatalf("missing note = %s", c)
@@ -100,6 +108,78 @@ func TestNotesMethodsThroughTheFacade(t *testing.T) {
 	}
 	if st := n.call("notes.sync_status", nil); len(st["peers"].([]any)) != 0 || st["pending_push"] != float64(0) {
 		t.Fatalf("notes.sync_status without peers = %v", st)
+	}
+}
+
+func TestNotesExportAndImportThroughTheFacade(t *testing.T) {
+	n := startNode(t, "Tony-PC", "windows", true)
+	n.call("notes.create", map[string]any{"title": "Export me", "body": "some text\n"})
+	n.call("notes.create", map[string]any{"title": "And me", "body": "more text\n"})
+
+	zipPath := filepath.Join(t.TempDir(), "backup.zip")
+	exp := n.call("notes.export", map[string]any{"path": zipPath})
+	if exp["count"] != float64(2) || exp["path"] != zipPath || exp["bytes"].(float64) <= 0 {
+		t.Fatalf("notes.export = %v", exp)
+	}
+	if c := n.errorCode("notes.export", map[string]any{"path": zipPath}); c != "INVALID" {
+		t.Fatalf("exporting over a file = %s", c)
+	}
+	imp := n.call("notes.import", map[string]any{"path": zipPath})
+	if imp["imported"] != float64(2) || len(imp["skipped"].([]any)) != 0 || len(imp["note_ids"].([]any)) != 2 {
+		t.Fatalf("notes.import = %v", imp)
+	}
+	if items := n.call("notes.list", nil)["items"].([]any); len(items) != 4 {
+		t.Fatalf("notes after importing the export = %d, want 4", len(items))
+	}
+	if c := n.errorCode("notes.import", map[string]any{"path": "relative.zip"}); c != "INVALID" {
+		t.Fatalf("relative import path = %s", c)
+	}
+}
+
+func TestNotesAttachmentsTravelBetweenTwoDevices(t *testing.T) {
+	win, pix := pairedNotesPair(t)
+	file := filepath.Join(t.TempDir(), "plan.pdf")
+	content := []byte("%PDF-1.4 the plan")
+	if err := os.WriteFile(file, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	att := win.call("notes.attachment_add", map[string]any{"path": file})
+	blob := att["blob_id"].(string)
+	if att["mime"] != "application/pdf" || att["present"] != true || att["name"] != "plan.pdf" || !strings.HasSuffix(att["markdown"].(string), "(blob:"+blob+")") {
+		t.Fatalf("notes.attachment_add = %v", att)
+	}
+	id := win.call("notes.create", map[string]any{"title": "Plan", "body": "read " + att["markdown"].(string) + "\n"})["note_id"].(string)
+	waitFor(t, "the note on the phone", func() bool { return noteBody(pix, id) != "" })
+
+	waitFor(t, "the attachment on the phone", func() bool {
+		return pix.call("notes.attachment_get", map[string]any{"blob_id": blob})["present"] == true
+	})
+	pix.waitEvent("notes.attachment", map[string]any{"blob_id": blob})
+	out := filepath.Join(t.TempDir(), "copy.pdf")
+	pix.call("notes.attachment_export", map[string]any{"blob_id": blob, "path": out})
+	if got, _ := os.ReadFile(out); !bytes.Equal(got, content) {
+		t.Fatalf("exported file = %q", got)
+	}
+
+	// and from the phone (the dialing side) to the PC
+	file2 := filepath.Join(t.TempDir(), "photo.png")
+	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+	_ = os.WriteFile(file2, png, 0o600)
+	att2 := pix.call("notes.attachment_add", map[string]any{"path": file2})
+	pix.call("notes.update", map[string]any{"note_id": id, "base_rev_id": noteRev(pix, id), "body": noteBody(pix, id) + "\n" + att2["markdown"].(string) + "\n"})
+	waitFor(t, "the phone's picture on the PC", func() bool {
+		return win.call("notes.attachment_get", map[string]any{"blob_id": att2["blob_id"]})["present"] == true
+	})
+
+	if c := win.errorCode("notes.attachment_export", map[string]any{"blob_id": strings.Repeat("0", 64), "path": out}); c != "NOT_FOUND" {
+		t.Fatalf("absent attachment = %s", c)
+	}
+	if c := win.errorCode("notes.attachment_add", map[string]any{"path": "plan.pdf"}); c != "INVALID" {
+		t.Fatalf("relative path = %s", c)
+	}
+	if r := win.call("notes.attachment_cleanup", nil); r["removed"] != float64(0) {
+		t.Fatalf("cleanup = %v", r)
 	}
 }
 

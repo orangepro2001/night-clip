@@ -1,6 +1,7 @@
 package com.nightclip.app.ui.notes
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -16,13 +17,16 @@ import com.nightclip.app.core.NoteDoc
 import com.nightclip.app.core.NotesApi
 import com.nightclip.app.core.RevisionInfo
 import com.nightclip.app.logic.EditorCommand
+import com.nightclip.app.logic.EditorPhase
 import com.nightclip.app.logic.EditorState
+import com.nightclip.app.logic.LatestWins
 import com.nightclip.app.logic.FlatBlock
 import com.nightclip.app.logic.MarkdownEdit
 import com.nightclip.app.logic.MdAction
 import com.nightclip.app.logic.NoteEditorLogic
 import com.nightclip.app.logic.NotesErrors
 import com.nightclip.app.logic.NotesRenderSpans
+import com.nightclip.app.platform.NotesTransferRunner
 import com.nightclip.app.logic.NotesTexts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,18 +42,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** What the preview tab shows. */
+/** What the preview shows: the render tree of the text in the editor, saved or not. */
 sealed interface PreviewState {
     data object Idle : PreviewState
     data object Loading : PreviewState
 
-    /** A note without any text yet. */
-    data object Empty : PreviewState
+    /** [failed]: the latest render failed, so [blocks] is the last good one. */
+    data class Ready(val blocks: List<FlatBlock>, val failed: Boolean) : PreviewState
 
-    /** [stale]: there is text that could not be saved, so the preview shows the last saved version. */
-    data class Ready(val blocks: List<FlatBlock>, val stale: Boolean) : PreviewState
+    /** The first render failed: there is no tree to keep. */
     data class Failed(val message: String) : PreviewState
 }
 
@@ -114,8 +118,12 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     private var currentSession = NO_SESSION
     private var timer: Job? = null
-    private var previewJob: Job? = null
     private var historyJob: Job? = null
+
+    /** The preview follows the text of the editor, a moment after the last change; answers of older requests never replace newer ones. */
+    private val previewRunner = LatestWins<String>({ System.currentTimeMillis() }, PREVIEW_DEBOUNCE_MS)
+    private var previewTimer: Job? = null
+    private var previewSubmitted: String? = null
     private var deviceNames: Map<String, String> = emptyMap()
     private var selfDeviceId = ""
 
@@ -166,7 +174,7 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
                 }
             } else {
                 when (val r = NotesApi.update(noteId, c.baseRevId, c.title, c.body)) {
-                    is ApiResult.Ok -> run(logic.onSaved(c.ticket, noteId, r.value.revId, r.value.merged, r.value.conflictNoteId))
+                    is ApiResult.Ok -> run(logic.onSaved(c.ticket, noteId, r.value.revId, r.value.merged, r.value.conflictNoteId, r.value.changed))
                     is ApiResult.Fail -> run(logic.onSaveFailed(c.ticket, r.code))
                 }
             }
@@ -181,6 +189,12 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
         if (bodyField.text != s.body) bodyField = TextFieldValue(s.body, TextRange(minOf(bodyField.selection.end, s.body.length)))
         _state.value = s
         scheduleTimer()
+        // Only a text that is new is handed to the preview: a failed render is not retried in a loop by every state change.
+        if (_mode.value == EditorMode.PREVIEW && s.phase == EditorPhase.READY && s.body != previewSubmitted) {
+            previewSubmitted = s.body
+            previewRunner.submit(s.body)
+            schedulePreviewTimer()
+        }
     }
 
     private fun scheduleTimer() {
@@ -206,7 +220,7 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
         if (route.sessionId == currentSession) return
         currentSession = route.sessionId
         _mode.value = EditorMode.SOURCE
-        _preview.value = PreviewState.Idle
+        resetPreview()
         _history.value = HistoryUi()
         _leaveBlocked.value = false
         titleField = TextFieldValue("")
@@ -253,13 +267,12 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun endSession() {
         timer?.cancel()
-        previewJob?.cancel()
         historyJob?.cancel()
         logic.close()
         currentSession = NO_SESSION
         _leaveBlocked.value = false
         _mode.value = EditorMode.SOURCE
-        _preview.value = PreviewState.Idle
+        resetPreview()
         _history.value = HistoryUi()
         titleField = TextFieldValue("")
         bodyField = TextFieldValue("")
@@ -335,27 +348,89 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setMode(mode: EditorMode) {
         _mode.value = mode
-        previewJob?.cancel()
-        if (mode == EditorMode.PREVIEW) loadPreview() else _preview.value = PreviewState.Idle
+        if (mode == EditorMode.PREVIEW) {
+            // The tree of the last visit stays up while the new one is made, so the pane does not flash.
+            if (_preview.value !is PreviewState.Ready) _preview.value = PreviewState.Loading
+            previewSubmitted = logic.state.body
+            previewRunner.submit(logic.state.body, immediate = true)
+            schedulePreviewTimer()
+        } else {
+            previewSubmitted = null
+            previewRunner.reset()
+            previewTimer?.cancel()
+        }
     }
 
-    /** The core draws from a saved revision, so the pending text is saved first (nothing is rendered from the shell's own parsing). */
-    private fun loadPreview() {
-        previewJob = viewModelScope.launch {
-            _preview.value = PreviewState.Loading
-            run(logic.flush())
-            awaitSettled()
-            val s = logic.state
-            val id = s.noteId
-            if (id == null) {
-                _preview.value = PreviewState.Empty
-                return@launch
+    private fun resetPreview() {
+        previewSubmitted = null
+        previewRunner.reset()
+        previewTimer?.cancel()
+        previewTimer = null
+        _preview.value = PreviewState.Idle
+    }
+
+    private fun schedulePreviewTimer() {
+        previewTimer?.cancel()
+        previewTimer = null
+        val due = previewRunner.nextDueAt() ?: return
+        previewTimer = viewModelScope.launch {
+            delay((due - System.currentTimeMillis()).coerceAtLeast(0))
+            previewTimer = null
+            renderPreview()
+        }
+    }
+
+    /**
+     * `notes.render {body}` of the text on screen: nothing has to be saved first, so the preview never lags behind what
+     * is typed. An error keeps the last good picture; a late answer of an older request is dropped by [previewRunner].
+     */
+    private fun renderPreview() {
+        val request = previewRunner.tick()
+        if (request == null) {
+            schedulePreviewTimer()
+            return
+        }
+        viewModelScope.launch {
+            when (val r = NotesApi.renderBody(request.value)) {
+                is ApiResult.Ok -> {
+                    val blocks = withContext(Dispatchers.Default) { NotesRenderSpans.flatten(r.value.blocks) }
+                    if (previewRunner.finish(request.seq, ok = true)) _preview.value = PreviewState.Ready(blocks, failed = false)
+                }
+                is ApiResult.Fail -> if (previewRunner.finish(request.seq, ok = false)) {
+                    _preview.value = when (val old = _preview.value) {
+                        is PreviewState.Ready -> old.copy(failed = true)
+                        else -> PreviewState.Failed(NotesErrors.message(r.code, NotesErrors.Context.OPEN))
+                    }
+                }
             }
-            _preview.value = when (val r = NotesApi.render(id)) {
-                is ApiResult.Ok -> PreviewState.Ready(NotesRenderSpans.flatten(r.value.blocks), stale = s.hasUnsavedText)
-                is ApiResult.Fail -> PreviewState.Failed(NotesErrors.message(r.code, NotesErrors.Context.OPEN))
+            schedulePreviewTimer() // text typed meanwhile
+        }
+    }
+
+    // ---- attachments -------------------------------------------------------------------------
+
+    /** A file or picture the user picked: it is stored as an attachment and its Markdown goes into the text at the cursor, on a line of its own. */
+    fun attach(uri: Uri) {
+        if (logic.state.readOnly) {
+            say(NotesTexts.ATTACHMENT_READ_ONLY)
+            return
+        }
+        scope.launch {
+            when (val r = NotesTransferRunner.addAttachment(getApplication(), uri)) {
+                is NotesTransferRunner.Outcome.Failed -> say(r.message)
+                is NotesTransferRunner.Outcome.Done -> insertAttachment(r.value.markdown)
             }
         }
+    }
+
+    private fun insertAttachment(markdown: String) {
+        if (markdown.isBlank()) return say(NotesTexts.ATTACHMENT_FAILED)
+        // The note may have been trashed while the file was being stored.
+        if (logic.state.readOnly) return say(NotesTexts.ATTACHMENT_READ_ONLY)
+        val v = bodyField
+        val r = MarkdownEdit.insertLine(v.text, v.selection.min, v.selection.max, markdown)
+        onBodyChange(TextFieldValue(r.text, TextRange(r.selStart, r.selEnd)))
+        say(NotesTexts.ATTACHMENT_ADDED)
     }
 
     // ---- history -----------------------------------------------------------------------------
@@ -450,6 +525,7 @@ class NoteEditorViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private companion object {
+        const val PREVIEW_DEBOUNCE_MS = 150L
         const val NO_SESSION = -1L
         const val SETTLE_TIMEOUT_MS = 10_000L
         const val HISTORY_PAGE = 50

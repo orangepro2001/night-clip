@@ -80,6 +80,8 @@
                             ToolTip="{x:Static local:Strings.EditLinkTip}" />
                     <Button Style="{StaticResource NotesFormatButton}" Tag="HorizontalRule" Click="Format_Click" Content="—"
                             ToolTip="{x:Static local:Strings.EditRuleTip}" />
+                    <Button x:Name="AttachButton" Style="{StaticResource NotesFormatButton}" Click="Attach_Click" Margin="8,0,4,4"
+                            Content="{x:Static local:Strings.EditAttachLabel}" ToolTip="{x:Static local:Strings.EditAttachTip}" />
                 </WrapPanel>
             </DockPanel>
 
@@ -91,7 +93,8 @@
                     <ColumnDefinition x:Name="PreviewColumn" Width="*" />
                 </Grid.ColumnDefinitions>
                 <TextBox x:Name="SourceBox" Grid.Column="0" Style="{StaticResource NotesEditorBox}" SpellCheck.IsEnabled="False"
-                         UndoLimit="500" TextChanged="Source_TextChanged" PreviewKeyDown="Source_PreviewKeyDown" />
+                         UndoLimit="500" AllowDrop="True" TextChanged="Source_TextChanged" PreviewKeyDown="Source_PreviewKeyDown"
+                         PreviewDragOver="Source_PreviewDragOver" PreviewDrop="Source_PreviewDrop" />
                 <GridSplitter x:Name="Splitter" Grid.Column="1" Width="8" HorizontalAlignment="Stretch" Background="Transparent"
                               ResizeBehavior="PreviousAndNext" />
                 <Border x:Name="PreviewFrame" Grid.Column="2" BorderThickness="1" CornerRadius="7"

@@ -99,8 +99,9 @@ class NotesRenderSpansTest {
     }
 
     @Test
-    fun hardBreakIsANewlineAndSoftBreakASpace() {
-        assertEquals("a\nb c", styled(t("a"), NoteInline.HardBreak, t("b"), NoteInline.SoftBreak, t("c")).text)
+    fun hardAndSoftBreaksAreBothLineBreaks() {
+        // Note apps show the line breaks the user typed (the Windows client does the same).
+        assertEquals("a\nb\nc", styled(t("a"), NoteInline.HardBreak, t("b"), NoteInline.SoftBreak, t("c")).text)
     }
 
     @Test

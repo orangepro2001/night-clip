@@ -307,16 +307,26 @@ class NoteEditorLogicTest {
         opened()
         // Only white space changes: the core normalises it away, makes no revision and answers with the newest one.
         logic.edit("Title", "Body\n   ")
-        assertTrue(logic.onExternalChange("nt_a", "r_9").isEmpty()) // announced while typing
         clock += 500
         val s = only(logic.tick())
-        val out = logic.onSaved(s.ticket, "nt_a", "r_9", false, null) // plain success, but r_9 is not ours
+        val out = logic.onSaved(s.ticket, "nt_a", "r_9", merged = false, conflictNoteId = null, changed = false) // r_9 is not ours
         assertEquals("r_1", logic.state.baseRevId) // the editor still shows r_1's content
         val load = loads(out).single()
         assertTrue("a silent reload: nothing was lost", notices(out).isEmpty())
         logic.onLoaded(load.ticket, doc(rev = "r_9", body = "from the PC\n"))
         assertEquals("r_9", logic.state.baseRevId)
         assertEquals("from the PC\n", logic.state.body)
+    }
+
+    @Test
+    fun aSaveThatChangedNothingOnTheSameBaseChangesNothing() {
+        opened()
+        logic.edit("Title", "Body\n   ")
+        val s = only(logic.flush())
+        val out = logic.onSaved(s.ticket, "nt_a", "r_1", merged = false, conflictNoteId = null, changed = false)
+        assertTrue(out.isEmpty())
+        assertEquals("r_1", logic.state.baseRevId)
+        assertFalse(logic.state.dirty)
     }
 
     @Test

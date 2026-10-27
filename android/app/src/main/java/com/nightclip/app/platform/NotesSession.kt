@@ -4,6 +4,7 @@ import com.nightclip.app.ClipBridgeApp
 import com.nightclip.app.core.CoreEvent
 import com.nightclip.app.core.NotesApi
 import com.nightclip.app.logic.NotesSyncLogic
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +29,8 @@ object NotesSession {
 
     fun install(application: ClipBridgeApp) {
         app = application
+        // Leftovers of an interrupted import, export or attachment, and pictures nobody looked at for a month.
+        application.appScope.launch(Dispatchers.IO) { NotesFiles.sweep(application) }
         application.appScope.launch {
             ForegroundTracker.foreground.collect { foreground -> if (foreground) syncIfDue() }
         }

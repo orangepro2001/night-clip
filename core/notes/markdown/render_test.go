@@ -22,6 +22,27 @@ func mustJSON(t *testing.T, v any) string {
 
 func txt(s string) Inline { return Inline{T: "text", Text: s} }
 
+func TestRenderOrderedListStartIsKeptEvenWhenZero(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want string // the "start" member of the list block in the JSON, "" = absent
+	}{
+		{"0. zero\n1. one\n", `"start":0`},
+		{"1. one\n2. two\n", `"start":1`},
+		{"7. seven\n", `"start":7`},
+		{"- bullet\n", ""},
+		{"text\n", ""},
+	} {
+		b, err := json.Marshal(Render(tc.src))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(string(b), `"start"`); got != (tc.want != "") || tc.want != "" && !strings.Contains(string(b), tc.want) {
+			t.Errorf("Render(%q) json = %s, want %q", tc.src, b, tc.want)
+		}
+	}
+}
+
 func TestRenderEmpty(t *testing.T) {
 	for _, in := range []string{"", "  \n\t\n"} {
 		got := mustJSON(t, Render(in))
@@ -151,7 +172,7 @@ func TestRenderLists(t *testing.T) {
 		t.Errorf("nested item = %s", mustJSON(t, item))
 	}
 	o := r.Blocks[1]
-	if !o.Ordered || o.Start != 3 || !o.Tight || len(o.Items) != 2 {
+	if !o.Ordered || o.Start == nil || *o.Start != 3 || !o.Tight || len(o.Items) != 2 {
 		t.Errorf("ordered list = %+v", o)
 	}
 	loose := r.Blocks[2]

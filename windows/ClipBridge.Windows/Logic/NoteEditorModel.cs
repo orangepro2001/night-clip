@@ -196,15 +196,16 @@ public sealed class NoteEditorModel
     }
 
     /// <summary>
-    /// The core accepted <paramref name="request"/>. <paramref name="ownChild"/> says the stored revision really is a child of
-    /// the base (or the base itself, when nothing changed): the core also answers with the newest revision when the text
-    /// came out equal to an older base, and that must not become the base of a text that lacks its changes.
+    /// The core accepted <paramref name="request"/>. A result that stored a revision (<c>changed</c>) on top of the base becomes
+    /// the new base. One that stored nothing is only taken as the base when it is the base itself (the text equals what the core
+    /// has); otherwise the answer names a newer revision made elsewhere, which does not hold our text: the note is read again.
     /// </summary>
-    public SaveOutcome Complete(SaveRequest request, NoteSaveResult result, bool ownChild)
+    public SaveOutcome Complete(SaveRequest request, NoteSaveResult result)
     {
         if (!ReferenceEquals(request, _inflight)) return new SaveOutcome(SaveOutcomeKind.Stale);
         _inflight = null;
-        if (result.Merged || result.ConflictNoteId.Length > 0 || !ownChild || result.RevId.Length == 0)
+        var notOurs = !result.Changed && result.RevId != request.BaseRevId;
+        if (result.Merged || result.ConflictNoteId.Length > 0 || notOurs || result.RevId.Length == 0)
         {
             _reloadFor = request;
             _pendingRemoteRev = "";

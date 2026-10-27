@@ -133,11 +133,13 @@ func mergeBodies(base, a, b string) (string, bool) {
 	if b == base {
 		return a, true
 	}
-	blocks, ok := merge3(blocksOf(base), blocksOf(a), blocksOf(b))
+	blocks, ok := merge3Blocks(blocksOf(base), blocksOf(a), blocksOf(b))
 	if !ok {
 		return "", false
 	}
-	return markdown.JoinRaw(blocks), true
+	// A block merged line by line may not be in canonical form (two list edits that are fine apart
+	// can make a list loose together): the revision must be, so normalize. It is a pure function.
+	return markdown.Normalize(markdown.JoinRaw(blocks)), true
 }
 
 // graph is the revision graph of one note.
@@ -400,6 +402,9 @@ func reconcile(tx *store.NotesTx, noteID string) (outcome, error) {
 	row := store.NoteRow{NoteID: noteID, CreatedAt: created, UpdatedAt: head.CreatedAt, HeadRev: head.RevID,
 		Deleted: head.Deleted, ConflictOf: head.ConflictOf, Title: title, Preview: preview}
 	if err := tx.PutNote(row); err != nil {
+		return out, err
+	}
+	if err := tx.SetBlobRefs(noteID, blobRefs(head.Body)); err != nil {
 		return out, err
 	}
 	out.headRev = head.RevID

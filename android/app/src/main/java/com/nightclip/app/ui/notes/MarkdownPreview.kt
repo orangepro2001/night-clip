@@ -1,7 +1,11 @@
 package com.nightclip.app.ui.notes
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,24 +16,37 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -45,7 +62,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nightclip.app.core.ColumnAlign
+import com.nightclip.app.logic.AttachmentFiles
+import com.nightclip.app.logic.AttachmentState
+import com.nightclip.app.logic.NotesTexts
+import kotlinx.coroutines.flow.MutableStateFlow
 import com.nightclip.app.logic.FlatBlock
 import com.nightclip.app.logic.NotesRenderSpans
 import com.nightclip.app.logic.SpanStyle as NoteSpan
@@ -84,7 +106,98 @@ private fun PreviewBlock(block: FlatBlock, onLink: (String) -> Unit) {
             is FlatBlock.Table -> TableBlock(block, onLink)
             is FlatBlock.Rule -> HorizontalDivider(Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant)
             is FlatBlock.Literal -> CodeBlock("", block.text, wrap = true)
+            is FlatBlock.Image -> AttachmentPicture(block.blobId, block.alt)
+            is FlatBlock.File -> AttachmentChip(block.blobId, block.name)
         }
+    }
+}
+
+/** The attachment store the previews ask for pictures and files; null (tests, previews) shows placeholders only. */
+val LocalNoteAttachments = staticCompositionLocalOf<NoteAttachmentsViewModel?> { null }
+
+/** A picture attachment: placeholder while it loads or syncs, the picture (decoded at a size the screen needs) once it is there. */
+@Composable
+private fun AttachmentPicture(blobId: String, alt: String) {
+    val host = LocalNoteAttachments.current
+    if (host == null) {
+        AttachmentPlaceholder(NotesTexts.ATTACHMENT_FAILED, busy = false)
+        return
+    }
+    LaunchedEffect(blobId) { host.request(blobId, alt) }
+    val states by host.states.collectAsStateWithLifecycle()
+    when (val state = states[blobId]) {
+        null, AttachmentState.Loading -> AttachmentPlaceholder(NotesTexts.ATTACHMENT_LOADING, busy = true)
+        AttachmentState.Waiting -> AttachmentPlaceholder(NotesTexts.ATTACHMENT_SYNCING, busy = true)
+        is AttachmentState.Failed -> AttachmentPlaceholder(NotesTexts.ATTACHMENT_FAILED + alt.let { if (it.isBlank()) "" else "：$it" }, busy = false)
+        // The note calls it a picture but the file is something else: show it as a file.
+        is AttachmentState.Document -> AttachmentChip(blobId, alt.ifBlank { state.name })
+        is AttachmentState.Picture -> PictureView(host, blobId, state, alt)
+    }
+}
+
+@Composable
+private fun PictureView(host: NoteAttachmentsViewModel, blobId: String, state: AttachmentState.Picture, alt: String) {
+    val density = LocalDensity.current
+    val targetPx = (LocalConfiguration.current.screenWidthDp * density.density).toInt().coerceAtLeast(240)
+    var bitmap by remember(state.path) { mutableStateOf<ImageBitmap?>(null) }
+    var failed by remember(state.path) { mutableStateOf(false) }
+    LaunchedEffect(state.path, targetPx) {
+        val decoded = host.bitmap(state.path, targetPx)
+        if (decoded == null) failed = true else bitmap = decoded
+    }
+    val shown = bitmap
+    when {
+        shown != null -> Image(
+            bitmap = shown,
+            contentDescription = alt.ifBlank { state.name },
+            // A small picture keeps its own size; a big one fills the width.
+            modifier = Modifier.widthIn(max = (shown.width / density.density).dp).fillMaxWidth().clickable { host.open(blobId, alt) },
+            contentScale = ContentScale.FillWidth,
+        )
+        failed -> AttachmentPlaceholder(NotesTexts.ATTACHMENT_FAILED + alt.let { if (it.isBlank()) "" else "：$it" }, busy = false)
+        else -> AttachmentPlaceholder(NotesTexts.ATTACHMENT_LOADING, busy = true)
+    }
+}
+
+@Composable
+private fun AttachmentPlaceholder(text: String, busy: Boolean) {
+    Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)) {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** A file attachment as a chip "📎 name (size)": tap opens it with another app (or offers save / share), long press offers save / share. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AttachmentChip(blobId: String, name: String) {
+    val host = LocalNoteAttachments.current
+    if (host != null) LaunchedEffect(blobId) { host.request(blobId, name) }
+    val states by (host?.states ?: remember { MutableStateFlow(emptyMap()) }).collectAsStateWithLifecycle()
+    val text = when (val state = states[blobId]) {
+        is AttachmentState.Document -> AttachmentFiles.chipText(state.name.ifBlank { name }, state.size)
+        is AttachmentState.Picture -> AttachmentFiles.chipText(state.name.ifBlank { name }, state.size)
+        AttachmentState.Waiting -> AttachmentFiles.chipText(name, null) + " · " + NotesTexts.ATTACHMENT_SYNCING
+        is AttachmentState.Failed -> AttachmentFiles.chipText(name, null) + " · " + NotesTexts.ATTACHMENT_FAILED
+        else -> AttachmentFiles.chipText(name, null)
+    }
+    Surface(
+        Modifier.combinedClickable(onClick = { host?.open(blobId, name) }, onLongClick = { host?.choose(blobId) }),
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f),
+    ) {
+        Text(
+            text,
+            Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
     }
 }
 

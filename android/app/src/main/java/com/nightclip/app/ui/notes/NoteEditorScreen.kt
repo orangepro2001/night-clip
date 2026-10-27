@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -50,6 +54,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -114,6 +119,10 @@ fun NoteEditorScreen(
     var titleFocused by remember { mutableStateOf(false) }
     val bodyFocus = remember { FocusRequester() }
     val linkFailed = stringResource(R.string.notes_open_link_failed)
+    // A wide window (tablet, phone on its side) shows the preview next to the text, and it follows every change.
+    val wide = LocalConfiguration.current.screenWidthDp >= WIDE_DP
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.attach(uri) }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) vm.attach(uri) }
 
     LaunchedEffect(route.sessionId) { vm.start(route) }
     CollectWhileStarted(vm.messages, onMessage)
@@ -121,7 +130,7 @@ fun NoteEditorScreen(
     DisposableEffect(Unit) { onDispose { vm.flushNow() } }
     // A new note opens with the keyboard on the text, so the first thing typed is the note.
     LaunchedEffect(route.sessionId, state.phase) {
-        if (route.noteId == null && state.phase == EditorPhase.READY && vm.bodyField.text.isEmpty()) bodyFocus.requestFocus()
+        if (route.noteId == null && state.phase == EditorPhase.READY && vm.bodyField.text.isEmpty()) runCatching { bodyFocus.requestFocus() }
     }
 
     val leave = { vm.requestLeave { notes.pop() } }
@@ -182,16 +191,28 @@ fun NoteEditorScreen(
                 TextButton(onClick = { vm.retryOpen(route) }) { Text(stringResource(R.string.retry)) }
             }
             EditorPhase.READY -> {
-                TitleField(vm, readOnly = state.readOnly || mode == EditorMode.PREVIEW, onNext = { bodyFocus.requestFocus() }, onFocus = { titleFocused = it })
+                val editable = mode == EditorMode.SOURCE || wide
+                TitleField(vm, readOnly = state.readOnly || !editable, onNext = { runCatching { bodyFocus.requestFocus() } }, onFocus = { titleFocused = it })
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    if (mode == EditorMode.SOURCE) {
-                        SourceField(vm, readOnly = state.readOnly, focusRequester = bodyFocus)
-                    } else {
-                        PreviewPane(preview, onLink = openLink, onRetry = { vm.setMode(EditorMode.PREVIEW) })
+                    val previewPane = @Composable { PreviewPane(preview, onLink = openLink, onRetry = { vm.setMode(EditorMode.PREVIEW) }) }
+                    when {
+                        mode == EditorMode.SOURCE -> SourceField(vm, readOnly = state.readOnly, focusRequester = bodyFocus)
+                        wide -> Row(Modifier.fillMaxSize()) {
+                            Box(Modifier.weight(1f).fillMaxHeight()) { SourceField(vm, readOnly = state.readOnly, focusRequester = bodyFocus) }
+                            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            Box(Modifier.weight(1f).fillMaxHeight()) { previewPane() }
+                        }
+                        else -> previewPane()
                     }
                 }
-                if (mode == EditorMode.SOURCE && !state.readOnly && !titleFocused) FormatToolbar(vm::apply)
+                if (editable && !state.readOnly && !titleFocused) {
+                    FormatToolbar(
+                        onAction = vm::apply,
+                        onAttachFile = { pickFile.launch(arrayOf("*/*")) },
+                        onAttachImage = { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    )
+                }
             }
         }
     }
@@ -289,17 +310,15 @@ private fun SourceField(vm: NoteEditorViewModel, readOnly: Boolean, focusRequest
 private fun PreviewPane(preview: PreviewState, onLink: (String) -> Unit, onRetry: () -> Unit) {
     when (preview) {
         PreviewState.Idle, PreviewState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        PreviewState.Empty -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            Text(stringResource(R.string.notes_preview_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
         is PreviewState.Failed -> Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Text(preview.message, textAlign = TextAlign.Center)
             TextButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
         }
         is PreviewState.Ready -> Column(Modifier.fillMaxSize()) {
-            if (preview.stale) {
+            // The picture below is the last one that could be made.
+            if (preview.failed) {
                 Text(
-                    stringResource(R.string.notes_preview_stale),
+                    stringResource(R.string.notes_preview_failed),
                     Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
@@ -349,25 +368,33 @@ private val TOOL_GROUPS: List<List<Tool>> = listOf(
 
 /** One row of buttons that scrolls sideways; each button is a 44 dp target and acts on the text field's selection. */
 @Composable
-private fun FormatToolbar(onAction: (MdAction) -> Unit) {
+private fun FormatToolbar(onAction: (MdAction) -> Unit, onAttachFile: () -> Unit, onAttachImage: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     Surface(Modifier.fillMaxWidth(), color = scheme.surface, border = BorderStroke(0.5.dp, scheme.outlineVariant)) {
         Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             TOOL_GROUPS.forEachIndexed { g, tools ->
                 if (g > 0) VerticalDivider(Modifier.padding(horizontal = 4.dp).height(22.dp), color = scheme.outlineVariant)
-                tools.forEach { tool ->
-                    val description = stringResource(tool.description)
-                    Box(
-                        Modifier
-                            .size(width = 44.dp, height = 44.dp)
-                            .semantics { contentDescription = description }
-                            .clickable(role = Role.Button) { onAction(tool.action) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(tool.label, style = tool.style, color = scheme.onSurface)
-                    }
-                }
+                tools.forEach { tool -> ToolButton(tool.label, stringResource(tool.description), tool.style) { onAction(tool.action) } }
             }
+            VerticalDivider(Modifier.padding(horizontal = 4.dp).height(22.dp), color = scheme.outlineVariant)
+            ToolButton("📎", stringResource(R.string.tool_attach_file), TextStyle(fontSize = 17.sp), onAttachFile)
+            ToolButton("🖼", stringResource(R.string.tool_attach_image), TextStyle(fontSize = 17.sp), onAttachImage)
         }
     }
 }
+
+@Composable
+private fun ToolButton(label: String, description: String, style: TextStyle, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(width = 44.dp, height = 44.dp)
+            .semantics { contentDescription = description }
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = style, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+/** From this window width (dp) on, the preview sits next to the text instead of replacing it. */
+private const val WIDE_DP = 720
