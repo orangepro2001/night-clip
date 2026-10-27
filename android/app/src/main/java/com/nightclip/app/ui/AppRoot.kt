@@ -1,10 +1,12 @@
 package com.nightclip.app.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Phone
@@ -17,7 +19,9 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +45,8 @@ import com.nightclip.app.app
 import com.nightclip.app.core.CoreHost
 import com.nightclip.app.core.CoreState
 import com.nightclip.app.platform.Actions
+import com.nightclip.app.ui.notes.NOTES_TAB_ID
+import com.nightclip.app.ui.notes.NotesRoot
 import com.nightclip.app.ui.vault.VAULT_TAB_ID
 import com.nightclip.app.ui.vault.VaultRoot
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,6 +90,13 @@ private fun MainScaffold(requests: LaunchRequests) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val show: (String) -> Unit = { msg -> scope.launch { snackbar.showSnackbar(msg) } }
+    val showWithAction: (String, String, () -> Unit) -> Unit = { msg, label, action ->
+        scope.launch {
+            if (snackbar.showSnackbar(msg, actionLabel = label, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) action()
+        }
+    }
+    // The notes editor and its sub screens take the whole screen: no bottom navigation between the toolbar and the keyboard.
+    var notesFullScreen by rememberSaveable { mutableStateOf(false) }
 
     val requestedTab by requests.tab.collectAsStateWithLifecycle()
     val requestedLink by requests.pairLink.collectAsStateWithLifecycle()
@@ -108,6 +121,7 @@ private fun MainScaffold(requests: LaunchRequests) {
     val tabs = listOf(
         TabSpec(Actions.TAB_DEVICES, R.string.nav_devices, Icons.Filled.Phone),
         TabSpec(Actions.TAB_INBOX, R.string.nav_inbox, Icons.Filled.Email),
+        TabSpec(NOTES_TAB_ID, R.string.nav_notes, Icons.Filled.Create),
         TabSpec(VAULT_TAB_ID, R.string.nav_vault, Icons.Filled.Lock),
         TabSpec(Actions.TAB_SETTINGS, R.string.nav_settings, Icons.Filled.Settings),
     )
@@ -116,7 +130,7 @@ private fun MainScaffold(requests: LaunchRequests) {
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (!showPair) {
+            if (!showPair && !(tab == NOTES_TAB_ID && notesFullScreen)) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp,
@@ -147,6 +161,14 @@ private fun MainScaffold(requests: LaunchRequests) {
                 appVm.refreshPeers()
             }, modifier = mod)
             tab == Actions.TAB_INBOX -> InboxScreen(inboxVm, onMessage = show, modifier = mod)
+            tab == NOTES_TAB_ID -> NotesRoot(
+                onMessage = show,
+                onUndo = showWithAction,
+                onFullScreen = { notesFullScreen = it },
+                undoLabel = stringResource(R.string.notes_undo),
+                // The keyboard inset is applied inside the editor; the bars the scaffold already made room for must not count twice.
+                modifier = mod.consumeWindowInsets(padding),
+            )
             tab == VAULT_TAB_ID -> VaultRoot(onMessage = show, modifier = mod)
             tab == Actions.TAB_SETTINGS -> SettingsScreen(settingsVm, onMessage = show, modifier = mod)
             else -> DevicesScreen(appVm, onPair = { showPair = true }, modifier = mod)

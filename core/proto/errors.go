@@ -37,10 +37,15 @@ const (
 	CodeVaultBroken      Code = "VAULT_BROKEN"
 	CodeVaultNotEmpty    Code = "VAULT_NOT_EMPTY"
 	CodeVaultReview      Code = "VAULT_REVIEW" // a sync or merge needs the user's approval (see vault.sync_status)
-	CodeInvalid          Code = "INVALID"
-	CodeMethodNotFound   Code = "METHOD_NOT_FOUND"
-	CodeNotInitialized   Code = "NOT_INITIALIZED"
-	CodeInternal         Code = "INTERNAL"
+	// Notes (notes/api-spec.md §5).
+	CodeNotFound          Code = "NOT_FOUND"
+	CodeConflict          Code = "CONFLICT"           // the note cannot be changed as asked without a user decision
+	CodeUnsupportedFormat Code = "UNSUPPORTED_FORMAT" // format_version is newer than this core understands
+	CodeNotImplemented    Code = "NOT_IMPLEMENTED"
+	CodeInvalid           Code = "INVALID"
+	CodeMethodNotFound    Code = "METHOD_NOT_FOUND"
+	CodeNotInitialized    Code = "NOT_INITIALIZED"
+	CodeInternal          Code = "INTERNAL"
 )
 
 // Error carries a Code plus a human-readable message. Clients must depend on

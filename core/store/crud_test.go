@@ -1009,7 +1009,7 @@ func TestMigrationV2UpgradesAV1Database(t *testing.T) {
 	for _, stmt := range []string{
 		`DROP INDEX idx_transfers_state`, `ALTER TABLE transfers DROP COLUMN mode`,
 		`ALTER TABLE transfers DROP COLUMN mime_type`, `ALTER TABLE transfers DROP COLUMN save_dir`,
-		`ALTER TABLE inbox DROP COLUMN sensitive`, `ALTER TABLE peers DROP COLUMN send_disabled`, `DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`,
+		`ALTER TABLE inbox DROP COLUMN sensitive`, `ALTER TABLE peers DROP COLUMN send_disabled`, `DROP TABLE note_peer_state`, `DROP TABLE note_revs`, `DROP TABLE notes`, `DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`,
 	} {
 		if _, err := db.sql.Exec(stmt); err != nil {
 			t.Fatalf("%s: %v", stmt, err)
@@ -1171,7 +1171,7 @@ func TestMigrationV3AddsTransferColumns(t *testing.T) {
 	for _, stmt := range []string{
 		`DROP INDEX idx_transfers_state`,
 		`ALTER TABLE transfers DROP COLUMN mode`, `ALTER TABLE transfers DROP COLUMN mime_type`, `ALTER TABLE transfers DROP COLUMN save_dir`,
-		`ALTER TABLE peers DROP COLUMN send_disabled`, `DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`,
+		`ALTER TABLE peers DROP COLUMN send_disabled`, `DROP TABLE note_peer_state`, `DROP TABLE note_revs`, `DROP TABLE notes`, `DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`,
 		`UPDATE schema_version SET version = 2`,
 		`INSERT INTO transfers (transfer_id, peer_id, direction, name, size, sha256, path, "offset", state, error, created_at, expires_at)
 		 VALUES ('old', 'dev_a', 'in', 'f', 1, '', '', 0, 'offered', '', 1, 2)`,
@@ -1195,7 +1195,7 @@ func TestMigrationV4KeepsExistingPeersReceivingBroadcasts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
-		`DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`, `ALTER TABLE peers DROP COLUMN send_disabled`,
+		`DROP TABLE note_peer_state`, `DROP TABLE note_revs`, `DROP TABLE notes`, `DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`, `ALTER TABLE peers DROP COLUMN send_disabled`,
 		`UPDATE schema_version SET version = 3`,
 		`INSERT INTO peers (device_id, name, platform, cert_fp, state, apply_mode, paired_at)
 		 VALUES ('dev_old', 'Old', 'android', 'fp_old', 'paired', 'notify', 1)`,
@@ -1226,7 +1226,7 @@ func TestMigrationV6TurnsVaultSyncOnForExistingPeers(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
-		`DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`,
+		`DROP TABLE note_peer_state`, `DROP TABLE note_revs`, `DROP TABLE notes`, `DROP TABLE vault_sync`, `ALTER TABLE peers DROP COLUMN vault_sync`,
 		`UPDATE schema_version SET version = 4`,
 		`INSERT INTO peers (device_id, name, platform, cert_fp, state, apply_mode, paired_at)
 		 VALUES ('dev_old', 'Old', 'android', 'fp_old', 'paired', 'auto', 1)`,

@@ -23,6 +23,7 @@
     <!-- All UI-free shell logic (no WPF / WinForms / Win32) is compiled into the tests as well. -->
     <Compile Include="..\ClipBridge.Windows\Strings.cs" Link="Strings.cs" />
     <Compile Include="..\ClipBridge.Windows\StringsVault.cs" Link="StringsVault.cs" />
+    <Compile Include="..\ClipBridge.Windows\StringsNotes.cs" Link="StringsNotes.cs" />
     <Compile Include="..\ClipBridge.Windows\Logic\*.cs" Link="Logic\%(Filename)%(Extension)" />
   </ItemGroup>
 

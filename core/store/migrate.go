@@ -9,7 +9,7 @@ import (
 
 // migrations holds one entry per schema version. Entry i upgrades the database
 // from version i to i+1; never edit a published entry, append a new one.
-var migrations = [][]string{migrationV1(), migrationV2(), migrationV3(), migrationV4(), migrationV5(), migrationV6()}
+var migrations = [][]string{migrationV1(), migrationV2(), migrationV3(), migrationV4(), migrationV5(), migrationV6(), migrationV7()}
 
 func migrationV1() []string {
 	return []string{
@@ -164,6 +164,57 @@ func migrationV5() []string {
 func migrationV6() []string {
 	return []string{
 		`UPDATE peers SET vault_sync = 1 WHERE state = 'paired'`,
+	}
+}
+
+// migrationV7 adds the notes module (notes/docs/sync-model.md §2). A note is a DAG of immutable,
+// content-addressed revisions; titles, bodies and previews are sealed with the database key like the
+// other private columns. is_head marks the revisions that no other revision names as a parent.
+func migrationV7() []string {
+	return []string{
+		`CREATE TABLE notes (
+		note_id     TEXT PRIMARY KEY,
+		created_at  INTEGER NOT NULL,
+		updated_at  INTEGER NOT NULL,
+		head_rev    TEXT NOT NULL,
+		deleted     INTEGER NOT NULL DEFAULT 0,
+		conflict_of TEXT NOT NULL DEFAULT '',
+		title_enc   BLOB NOT NULL,
+		preview_enc BLOB NOT NULL
+	)`,
+
+		`CREATE TABLE note_revs (
+		rev_id         TEXT PRIMARY KEY,
+		note_id        TEXT NOT NULL,
+		parents_json   TEXT NOT NULL,
+		title_enc      BLOB NOT NULL,
+		body_enc       BLOB NOT NULL,
+		body_hash      TEXT NOT NULL,
+		format_version INTEGER NOT NULL,
+		origin_device  TEXT NOT NULL,
+		created_at     INTEGER NOT NULL,
+		deleted        INTEGER NOT NULL DEFAULT 0,
+		conflict_of    TEXT NOT NULL DEFAULT '',
+		is_head        INTEGER NOT NULL DEFAULT 1,
+		arrival        INTEGER NOT NULL
+	)`,
+
+		`CREATE TABLE note_peer_state (
+		peer_id    TEXT PRIMARY KEY REFERENCES peers(device_id) ON DELETE CASCADE,
+		state      TEXT NOT NULL DEFAULT 'idle',
+		detail     TEXT NOT NULL DEFAULT '',
+		last_ok_at INTEGER NOT NULL DEFAULT 0,
+		peer_seq   INTEGER NOT NULL DEFAULT -1,
+		our_seq    INTEGER NOT NULL DEFAULT -1,
+		behind     INTEGER NOT NULL DEFAULT 0,
+		ahead      INTEGER NOT NULL DEFAULT 0
+	)`,
+
+		`CREATE INDEX idx_note_revs_note ON note_revs(note_id, created_at)`,
+		`CREATE INDEX idx_note_revs_head ON note_revs(note_id) WHERE is_head = 1`,
+		`CREATE UNIQUE INDEX idx_note_revs_arrival ON note_revs(arrival)`,
+		`CREATE INDEX idx_notes_updated ON notes(deleted, updated_at DESC, note_id)`,
+		`CREATE INDEX idx_notes_conflict ON notes(conflict_of) WHERE conflict_of != ''`,
 	}
 }
 

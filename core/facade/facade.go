@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"nightclip/core/identity"
+	"nightclip/core/notes"
 	"nightclip/core/pairing"
 	"nightclip/core/peer"
 	"nightclip/core/proto"
@@ -84,6 +85,7 @@ type Core struct {
 	pairT  pairing.Timings
 	xferT  xfer.Timing
 	syncT  vsync.Timing
+	notesT notes.Timing
 }
 
 // testEngine, set only by this package's tests (see network_test.go), makes
@@ -95,13 +97,14 @@ var testEngine *struct {
 	pairT  pairing.Timings
 	xferT  xfer.Timing
 	syncT  vsync.Timing
+	notesT notes.Timing
 }
 
 // New returns an uninitialised Core.
 func New() *Core {
 	c := &Core{events: make(chan []byte, eventQueueSize), done: make(chan struct{})}
 	if testEngine != nil {
-		c.hooks, c.timing, c.pairT, c.xferT, c.syncT = testEngine.hooks, testEngine.timing, testEngine.pairT, testEngine.xferT, testEngine.syncT
+		c.hooks, c.timing, c.pairT, c.xferT, c.syncT, c.notesT = testEngine.hooks, testEngine.timing, testEngine.pairT, testEngine.xferT, testEngine.syncT, testEngine.notesT
 	}
 	return c
 }
@@ -282,6 +285,9 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		"vault.sync_status", "vault.sync_enable", "vault.sync_resolve", "vault.sync_now", "vault.match", "vault.touch", "vault.patch":
 		return c.vaultCall(method, paramsJSON)
 	default:
+		if isNotesMethod(method) {
+			return c.notesCall(method, paramsJSON)
+		}
 		if result, handled, err := c.networkCall(method, paramsJSON); handled {
 			return result, err
 		}

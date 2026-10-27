@@ -17,6 +17,9 @@ public sealed class ShellPrefs
     /// <summary>Exclude the window from screenshots and recordings while the vault page is shown (default on).</summary>
     public bool PreventCapture { get; set; } = true;
 
+    /// <summary>The panes of the notes editor (source / split / preview), remembered between runs.</summary>
+    public NotesViewMode NotesView { get; set; } = NotesViewModes.Default;
+
     public static ShellPrefs Load(string dataDir)
     {
         try
@@ -29,6 +32,7 @@ public sealed class ShellPrefs
                 FirstRunDone = JsonRead.Bool(doc.RootElement, "first_run_done"),
                 DownloadDir = JsonRead.Str(doc.RootElement, "download_dir") is { Length: > 0 } d ? d : null,
                 PreventCapture = JsonRead.Bool(doc.RootElement, "prevent_capture", true),
+                NotesView = NotesViewModes.Parse(JsonRead.Str(doc.RootElement, "notes_view")),
             };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -47,6 +51,7 @@ public sealed class ShellPrefs
                 ["first_run_done"] = FirstRunDone,
                 ["download_dir"] = DownloadDir,
                 ["prevent_capture"] = PreventCapture,
+                ["notes_view"] = NotesViewModes.Key(NotesView),
             });
             var path = Path.Combine(dataDir, FileName);
             var tmp = path + ".tmp";

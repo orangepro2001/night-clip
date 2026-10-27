@@ -14,6 +14,7 @@
 #   make dist-windows  signed-manifest-ready zip of the WPF app (core/dist/clipbridge-windows.zip)
 #   make dist-android  release APK signed with the key in ~/.config/clipbridge
 #   scripts/release-local.sh   build + publish to the local release directory (see docs/update.md)
+#   make notes-check  the notes module only: Go (vet, gofmt, race tests) and the notes tests of both shells
 #   make clean
 
 GO        ?= go
@@ -38,7 +39,7 @@ export CB_VERSION_CODE := $(patsubst CB_VERSION_CODE=%,%,$(filter CB_VERSION_COD
 export CB_VERSION_NAME := $(patsubst CB_VERSION_NAME=%,%,$(filter CB_VERSION_NAME=%,$(CB_VERSION_VARS)))
 export CB_UPDATE_URL
 
-.PHONY: all test vet dll dll-smoke dll-wine test-interop build-windows-app cli aar apk cbdist dist-windows dist-android check clean
+.PHONY: notes-check all test vet dll dll-smoke dll-wine test-interop build-windows-app cli aar apk cbdist dist-windows dist-android check clean
 
 all: test dll cli
 
@@ -115,6 +116,16 @@ dist-android: aar
 	cd android && ./gradlew --no-daemon :app:assembleRelease
 	@test -f android/app/build/outputs/apk/release/app-release.apk || { \
 		echo "release APK is unsigned: create ~/.config/clipbridge/android-signing.properties (docs/update.md)"; exit 1; }
+
+# The notes module on its own (notes/docs/development-plan.md §4): the Go packages it touches, with the
+# race detector, plus the notes tests of both shells. `check` is unchanged and still runs everything.
+notes-check: dll-smoke aar
+	cd core && $(GO) vet ./notes/... ./store ./facade ./pipe
+	@out="$$(cd core && gofmt -l notes store facade pipe proto)"; if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
+	cd core && $(GO) test -race ./notes/... ./store ./facade ./pipe ./proto
+	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) test windows/ClipBridge.Windows.Tests \
+		--filter "FullyQualifiedName~Note|FullyQualifiedName~RenderTree|FullyQualifiedName~MarkdownEdit"
+	cd android && ./gradlew --no-daemon :app:testDebugUnitTest --tests '*Notes*' --tests '*NoteEditor*' --tests '*MarkdownEdit*'
 
 # Everything that can be verified on a Linux machine without a device.
 check: vet test dll-smoke dll-wine test-interop build-windows-app cli aar apk

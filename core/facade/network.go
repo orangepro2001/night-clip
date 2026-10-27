@@ -13,6 +13,7 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 
 	"nightclip/core/clip"
+	"nightclip/core/notes"
 	"nightclip/core/pairing"
 	"nightclip/core/peer"
 	"nightclip/core/proto"
@@ -27,6 +28,8 @@ type netState struct {
 	clip *clip.Service
 	xfer *xfer.Service
 	sync *vsync.Service
+	// notes is the notes module; its sync routes live on the same engine as the vault's.
+	notes *notes.Service
 
 	joinMu sync.Mutex
 	joins  map[string]context.CancelFunc
@@ -72,10 +75,16 @@ func (h handler) OnPeerState(peerID, state string) {
 	if n.sync != nil {
 		n.sync.OnPeerState(peerID, state)
 	}
+	if n.notes != nil {
+		n.notes.OnPeerState(peerID, state)
+	}
 	if state == peer.StateRevoked {
 		n.xfer.CancelPeer(peerID)
 		if n.sync != nil {
 			n.sync.Forget(peerID)
+		}
+		if n.notes != nil {
+			n.notes.Forget(peerID)
 		}
 	}
 }
@@ -99,11 +108,13 @@ func (c *Core) startNetwork(cfg Config) (*netState, error) {
 		Engine: n.eng, DB: c.db, DataDir: cfg.DataDir, Platform: cfg.Platform, Emit: c.emitNet, Timing: n.xferT,
 	})
 	n.sync = vsync.New(vsync.Config{Engine: n.eng, DB: c.db, Provider: vaultProvider{c}, Emit: c.emitNet, Timing: c.syncT})
+	n.notes = notes.New(notes.Config{Engine: n.eng, DB: c.db, DeviceID: c.id.DeviceID, Emit: c.emitNet, Timing: c.notesT})
 	if err := n.eng.Start(); err != nil {
 		return nil, err
 	}
 	n.xfer.Start()
 	n.sync.Start()
+	n.notes.Start()
 	return n, nil
 }
 
@@ -113,6 +124,7 @@ func (n *netState) close() {
 		cancel()
 	}
 	n.joinMu.Unlock()
+	n.notes.Close()
 	n.sync.Close()
 	n.xfer.Close() // before the engine: transfers use its endpoints
 	n.eng.Close()

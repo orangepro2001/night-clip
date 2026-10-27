@@ -82,13 +82,21 @@ public sealed class CoreHost : IDisposable, ICoreCaller
         _pump.Start();
     }
 
+    /// <summary>
+    /// The render tree of a note nests as deeply as the note does. The core caps nesting (containers and
+    /// inline markup at 16 levels each) and the deepest tree measured is 38 JSON levels, so the default
+    /// limit of 64 is enough today; this keeps a later change to those caps from turning a legal note
+    /// into a parse error on this side.
+    /// </summary>
+    private static readonly JsonDocumentOptions ReplyOptions = new() { MaxDepth = 256 };
+
     /// <summary>Calls a facade method and returns the "result" element, or throws CoreException.</summary>
     public JsonElement Call(string method, object? parameters = null)
     {
         var p = parameters is null ? "{}" : JsonSerializer.Serialize(parameters);
         var ptr = Native.cb_call(method, p);
         var text = TakeString(ptr) ?? throw new CoreException("INTERNAL", "null reply from core");
-        using var doc = JsonDocument.Parse(text);
+        using var doc = JsonDocument.Parse(text, ReplyOptions);
         var root = doc.RootElement;
         if (root.GetProperty("ok").GetBoolean())
             return root.GetProperty("result").Clone();
@@ -111,7 +119,7 @@ public sealed class CoreHost : IDisposable, ICoreCaller
             if (text is null) continue;
             try
             {
-                using var doc = JsonDocument.Parse(text);
+                using var doc = JsonDocument.Parse(text, ReplyOptions);
                 EventReceived?.Invoke(doc.RootElement.Clone());
             }
             catch (JsonException) { /* malformed event: drop, core owns the contract */ }

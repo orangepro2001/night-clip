@@ -54,6 +54,21 @@ public static class ErrorMessages
         _ => ForCode(code),
     };
 
+    /// <summary>
+    /// Message for a failed notes.* call (notes/api-spec.md §5). NOT_FOUND, CONFLICT, TOO_LARGE, UNSUPPORTED_FORMAT and
+    /// NOT_IMPLEMENTED mean something else here than for transfers, so notes never go through <see cref="ForCode"/> for them.
+    /// </summary>
+    public static string ForNotes(string? code) => code switch
+    {
+        "NOT_FOUND" => Strings.ErrNoteNotFound,
+        "CONFLICT" => Strings.ErrNoteInTrash,
+        "TOO_LARGE" => Strings.ErrNoteTooLarge,
+        "UNSUPPORTED_FORMAT" => Strings.ErrNoteUnsupportedFormat,
+        "NOT_IMPLEMENTED" => Strings.ErrNotImplemented,
+        "NOT_PAIRED" => Strings.ErrNotPaired,
+        _ => ForCode(code),
+    };
+
     /// <summary>Message for a failed file transfer; checksum failures get the dedicated wording.</summary>
     public static string ForFile(string? code) => code switch
     {

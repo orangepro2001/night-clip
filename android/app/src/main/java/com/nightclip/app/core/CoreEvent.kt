@@ -122,6 +122,24 @@ sealed interface CoreEvent {
     /** This device received the vault file of another device and has no master password for it yet. */
     data class VaultJoined(val deviceId: String, val name: String) : CoreEvent { override val type = "vault.joined" }
 
+    /** A note changed here or on a paired device (created, edited, deleted, restored, merged, synced in). No text: ask `notes.get`. */
+    data class NotesChanged(val noteId: String, val revId: String) : CoreEvent {
+        override val type = "notes.changed"
+        override val logId get() = noteId
+    }
+
+    /** Notes sync state of one device changed (idle, syncing, error, peer_old). */
+    data class NotesSyncUpdated(val peerId: String, val state: String, val behind: Int) : CoreEvent { override val type = "notes.sync.updated" }
+
+    /**
+     * A sync needs the user: [reason] "diverged" = a conflict copy [conflictNoteId] of [noteId] was made;
+     * "deleted_elsewhere" = another device deleted [noteId] but a newer edit here was kept.
+     */
+    data class NotesSyncConflict(val noteId: String, val conflictNoteId: String, val reason: String) : CoreEvent {
+        override val type = "notes.sync.conflict"
+        override val logId get() = noteId
+    }
+
     data class Unknown(override val type: String) : CoreEvent
 
     companion object {
@@ -197,6 +215,9 @@ sealed interface CoreEvent {
             "vault.sync" -> VaultSync(o.optString("device_id"), o.optString("name"), o.optString("state"))
             "vault.changed" -> VaultChanged(o.optString("reason"), o.optString("device_id"))
             "vault.joined" -> VaultJoined(o.optString("device_id"), o.optString("name"))
+            "notes.changed" -> NotesChanged(o.optString("note_id"), o.optString("rev_id"))
+            "notes.sync.updated" -> NotesSyncUpdated(o.optString("peer_id"), o.optString("state"), o.optInt("behind"))
+            "notes.sync.conflict" -> NotesSyncConflict(o.optString("note_id"), o.optString("conflict_note_id"), o.optString("reason"))
             else -> Unknown(type)
         }
     }

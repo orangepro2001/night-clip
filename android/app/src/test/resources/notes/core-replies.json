@@ -1,0 +1,1591 @@
+{
+ "_comment": "Real replies of core/facade (notes.*), captured with a throwaway program that drove mobile.Core. Used by NotesCoreContractTest.",
+ "steps": [
+  {
+   "name": "create",
+   "method": "notes.create",
+   "params": {
+    "body": "# 计划 Plan\n\nHello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀\nsoft line\\\nhard line\n\n> quote para\n>\n> - in quote\n\n- bullet one\n  - nested bullet\n    1. deep ordered\n- [ ] todo\n- [x] done\n\n3. three\n4. four\n\n```go title=x\nfunc main() {}\n```\n\n| 名称 | 数量 | 价格 |\n| :-- | :-: | --: |\n| 苹果 | 3 | 1.5 |\n| b | **4** | 2 |\n\n---\n\n<div onclick=\"x()\">raw html</div>\n\n[^1]: footnote text\n\n$$ x^2 $$\n\nlast paragraph\n",
+    "title": "Plan"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+     "rev_id": "r_ee47e360914a3a4c43faed9c11df672f"
+    }
+   }
+  },
+  {
+   "name": "get",
+   "method": "notes.get",
+   "params": {
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+     "title": "Plan",
+     "body": "# 计划 Plan\n\nHello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀\nsoft line\\\nhard line\n\n> quote para\n>\n> - in quote\n\n- bullet one\n  - nested bullet\n    1. deep ordered\n- [ ] todo\n- [x] done\n\n3. three\n4. four\n\n```go title=x\nfunc main() {}\n```\n\n| 名称 | 数量 | 价格 |\n| :--- | :---: | ---: |\n| 苹果 | 3 | 1.5 |\n| b | **4** | 2 |\n\n---\n\n<div onclick=\"x()\">raw html</div>\n\n[^1]: footnote text\n\n$$ x^2 $$\n\nlast paragraph\n",
+     "format_version": 1,
+     "rev_id": "r_ee47e360914a3a4c43faed9c11df672f",
+     "parents": [],
+     "created_at": 1793095131515,
+     "updated_at": 1793095131515,
+     "deleted": false,
+     "origin_device": "dev_ls67g46hxlo2lzf7vmi4ba7fm2",
+     "rev_count": 1,
+     "is_head": true
+    }
+   }
+  },
+  {
+   "name": "render",
+   "method": "notes.render",
+   "params": {
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+     "rev_id": "r_ee47e360914a3a4c43faed9c11df672f",
+     "blocks": [
+      {
+       "block_id": "b_9dacf1cfc938ca73",
+       "kind": "heading",
+       "raw": "# 计划 Plan",
+       "level": 1,
+       "inline": [
+        {
+         "t": "text",
+         "text": "计划 Plan"
+        }
+       ]
+      },
+      {
+       "block_id": "b_91bb795b75a5f5f5",
+       "kind": "paragraph",
+       "raw": "Hello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀\nsoft line\\\nhard line",
+       "inline": [
+        {
+         "t": "text",
+         "text": "Hello "
+        },
+        {
+         "t": "em",
+         "children": [
+          {
+           "t": "text",
+           "text": "em"
+          }
+         ]
+        },
+        {
+         "t": "text",
+         "text": " "
+        },
+        {
+         "t": "strong",
+         "children": [
+          {
+           "t": "text",
+           "text": "strong"
+          }
+         ]
+        },
+        {
+         "t": "text",
+         "text": " "
+        },
+        {
+         "t": "del",
+         "children": [
+          {
+           "t": "text",
+           "text": "del"
+          }
+         ]
+        },
+        {
+         "t": "text",
+         "text": " "
+        },
+        {
+         "t": "code",
+         "text": "code"
+        },
+        {
+         "t": "text",
+         "text": " "
+        },
+        {
+         "t": "link",
+         "href": "https://example.com/a?b=1",
+         "title": "t",
+         "children": [
+          {
+           "t": "text",
+           "text": "link"
+          }
+         ]
+        },
+        {
+         "t": "text",
+         "text": " "
+        },
+        {
+         "t": "image",
+         "href": "https://x.y/i.png",
+         "alt": "pic"
+        },
+        {
+         "t": "text",
+         "text": " 😀"
+        },
+        {
+         "t": "softbr"
+        },
+        {
+         "t": "text",
+         "text": "soft line"
+        },
+        {
+         "t": "br"
+        },
+        {
+         "t": "text",
+         "text": "hard line"
+        }
+       ]
+      },
+      {
+       "block_id": "b_b3f30f41f807d615",
+       "kind": "quote",
+       "raw": "> quote para\n>\n> - in quote",
+       "children": [
+        {
+         "block_id": "b_e3f977a0660fdfe4",
+         "kind": "paragraph",
+         "raw": "quote para",
+         "inline": [
+          {
+           "t": "text",
+           "text": "quote para"
+          }
+         ]
+        },
+        {
+         "block_id": "b_ab5394ac51ab6ecf",
+         "kind": "list",
+         "raw": "- in quote",
+         "tight": true,
+         "items": [
+          {
+           "blocks": [
+            {
+             "block_id": "b_9d85b7eb3cb0aee9",
+             "kind": "paragraph",
+             "raw": "in quote",
+             "inline": [
+              {
+               "t": "text",
+               "text": "in quote"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "block_id": "b_8bdeecd4041ee6e6",
+       "kind": "list",
+       "raw": "- bullet one\n  - nested bullet\n    1. deep ordered\n- [ ] todo\n- [x] done",
+       "tight": true,
+       "items": [
+        {
+         "blocks": [
+          {
+           "block_id": "b_1bf7cecaa8e0c5ca",
+           "kind": "paragraph",
+           "raw": "bullet one",
+           "inline": [
+            {
+             "t": "text",
+             "text": "bullet one"
+            }
+           ]
+          },
+          {
+           "block_id": "b_4c21de59f22652fa",
+           "kind": "list",
+           "raw": "- nested bullet\n  1. deep ordered",
+           "tight": true,
+           "items": [
+            {
+             "blocks": [
+              {
+               "block_id": "b_12f6093e9ea65124",
+               "kind": "paragraph",
+               "raw": "nested bullet",
+               "inline": [
+                {
+                 "t": "text",
+                 "text": "nested bullet"
+                }
+               ]
+              },
+              {
+               "block_id": "b_1e7b9153b63247c8",
+               "kind": "list",
+               "raw": "1. deep ordered",
+               "ordered": true,
+               "start": 1,
+               "tight": true,
+               "items": [
+                {
+                 "blocks": [
+                  {
+                   "block_id": "b_731c219000ee56e1",
+                   "kind": "paragraph",
+                   "raw": "deep ordered",
+                   "inline": [
+                    {
+                     "t": "text",
+                     "text": "deep ordered"
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "checked": false,
+         "blocks": [
+          {
+           "block_id": "b_6278fa4f5241fe6c",
+           "kind": "paragraph",
+           "raw": "todo",
+           "inline": [
+            {
+             "t": "text",
+             "text": "todo"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "checked": true,
+         "blocks": [
+          {
+           "block_id": "b_3806f0f3582e6268",
+           "kind": "paragraph",
+           "raw": "done",
+           "inline": [
+            {
+             "t": "text",
+             "text": "done"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "block_id": "b_d7d78100c8cd86f4",
+       "kind": "list",
+       "raw": "3. three\n4. four",
+       "ordered": true,
+       "start": 3,
+       "tight": true,
+       "items": [
+        {
+         "blocks": [
+          {
+           "block_id": "b_8db36b446e98efe1",
+           "kind": "paragraph",
+           "raw": "three",
+           "inline": [
+            {
+             "t": "text",
+             "text": "three"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "block_id": "b_8b064a2d7e2e1563",
+           "kind": "paragraph",
+           "raw": "four",
+           "inline": [
+            {
+             "t": "text",
+             "text": "four"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "block_id": "b_8443f6d4be050a70",
+       "kind": "code",
+       "raw": "```go title=x\nfunc main() {}\n```",
+       "lang": "go",
+       "info": "go title=x",
+       "text": "func main() {}"
+      },
+      {
+       "block_id": "b_e708786fafc4c8dd",
+       "kind": "table",
+       "raw": "| 名称 | 数量 | 价格 |\n| :--- | :---: | ---: |\n| 苹果 | 3 | 1.5 |\n| b | **4** | 2 |",
+       "align": [
+        "left",
+        "center",
+        "right"
+       ],
+       "header": [
+        [
+         {
+          "t": "text",
+          "text": "名称"
+         }
+        ],
+        [
+         {
+          "t": "text",
+          "text": "数量"
+         }
+        ],
+        [
+         {
+          "t": "text",
+          "text": "价格"
+         }
+        ]
+       ],
+       "rows": [
+        [
+         [
+          {
+           "t": "text",
+           "text": "苹果"
+          }
+         ],
+         [
+          {
+           "t": "text",
+           "text": "3"
+          }
+         ],
+         [
+          {
+           "t": "text",
+           "text": "1.5"
+          }
+         ]
+        ],
+        [
+         [
+          {
+           "t": "text",
+           "text": "b"
+          }
+         ],
+         [
+          {
+           "t": "strong",
+           "children": [
+            {
+             "t": "text",
+             "text": "4"
+            }
+           ]
+          }
+         ],
+         [
+          {
+           "t": "text",
+           "text": "2"
+          }
+         ]
+        ]
+       ]
+      },
+      {
+       "block_id": "b_74fc8975af4cdf22",
+       "kind": "hr",
+       "raw": "---"
+      },
+      {
+       "block_id": "b_73c2bc824d997724",
+       "kind": "html",
+       "raw": "<div onclick=\"x()\">raw html</div>",
+       "text": "<div onclick=\"x()\">raw html</div>"
+      },
+      {
+       "block_id": "b_1b6401c3b3fbd2aa",
+       "kind": "unknown",
+       "raw": "[^1]: footnote text",
+       "text": "[^1]: footnote text"
+      },
+      {
+       "block_id": "b_292ebc0442c9bd37",
+       "kind": "unknown",
+       "raw": "$$ x^2 $$",
+       "text": "$$ x^2 $$"
+      },
+      {
+       "block_id": "b_876695ddd14d0c93",
+       "kind": "paragraph",
+       "raw": "last paragraph",
+       "inline": [
+        {
+         "t": "text",
+         "text": "last paragraph"
+        }
+       ]
+      }
+     ],
+     "toc": [
+      {
+       "block_id": "b_9dacf1cfc938ca73",
+       "level": 1,
+       "text": "计划 Plan"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "list",
+   "method": "notes.list",
+   "params": {},
+   "reply": {
+    "ok": true,
+    "result": {
+     "items": [
+      {
+       "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+       "title": "Plan",
+       "updated_at": 1793095131515,
+       "deleted": false,
+       "preview": "计划 Plan Hello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀 soft line\\ hard line quote para in quote bullet o"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "normalize",
+   "method": "notes.normalize",
+   "params": {
+    "body": "a  \r\n\r\n\r\n* b"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "body_hash": "sha256:61141877a6eb6adc6dfc675a63fb9ae2bda324343b9ac7e3a958b38053bd9d9f",
+     "body_norm": "a\n\n- b\n"
+    }
+   }
+  },
+  {
+   "name": "update_plain",
+   "method": "notes.update",
+   "params": {
+    "base_rev_id": "r_ee47e360914a3a4c43faed9c11df672f",
+    "body": "# 计划二 Plan\n\nHello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀\nsoft line\\\nhard line\n\n> quote para\n>\n> - in quote\n\n- bullet one\n  - nested bullet\n    1. deep ordered\n- [ ] todo\n- [x] done\n\n3. three\n4. four\n\n```go title=x\nfunc main() {}\n```\n\n| 名称 | 数量 | 价格 |\n| :-- | :-: | --: |\n| 苹果 | 3 | 1.5 |\n| b | **4** | 2 |\n\n---\n\n<div onclick=\"x()\">raw html</div>\n\n[^1]: footnote text\n\n$$ x^2 $$\n\nlast paragraph\n",
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "rev_id": "r_95a84633153d227f6b4270420533b952",
+     "merged": false
+    }
+   }
+  },
+  {
+   "name": "update_merged",
+   "method": "notes.update",
+   "params": {
+    "base_rev_id": "r_ee47e360914a3a4c43faed9c11df672f",
+    "body": "# 计划 Plan\n\nHello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀\nsoft line\\\nhard line\n\n> quote para\n>\n> - in quote\n\n- bullet one\n  - nested bullet\n    1. deep ordered\n- [ ] todo\n- [x] done\n\n3. three\n4. four\n\n```go title=x\nfunc main() {}\n```\n\n| 名称 | 数量 | 价格 |\n| :-- | :-: | --: |\n| 苹果 | 3 | 1.5 |\n| b | **4** | 2 |\n\n---\n\n<div onclick=\"x()\">raw html</div>\n\n[^1]: footnote text\n\n$$ x^2 $$\n\nlast paragraph edited\n",
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "rev_id": "r_97544a8556e0eff4633864cd4fb6cf8c",
+     "merged": true
+    }
+   }
+  },
+  {
+   "name": "update_conflict",
+   "method": "notes.update",
+   "params": {
+    "base_rev_id": "r_ee47e360914a3a4c43faed9c11df672f",
+    "body": "# Other title\n\nHello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀\nsoft line\\\nhard line\n\n> quote para\n>\n> - in quote\n\n- bullet one\n  - nested bullet\n    1. deep ordered\n- [ ] todo\n- [x] done\n\n3. three\n4. four\n\n```go title=x\nfunc main() {}\n```\n\n| 名称 | 数量 | 价格 |\n| :-- | :-: | --: |\n| 苹果 | 3 | 1.5 |\n| b | **4** | 2 |\n\n---\n\n<div onclick=\"x()\">raw html</div>\n\n[^1]: footnote text\n\n$$ x^2 $$\n\nlast paragraph\n",
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "rev_id": "r_b1b02740c84bb542f831970eb8cf9c64",
+     "merged": true,
+     "conflict_note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4"
+    }
+   }
+  },
+  {
+   "name": "update_title_only",
+   "method": "notes.update",
+   "params": {
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+    "title": "Renamed"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "rev_id": "r_00325354332f1e8b8b9499bffbd6cba1",
+     "merged": false
+    }
+   }
+  },
+  {
+   "name": "update_nochange",
+   "method": "notes.update",
+   "params": {
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+    "title": "Renamed"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "rev_id": "r_00325354332f1e8b8b9499bffbd6cba1",
+     "merged": false
+    }
+   }
+  },
+  {
+   "name": "history",
+   "method": "notes.history",
+   "params": {
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "items": [
+      {
+       "rev_id": "r_00325354332f1e8b8b9499bffbd6cba1",
+       "title": "Renamed",
+       "body_hash": "sha256:3962c4b21730acb8c1070efcb5a1c9ca96d273e2db1c1a92df3167ca1bbfba68",
+       "origin_device": "dev_ls67g46hxlo2lzf7vmi4ba7fm2",
+       "created_at": 1793095131521,
+       "parents": [
+        "r_b1b02740c84bb542f831970eb8cf9c64"
+       ],
+       "deleted": false
+      },
+      {
+       "rev_id": "r_b1b02740c84bb542f831970eb8cf9c64",
+       "title": "Plan",
+       "body_hash": "sha256:3962c4b21730acb8c1070efcb5a1c9ca96d273e2db1c1a92df3167ca1bbfba68",
+       "origin_device": "merge",
+       "created_at": 1793095131518,
+       "parents": [
+        "r_97544a8556e0eff4633864cd4fb6cf8c",
+        "r_e7a9ff720568ff1cd2b6d9b8cbed218f"
+       ],
+       "deleted": false
+      },
+      {
+       "rev_id": "r_e7a9ff720568ff1cd2b6d9b8cbed218f",
+       "title": "Plan",
+       "body_hash": "sha256:3962c4b21730acb8c1070efcb5a1c9ca96d273e2db1c1a92df3167ca1bbfba68",
+       "origin_device": "dev_ls67g46hxlo2lzf7vmi4ba7fm2",
+       "created_at": 1793095131518,
+       "parents": [
+        "r_ee47e360914a3a4c43faed9c11df672f"
+       ],
+       "deleted": false
+      },
+      {
+       "rev_id": "r_97544a8556e0eff4633864cd4fb6cf8c",
+       "title": "Plan",
+       "body_hash": "sha256:9c64ab8a5627fe8c38051ded6b4677674226b0dfe7644e92f849c51cdad124e2",
+       "origin_device": "merge",
+       "created_at": 1793095131517,
+       "parents": [
+        "r_8570804a397ee1cb506b73635c972036",
+        "r_95a84633153d227f6b4270420533b952"
+       ],
+       "deleted": false
+      },
+      {
+       "rev_id": "r_8570804a397ee1cb506b73635c972036",
+       "title": "Plan",
+       "body_hash": "sha256:e59496e0333fb114ee393aa92a7ec8213e1cb695ca9a80a0b0e7a214de38d516",
+       "origin_device": "dev_ls67g46hxlo2lzf7vmi4ba7fm2",
+       "created_at": 1793095131517,
+       "parents": [
+        "r_ee47e360914a3a4c43faed9c11df672f"
+       ],
+       "deleted": false
+      },
+      {
+       "rev_id": "r_95a84633153d227f6b4270420533b952",
+       "title": "Plan",
+       "body_hash": "sha256:deef9912bd77170a8ea56ac4431a4f96f18f9a01d47fab0dffcfd1c8ce8b643b",
+       "origin_device": "dev_ls67g46hxlo2lzf7vmi4ba7fm2",
+       "created_at": 1793095131516,
+       "parents": [
+        "r_ee47e360914a3a4c43faed9c11df672f"
+       ],
+       "deleted": false
+      },
+      {
+       "rev_id": "r_ee47e360914a3a4c43faed9c11df672f",
+       "title": "Plan",
+       "body_hash": "sha256:1a5b982a3a63be1bb76797c2b0e97df49f9a61a484a6bc00d7ea55ffb08b3dbe",
+       "origin_device": "dev_ls67g46hxlo2lzf7vmi4ba7fm2",
+       "created_at": 1793095131515,
+       "parents": [],
+       "deleted": false
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "history_page",
+   "method": "notes.history",
+   "params": {
+    "limit": 1,
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "items": [
+      {
+       "rev_id": "r_00325354332f1e8b8b9499bffbd6cba1",
+       "title": "Renamed",
+       "body_hash": "sha256:3962c4b21730acb8c1070efcb5a1c9ca96d273e2db1c1a92df3167ca1bbfba68",
+       "origin_device": "dev_ls67g46hxlo2lzf7vmi4ba7fm2",
+       "created_at": 1793095131521,
+       "parents": [
+        "r_b1b02740c84bb542f831970eb8cf9c64"
+       ],
+       "deleted": false
+      }
+     ],
+     "next_cursor": "8"
+    }
+   }
+  },
+  {
+   "name": "list_after",
+   "method": "notes.list",
+   "params": {},
+   "reply": {
+    "ok": true,
+    "result": {
+     "items": [
+      {
+       "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+       "title": "Renamed",
+       "updated_at": 1793095131521,
+       "deleted": false,
+       "preview": "Other title Hello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀 soft line\\ hard line quote para in quote bull"
+      },
+      {
+       "note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4",
+       "title": "Plan（冲突 来自 merge 2026-10-27 09:58）",
+       "updated_at": 1793095131517,
+       "deleted": false,
+       "preview": "冲突副本：来自设备 merge 在 2026-10-27 09:58 UTC 的另一份修改与这篇笔记的其它修改无法自动合并，已作为副本保留。 计划二 Plan Hello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic",
+       "conflict_of": "nt_nksukmnkwelzyji3feqjedhq3i"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "conflicts",
+   "method": "notes.sync_conflicts",
+   "params": {},
+   "reply": {
+    "ok": true,
+    "result": {
+     "items": [
+      {
+       "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+       "conflict_note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4",
+       "title": "Plan（冲突 来自 merge 2026-10-27 09:58）",
+       "created_at": 1793095131517
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "get_copy",
+   "method": "notes.get",
+   "params": {
+    "note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4",
+     "title": "Plan（冲突 来自 merge 2026-10-27 09:58）",
+     "body": "> 冲突副本：来自设备 merge 在 2026-10-27 09:58 UTC 的另一份修改与这篇笔记的其它修改无法自动合并，已作为副本保留。\n\n# 计划二 Plan\n\nHello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀\nsoft line\\\nhard line\n\n> quote para\n>\n> - in quote\n\n- bullet one\n  - nested bullet\n    1. deep ordered\n- [ ] todo\n- [x] done\n\n3. three\n4. four\n\n```go title=x\nfunc main() {}\n```\n\n| 名称 | 数量 | 价格 |\n| :--- | :---: | ---: |\n| 苹果 | 3 | 1.5 |\n| b | **4** | 2 |\n\n---\n\n<div onclick=\"x()\">raw html</div>\n\n[^1]: footnote text\n\n$$ x^2 $$\n\nlast paragraph edited\n",
+     "format_version": 1,
+     "rev_id": "r_15e1074de4cb39e9840c4df2e6f705bb",
+     "parents": [],
+     "created_at": 1793095131517,
+     "updated_at": 1793095131517,
+     "deleted": false,
+     "origin_device": "merge",
+     "rev_count": 1,
+     "is_head": true,
+     "conflict_of": "nt_nksukmnkwelzyji3feqjedhq3i"
+    }
+   }
+  },
+  {
+   "name": "render_copy",
+   "method": "notes.render",
+   "params": {
+    "note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4",
+     "rev_id": "r_15e1074de4cb39e9840c4df2e6f705bb",
+     "blocks": [
+      {
+       "block_id": "b_de9fd84b9a17c5ba",
+       "kind": "quote",
+       "raw": "> 冲突副本：来自设备 merge 在 2026-10-27 09:58 UTC 的另一份修改与这篇笔记的其它修改无法自动合并，已作为副本保留。",
+       "children": [
+        {
+         "block_id": "b_10cb2f64763e611e",
+         "kind": "paragraph",
+         "raw": "冲突副本：来自设备 merge 在 2026-10-27 09:58 UTC 的另一份修改与这篇笔记的其它修改无法自动合并，已作为副本保留。",
+         "inline": [
+          {
+           "t": "text",
+           "text": "冲突副本：来自设备 merge 在 2026-10-27 09:58 UTC 的另一份修改与这篇笔记的其它修改无法自动合并，已作为副本保留。"
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "block_id": "b_e36bb1c21b6917c3",
+       "kind": "heading",
+       "raw": "# 计划二 Plan",
+       "level": 1,
+       "inline": [
+        {
+         "t": "text",
+         "text": "计划二 Plan"
+        }
+       ]
+      },
+      {
+       "block_id": "b_91bb795b75a5f5f5",
+       "kind": "paragraph",
+       "raw": "Hello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀\nsoft line\\\nhard line",
+       "inline": [
+        {
+         "t": "text",
+         "text": "Hello "
+        },
+        {
+         "t": "em",
+         "children": [
+          {
+           "t": "text",
+           "text": "em"
+          }
+         ]
+        },
+        {
+         "t": "text",
+         "text": " "
+        },
+        {
+         "t": "strong",
+         "children": [
+          {
+           "t": "text",
+           "text": "strong"
+          }
+         ]
+        },
+        {
+         "t": "text",
+         "text": " "
+        },
+        {
+         "t": "del",
+         "children": [
+          {
+           "t": "text",
+           "text": "del"
+          }
+         ]
+        },
+        {
+         "t": "text",
+         "text": " "
+        },
+        {
+         "t": "code",
+         "text": "code"
+        },
+        {
+         "t": "text",
+         "text": " "
+        },
+        {
+         "t": "link",
+         "href": "https://example.com/a?b=1",
+         "title": "t",
+         "children": [
+          {
+           "t": "text",
+           "text": "link"
+          }
+         ]
+        },
+        {
+         "t": "text",
+         "text": " "
+        },
+        {
+         "t": "image",
+         "href": "https://x.y/i.png",
+         "alt": "pic"
+        },
+        {
+         "t": "text",
+         "text": " 😀"
+        },
+        {
+         "t": "softbr"
+        },
+        {
+         "t": "text",
+         "text": "soft line"
+        },
+        {
+         "t": "br"
+        },
+        {
+         "t": "text",
+         "text": "hard line"
+        }
+       ]
+      },
+      {
+       "block_id": "b_b3f30f41f807d615",
+       "kind": "quote",
+       "raw": "> quote para\n>\n> - in quote",
+       "children": [
+        {
+         "block_id": "b_e3f977a0660fdfe4",
+         "kind": "paragraph",
+         "raw": "quote para",
+         "inline": [
+          {
+           "t": "text",
+           "text": "quote para"
+          }
+         ]
+        },
+        {
+         "block_id": "b_ab5394ac51ab6ecf",
+         "kind": "list",
+         "raw": "- in quote",
+         "tight": true,
+         "items": [
+          {
+           "blocks": [
+            {
+             "block_id": "b_9d85b7eb3cb0aee9",
+             "kind": "paragraph",
+             "raw": "in quote",
+             "inline": [
+              {
+               "t": "text",
+               "text": "in quote"
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "block_id": "b_8bdeecd4041ee6e6",
+       "kind": "list",
+       "raw": "- bullet one\n  - nested bullet\n    1. deep ordered\n- [ ] todo\n- [x] done",
+       "tight": true,
+       "items": [
+        {
+         "blocks": [
+          {
+           "block_id": "b_1bf7cecaa8e0c5ca",
+           "kind": "paragraph",
+           "raw": "bullet one",
+           "inline": [
+            {
+             "t": "text",
+             "text": "bullet one"
+            }
+           ]
+          },
+          {
+           "block_id": "b_4c21de59f22652fa",
+           "kind": "list",
+           "raw": "- nested bullet\n  1. deep ordered",
+           "tight": true,
+           "items": [
+            {
+             "blocks": [
+              {
+               "block_id": "b_12f6093e9ea65124",
+               "kind": "paragraph",
+               "raw": "nested bullet",
+               "inline": [
+                {
+                 "t": "text",
+                 "text": "nested bullet"
+                }
+               ]
+              },
+              {
+               "block_id": "b_1e7b9153b63247c8",
+               "kind": "list",
+               "raw": "1. deep ordered",
+               "ordered": true,
+               "start": 1,
+               "tight": true,
+               "items": [
+                {
+                 "blocks": [
+                  {
+                   "block_id": "b_731c219000ee56e1",
+                   "kind": "paragraph",
+                   "raw": "deep ordered",
+                   "inline": [
+                    {
+                     "t": "text",
+                     "text": "deep ordered"
+                    }
+                   ]
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "checked": false,
+         "blocks": [
+          {
+           "block_id": "b_6278fa4f5241fe6c",
+           "kind": "paragraph",
+           "raw": "todo",
+           "inline": [
+            {
+             "t": "text",
+             "text": "todo"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "checked": true,
+         "blocks": [
+          {
+           "block_id": "b_3806f0f3582e6268",
+           "kind": "paragraph",
+           "raw": "done",
+           "inline": [
+            {
+             "t": "text",
+             "text": "done"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "block_id": "b_d7d78100c8cd86f4",
+       "kind": "list",
+       "raw": "3. three\n4. four",
+       "ordered": true,
+       "start": 3,
+       "tight": true,
+       "items": [
+        {
+         "blocks": [
+          {
+           "block_id": "b_8db36b446e98efe1",
+           "kind": "paragraph",
+           "raw": "three",
+           "inline": [
+            {
+             "t": "text",
+             "text": "three"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "blocks": [
+          {
+           "block_id": "b_8b064a2d7e2e1563",
+           "kind": "paragraph",
+           "raw": "four",
+           "inline": [
+            {
+             "t": "text",
+             "text": "four"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "block_id": "b_8443f6d4be050a70",
+       "kind": "code",
+       "raw": "```go title=x\nfunc main() {}\n```",
+       "lang": "go",
+       "info": "go title=x",
+       "text": "func main() {}"
+      },
+      {
+       "block_id": "b_e708786fafc4c8dd",
+       "kind": "table",
+       "raw": "| 名称 | 数量 | 价格 |\n| :--- | :---: | ---: |\n| 苹果 | 3 | 1.5 |\n| b | **4** | 2 |",
+       "align": [
+        "left",
+        "center",
+        "right"
+       ],
+       "header": [
+        [
+         {
+          "t": "text",
+          "text": "名称"
+         }
+        ],
+        [
+         {
+          "t": "text",
+          "text": "数量"
+         }
+        ],
+        [
+         {
+          "t": "text",
+          "text": "价格"
+         }
+        ]
+       ],
+       "rows": [
+        [
+         [
+          {
+           "t": "text",
+           "text": "苹果"
+          }
+         ],
+         [
+          {
+           "t": "text",
+           "text": "3"
+          }
+         ],
+         [
+          {
+           "t": "text",
+           "text": "1.5"
+          }
+         ]
+        ],
+        [
+         [
+          {
+           "t": "text",
+           "text": "b"
+          }
+         ],
+         [
+          {
+           "t": "strong",
+           "children": [
+            {
+             "t": "text",
+             "text": "4"
+            }
+           ]
+          }
+         ],
+         [
+          {
+           "t": "text",
+           "text": "2"
+          }
+         ]
+        ]
+       ]
+      },
+      {
+       "block_id": "b_74fc8975af4cdf22",
+       "kind": "hr",
+       "raw": "---"
+      },
+      {
+       "block_id": "b_73c2bc824d997724",
+       "kind": "html",
+       "raw": "<div onclick=\"x()\">raw html</div>",
+       "text": "<div onclick=\"x()\">raw html</div>"
+      },
+      {
+       "block_id": "b_1b6401c3b3fbd2aa",
+       "kind": "unknown",
+       "raw": "[^1]: footnote text",
+       "text": "[^1]: footnote text"
+      },
+      {
+       "block_id": "b_292ebc0442c9bd37",
+       "kind": "unknown",
+       "raw": "$$ x^2 $$",
+       "text": "$$ x^2 $$"
+      },
+      {
+       "block_id": "b_580402d82789ba09",
+       "kind": "paragraph",
+       "raw": "last paragraph edited",
+       "inline": [
+        {
+         "t": "text",
+         "text": "last paragraph edited"
+        }
+       ]
+      }
+     ],
+     "toc": [
+      {
+       "block_id": "b_e36bb1c21b6917c3",
+       "level": 1,
+       "text": "计划二 Plan"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "resolve_merge",
+   "method": "notes.sync_resolve",
+   "params": {
+    "action": "merge",
+    "conflict_note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4",
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "rev_id": "r_8b326dcf212e6aba6631ba014633e06c"
+    }
+   }
+  },
+  {
+   "name": "conflicts_after",
+   "method": "notes.sync_conflicts",
+   "params": {},
+   "reply": {
+    "ok": true,
+    "result": {
+     "items": []
+    }
+   }
+  },
+  {
+   "name": "sync_status",
+   "method": "notes.sync_status",
+   "params": {},
+   "reply": {
+    "ok": true,
+    "result": {
+     "peers": [],
+     "pending_push": 0
+    }
+   }
+  },
+  {
+   "name": "sync_now",
+   "method": "notes.sync_now",
+   "params": {},
+   "reply": {
+    "ok": true,
+    "result": {
+     "started": true
+    }
+   }
+  },
+  {
+   "name": "sync_now_unpaired",
+   "method": "notes.sync_now",
+   "params": {
+    "peer_id": "dev_unknown"
+   },
+   "reply": {
+    "error": {
+     "code": "NOT_PAIRED",
+     "message": "this device is not paired",
+     "retryable": false
+    },
+    "ok": false
+   }
+  },
+  {
+   "name": "delete",
+   "method": "notes.delete",
+   "params": {
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "rev_id": "r_a948ac1085e78e0e967031f3574d85fa"
+    }
+   }
+  },
+  {
+   "name": "list_deleted",
+   "method": "notes.list",
+   "params": {
+    "deleted": true
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "items": [
+      {
+       "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+       "title": "Renamed",
+       "updated_at": 1793095131524,
+       "deleted": true,
+       "preview": "Other title Hello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀 soft line\\ hard line quote para in quote bull"
+      },
+      {
+       "note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4",
+       "title": "Plan（冲突 来自 merge 2026-10-27 09:58）",
+       "updated_at": 1793095131523,
+       "deleted": true,
+       "preview": "冲突副本：来自设备 merge 在 2026-10-27 09:58 UTC 的另一份修改与这篇笔记的其它修改无法自动合并，已作为副本保留。 计划二 Plan Hello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic",
+       "conflict_of": "nt_nksukmnkwelzyji3feqjedhq3i"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "get_deleted",
+   "method": "notes.get",
+   "params": {
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+     "title": "Renamed",
+     "body": "# Other title\n\nHello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀\nsoft line\\\nhard line\n\n> quote para\n>\n> - in quote\n\n- bullet one\n  - nested bullet\n    1. deep ordered\n- [ ] todo\n- [x] done\n\n3. three\n4. four\n\n```go title=x\nfunc main() {}\n```\n\n| 名称 | 数量 | 价格 |\n| :--- | :---: | ---: |\n| 苹果 | 3 | 1.5 |\n| b | **4** | 2 |\n\n---\n\n<div onclick=\"x()\">raw html</div>\n\n[^1]: footnote text\n\n$$ x^2 $$\n\nlast paragraph\n\n---\n\n# 计划二 Plan\n\nHello *em* **strong** ~~del~~ `code` [link](https://example.com/a?b=1 \"t\") ![pic](https://x.y/i.png) 😀\nsoft line\\\nhard line\n\n> quote para\n>\n> - in quote\n\n- bullet one\n  - nested bullet\n    1. deep ordered\n- [ ] todo\n- [x] done\n\n3. three\n4. four\n\n```go title=x\nfunc main() {}\n```\n\n| 名称 | 数量 | 价格 |\n| :--- | :---: | ---: |\n| 苹果 | 3 | 1.5 |\n| b | **4** | 2 |\n\n---\n\n<div onclick=\"x()\">raw html</div>\n\n[^1]: footnote text\n\n$$ x^2 $$\n\nlast paragraph edited\n",
+     "format_version": 1,
+     "rev_id": "r_a948ac1085e78e0e967031f3574d85fa",
+     "parents": [
+      "r_8b326dcf212e6aba6631ba014633e06c"
+     ],
+     "created_at": 1793095131515,
+     "updated_at": 1793095131524,
+     "deleted": true,
+     "origin_device": "dev_ls67g46hxlo2lzf7vmi4ba7fm2",
+     "rev_count": 9,
+     "is_head": true
+    }
+   }
+  },
+  {
+   "name": "update_deleted",
+   "method": "notes.update",
+   "params": {
+    "body": "x",
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "error": {
+     "code": "CONFLICT",
+     "message": "the note is in the trash: restore it first",
+     "retryable": false
+    },
+    "ok": false
+   }
+  },
+  {
+   "name": "restore",
+   "method": "notes.restore",
+   "params": {
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "rev_id": "r_d272450f0672937425b0c712bec19a5b"
+    }
+   }
+  },
+  {
+   "name": "get_missing",
+   "method": "notes.get",
+   "params": {
+    "note_id": "nt_aaaaaaaaaaaaaaaaaaaaaaaaaa"
+   },
+   "reply": {
+    "error": {
+     "code": "NOT_FOUND",
+     "message": "no such note",
+     "retryable": false
+    },
+    "ok": false
+   }
+  },
+  {
+   "name": "update_bad_base",
+   "method": "notes.update",
+   "params": {
+    "base_rev_id": "r_00000000000000000000000000000000",
+    "body": "x",
+    "note_id": "nt_nksukmnkwelzyji3feqjedhq3i"
+   },
+   "reply": {
+    "error": {
+     "code": "NOT_FOUND",
+     "message": "unknown base revision",
+     "retryable": false
+    },
+    "ok": false
+   }
+  },
+  {
+   "name": "get_bad_id",
+   "method": "notes.get",
+   "params": {
+    "note_id": "oops"
+   },
+   "reply": {
+    "error": {
+     "code": "INVALID",
+     "message": "note_id is malformed",
+     "retryable": false
+    },
+    "ok": false
+   }
+  },
+  {
+   "name": "create_too_large",
+   "method": "notes.create",
+   "params": {
+    "body": "<1 MiB + 1 byte of \"a\">"
+   },
+   "reply": {
+    "error": {
+     "code": "TOO_LARGE",
+     "message": "the note is larger than 1048576 bytes",
+     "retryable": false
+    },
+    "ok": false
+   }
+  },
+  {
+   "name": "search",
+   "method": "notes.search",
+   "params": {
+    "query": "x"
+   },
+   "reply": {
+    "error": {
+     "code": "NOT_IMPLEMENTED",
+     "message": "note search is not available yet",
+     "retryable": false
+    },
+    "ok": false
+   }
+  },
+  {
+   "name": "create_empty",
+   "method": "notes.create",
+   "params": {},
+   "reply": {
+    "ok": true,
+    "result": {
+     "note_id": "nt_oz2kdywvajljrzhm46jgx7hif4",
+     "rev_id": "r_df51570190688ce913adc6b43b8ece7e"
+    }
+   }
+  },
+  {
+   "name": "create_second",
+   "method": "notes.create",
+   "params": {
+    "body": "two\n",
+    "title": "Second"
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "note_id": "nt_2ixoge65fsww4gsjqs5r2eghfy",
+     "rev_id": "r_38094a5f4a1d3fe4d865a8b5de5a2cd7"
+    }
+   }
+  },
+  {
+   "name": "list_final",
+   "method": "notes.list",
+   "params": {
+    "limit": 2
+   },
+   "reply": {
+    "ok": true,
+    "result": {
+     "items": [
+      {
+       "note_id": "nt_2ixoge65fsww4gsjqs5r2eghfy",
+       "title": "Second",
+       "updated_at": 1793095131537,
+       "deleted": false,
+       "preview": "two"
+      },
+      {
+       "note_id": "nt_oz2kdywvajljrzhm46jgx7hif4",
+       "title": "",
+       "updated_at": 1793095131536,
+       "deleted": false,
+       "preview": ""
+      }
+     ],
+     "next_cursor": "1793095131536:nt_oz2kdywvajljrzhm46jgx7hif4"
+    }
+   }
+  }
+ ],
+ "events": [
+  {
+   "device_id": "dev_ls67g46hxlo2lzf7vmi4ba7fm2",
+   "type": "core.started"
+  },
+  {
+   "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+   "rev_id": "r_ee47e360914a3a4c43faed9c11df672f",
+   "type": "notes.changed"
+  },
+  {
+   "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+   "rev_id": "r_95a84633153d227f6b4270420533b952",
+   "type": "notes.changed"
+  },
+  {
+   "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+   "rev_id": "r_97544a8556e0eff4633864cd4fb6cf8c",
+   "type": "notes.changed"
+  },
+  {
+   "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+   "rev_id": "r_b1b02740c84bb542f831970eb8cf9c64",
+   "type": "notes.changed"
+  },
+  {
+   "conflict_note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4",
+   "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+   "reason": "diverged",
+   "type": "notes.sync.conflict"
+  },
+  {
+   "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+   "rev_id": "r_00325354332f1e8b8b9499bffbd6cba1",
+   "type": "notes.changed"
+  },
+  {
+   "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+   "rev_id": "r_8b326dcf212e6aba6631ba014633e06c",
+   "type": "notes.changed"
+  },
+  {
+   "note_id": "nt_vmo4stwg5gzzqtppe4my43wwf4",
+   "rev_id": "r_d281caccc78d0bb2eeac44c526b5d9f7",
+   "type": "notes.changed"
+  },
+  {
+   "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+   "rev_id": "r_a948ac1085e78e0e967031f3574d85fa",
+   "type": "notes.changed"
+  },
+  {
+   "note_id": "nt_nksukmnkwelzyji3feqjedhq3i",
+   "rev_id": "r_d272450f0672937425b0c712bec19a5b",
+   "type": "notes.changed"
+  },
+  {
+   "note_id": "nt_oz2kdywvajljrzhm46jgx7hif4",
+   "rev_id": "r_df51570190688ce913adc6b43b8ece7e",
+   "type": "notes.changed"
+  },
+  {
+   "note_id": "nt_2ixoge65fsww4gsjqs5r2eghfy",
+   "rev_id": "r_38094a5f4a1d3fe4d865a8b5de5a2cd7",
+   "type": "notes.changed"
+  }
+ ]
+}

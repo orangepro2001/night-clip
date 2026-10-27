@@ -26,7 +26,7 @@ public partial class MainWindow : Window
         var navItems = new[]
         {
             ("\uE772", Strings.NavDevices), ("\uE715", Strings.NavInbox), ("\uE896", Strings.NavTransfers),
-            ("\uE72E", Strings.NavVault), ("\uE713", Strings.NavSettings), ("\uE9D9", Strings.NavDiagnostics),
+            ("\uE72E", Strings.NavVault), ("\uE70F", Strings.NavNotes), ("\uE713", Strings.NavSettings), ("\uE9D9", Strings.NavDiagnostics),
         };
         foreach (var (glyph, label) in navItems)
         {
@@ -44,6 +44,7 @@ public partial class MainWindow : Window
         InboxPage.Attach(_shell);
         TransfersPage.Attach(_shell);
         VaultPage.Attach(_shell);
+        NotesPage.Attach(_shell);
         SettingsPage.Attach(_shell);
         DiagnosticsPage.Attach(_shell);
 
@@ -93,6 +94,7 @@ public partial class MainWindow : Window
         InboxPage.Visibility = page == MainPage.Inbox ? Visibility.Visible : Visibility.Collapsed;
         TransfersPage.Visibility = page == MainPage.Transfers ? Visibility.Visible : Visibility.Collapsed;
         VaultPage.Visibility = page == MainPage.Vault ? Visibility.Visible : Visibility.Collapsed;
+        NotesPage.Visibility = page == MainPage.Notes ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = page == MainPage.Settings ? Visibility.Visible : Visibility.Collapsed;
         DiagnosticsPage.Visibility = page == MainPage.Diagnostics ? Visibility.Visible : Visibility.Collapsed;
 
@@ -101,6 +103,7 @@ public partial class MainWindow : Window
         switch (page)
         {
             case MainPage.Vault: VaultPage.OnShown(); break;
+            case MainPage.Notes: NotesPage.OnShown(); break;
             case MainPage.Inbox: InboxPage.OnShown(); break;
             case MainPage.Transfers: TransfersPage.OnShown(); break;
             case MainPage.Settings: SettingsPage.OnShown(); break;

@@ -1,0 +1,61 @@
+<Window x:Class="ClipBridge.Windows.Views.NoteConflictWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:ClipBridge.Windows"
+        Title="ClipBridge" Width="940" Height="580" MinWidth="760" MinHeight="420"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="210" />
+            <ColumnDefinition Width="12" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="12" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.ColumnSpan="5" Text="{x:Static local:Strings.NoteConflictIntro}" TextWrapping="Wrap"
+                   Foreground="{DynamicResource AppMuted}" Margin="0,0,0,10" />
+
+        <ListBox x:Name="ConflictList" Grid.Row="1" Grid.Column="0" HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="ConflictList_SelectionChanged">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel Margin="2,3">
+                        <TextBlock Text="{Binding Title, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding TimeText, Mode=OneWay}" Style="{StaticResource Caption}" />
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <DockPanel Grid.Row="1" Grid.Column="2">
+            <TextBlock DockPanel.Dock="Top" Text="{x:Static local:Strings.NoteConflictMine}" FontWeight="SemiBold" />
+            <TextBlock x:Name="MainTitle" DockPanel.Dock="Top" Foreground="{DynamicResource AppMuted}" TextTrimming="CharacterEllipsis" Margin="0,2,0,6" />
+            <TextBox x:Name="MainBox" Style="{StaticResource NotesEditorBox}" IsReadOnly="True" />
+        </DockPanel>
+
+        <DockPanel Grid.Row="1" Grid.Column="4">
+            <TextBlock DockPanel.Dock="Top" Text="{x:Static local:Strings.NoteConflictCopy}" FontWeight="SemiBold" />
+            <TextBlock x:Name="CopyTitle" DockPanel.Dock="Top" Foreground="{DynamicResource AppMuted}" TextTrimming="CharacterEllipsis" Margin="0,2,0,6" />
+            <TextBox x:Name="CopyBox" Style="{StaticResource NotesEditorBox}" IsReadOnly="True" />
+        </DockPanel>
+
+        <TextBlock x:Name="ErrorText" Grid.Row="2" Grid.ColumnSpan="5" Foreground="{DynamicResource AppDanger}" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+        <StackPanel Grid.Row="3" Grid.ColumnSpan="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button x:Name="KeepMainButton" Content="{x:Static local:Strings.BtnNoteKeepMine}" ToolTip="{x:Static local:Strings.NoteKeepMineTip}"
+                    Click="KeepMain_Click" />
+            <Button x:Name="KeepCopyButton" Content="{x:Static local:Strings.BtnNoteKeepCopy}" ToolTip="{x:Static local:Strings.NoteKeepCopyTip}"
+                    Click="KeepCopy_Click" />
+            <Button x:Name="MergeButton" Content="{x:Static local:Strings.BtnNoteMerge}" ToolTip="{x:Static local:Strings.NoteMergeTip}"
+                    Click="Merge_Click" Style="{StaticResource PrimaryButton}" />
+            <Button Content="{x:Static local:Strings.BtnNoteLater}" IsCancel="True" Click="Later_Click" Margin="16,0,0,0" />
+        </StackPanel>
+    </Grid>
+</Window>

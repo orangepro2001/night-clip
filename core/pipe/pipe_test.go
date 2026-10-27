@@ -147,8 +147,12 @@ func TestOnlyWhitelistedMethodsAreReachable(t *testing.T) {
 		if strings.HasPrefix(m, "vault.") {
 			t.Errorf("%s must never be allowed over the pipe", m)
 		}
+		// nor are the notes (notes/api-spec.md §5): other processes of the same user must not read them
+		if strings.HasPrefix(m, "notes.") {
+			t.Errorf("%s must never be allowed over the pipe", m)
+		}
 	}
-	for _, banned := range []string{"vault.status", "vault.unlock", "vault.list", "vault.reveal", "vault.copy", "vault.export_csv", "settings.set", "pair.begin", "pair.join", "pair.confirm", "pair.cancel", "peers.remove", "peers.update", "update.config", "shutdown"} {
+	for _, banned := range []string{"notes.list", "notes.get", "notes.create", "notes.update", "notes.delete", "notes.render", "notes.sync_now", "vault.status", "vault.unlock", "vault.list", "vault.reveal", "vault.copy", "vault.export_csv", "settings.set", "pair.begin", "pair.join", "pair.confirm", "pair.cancel", "peers.remove", "peers.update", "update.config", "shutdown"} {
 		if Allowed[banned] {
 			t.Errorf("%s must never be allowed over the pipe", banned)
 		}

@@ -84,6 +84,21 @@
             </intent-filter>
         </activity>
 
+        <!-- Share target "save as note": shared text becomes a new note. No screen of its own; the send-to-device target above is unchanged. -->
+        <activity
+            android:name=".NoteShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:label="@string/note_share_label"
+            android:taskAffinity=""
+            android:theme="@style/Theme.ClipBridge.Transparent">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <!-- Invisible: reads the clipboard once it has focus (tile / notification action). Started only by our own PendingIntents. -->
         <activity
             android:name=".SendClipboardActivity"

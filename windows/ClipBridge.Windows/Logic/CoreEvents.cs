@@ -147,6 +147,35 @@ public sealed record VaultLockedEvent : CoreEvent { public string Reason { get; 
 /// <summary>The vault changed behind the UI's back (<c>reason</c>: "sync"): reload the list.</summary>
 public sealed record VaultChangedEvent : CoreEvent { public string Reason { get; init; } = ""; }
 
+/// <summary>A note changed: created, edited, deleted, restored, merged or synced in. It carries no text: fetch it with notes.get.</summary>
+public sealed record NotesChangedEvent : CoreEvent
+{
+    public string NoteId { get; init; } = "";
+    public string RevId { get; init; } = "";
+}
+
+/// <summary>A peer's note sync changed state (<c>idle</c>, <c>syncing</c>, <c>error</c>, <c>peer_old</c>) or its backlog.</summary>
+public sealed record NotesSyncUpdatedEvent : CoreEvent
+{
+    public string PeerId { get; init; } = "";
+    public string State { get; init; } = "";
+    public int Behind { get; init; }
+}
+
+/// <summary>
+/// The sync set a conflict copy aside (<see cref="Reason"/> <c>diverged</c>, with <see cref="ConflictNoteId"/>) or kept an edit
+/// although another device deleted the note (<c>deleted_elsewhere</c>).
+/// </summary>
+public sealed record NotesSyncConflictEvent : CoreEvent
+{
+    public const string Diverged = "diverged";
+    public const string DeletedElsewhere = "deleted_elsewhere";
+
+    public string NoteId { get; init; } = "";
+    public string ConflictNoteId { get; init; } = "";
+    public string Reason { get; init; } = "";
+}
+
 public sealed record UnknownEvent : CoreEvent;
 
 public static class CoreEventParser
@@ -252,6 +281,21 @@ public static class CoreEventParser
                 break;
             case "vault.locked":
                 ev = new VaultLockedEvent { Reason = Id("reason") };
+                break;
+            case "notes.changed":
+                ev = new NotesChangedEvent { NoteId = Id("note_id"), RevId = Id("rev_id") };
+                id = Id("note_id");
+                break;
+            case "notes.sync.updated":
+                ev = new NotesSyncUpdatedEvent
+                {
+                    PeerId = Id("peer_id"), State = Id("state"), Behind = (int)Math.Clamp(JsonRead.Long(e, "behind"), 0, int.MaxValue),
+                };
+                id = Id("peer_id");
+                break;
+            case "notes.sync.conflict":
+                ev = new NotesSyncConflictEvent { NoteId = Id("note_id"), ConflictNoteId = Id("conflict_note_id"), Reason = Id("reason") };
+                id = Id("note_id");
                 break;
             default:
                 if (type.StartsWith("update.", StringComparison.Ordinal))

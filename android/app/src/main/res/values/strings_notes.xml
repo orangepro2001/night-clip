@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notes screens (ui/notes). Logic-level texts live in logic/NotesTexts.kt, logic/NotesErrors.kt and logic/NotesSyncLogic.kt. -->
+<resources>
+    <string name="nav_notes">笔记</string>
+
+    <!-- Share target: "save as note" appears next to the normal ClipBridge entry in the share sheet -->
+    <string name="note_share_label">ClipBridge 笔记</string>
+
+    <!-- List -->
+    <string name="notes_trash">回收站</string>
+    <string name="notes_back_to_notes">返回笔记</string>
+    <string name="notes_sync_now">立即同步</string>
+    <string name="notes_new">新建笔记</string>
+    <string name="notes_empty_title">还没有笔记</string>
+    <string name="notes_empty_hint">点右下角的按钮写第一篇。已配对的设备上的笔记也会同步到这里。</string>
+    <string name="notes_trash_empty_title">回收站是空的</string>
+    <string name="notes_trash_empty_hint">删除的笔记会先放在这里，可以恢复。</string>
+    <string name="notes_more_actions">更多操作</string>
+    <string name="notes_delete">删除</string>
+    <string name="notes_restore">恢复</string>
+    <string name="notes_undo">撤销</string>
+    <string name="notes_loading">正在加载…</string>
+    <string name="notes_conflict_view">查看</string>
+    <string name="notes_notice_dismiss">知道了</string>
+    <string name="notes_notice_open">打开</string>
+
+    <!-- Editor -->
+    <string name="notes_title_hint">标题</string>
+    <string name="notes_body_hint">用 Markdown 写点什么…</string>
+    <string name="notes_mode_source">源码</string>
+    <string name="notes_mode_preview">预览</string>
+    <string name="notes_history">历史版本</string>
+    <string name="notes_move_to_trash">移到回收站</string>
+    <string name="notes_in_trash_banner">这篇笔记在回收站里，恢复后才能编辑。</string>
+    <string name="notes_save_failed_banner">没能保存：%1$s 你输入的文字还留在这里，不会丢。</string>
+    <string name="notes_is_conflict_copy">这是同步冲突时保存下来的副本。</string>
+    <string name="notes_resolve_conflict">处理冲突</string>
+    <string name="notes_leave_title">有修改还没保存</string>
+    <string name="notes_leave_text">这些修改暂时没能保存。现在离开会丢掉它们。</string>
+    <string name="notes_leave_keep">继续编辑</string>
+    <string name="notes_leave_discard">放弃并离开</string>
+    <string name="notes_preview_empty">还没有内容</string>
+    <string name="notes_preview_stale">有修改还没能保存，预览显示的是上次保存的内容。</string>
+    <string name="notes_open_link_failed">无法打开这个链接</string>
+
+    <!-- Formatting toolbar (content descriptions) -->
+    <string name="tool_bold">加粗</string>
+    <string name="tool_italic">斜体</string>
+    <string name="tool_strike">删除线</string>
+    <string name="tool_code">行内代码</string>
+    <string name="tool_h1">一级标题</string>
+    <string name="tool_h2">二级标题</string>
+    <string name="tool_h3">三级标题</string>
+    <string name="tool_bullet">无序列表</string>
+    <string name="tool_numbered">有序列表</string>
+    <string name="tool_task">任务列表</string>
+    <string name="tool_indent">增加缩进</string>
+    <string name="tool_outdent">减少缩进</string>
+    <string name="tool_quote">引用</string>
+    <string name="tool_code_block">代码块</string>
+    <string name="tool_link">链接</string>
+    <string name="tool_rule">分隔线</string>
+
+    <!-- History -->
+    <string name="notes_history_empty">没有历史版本</string>
+    <string name="notes_history_more">加载更多</string>
+    <string name="notes_history_current">当前</string>
+    <string name="notes_history_deleted">已删除</string>
+    <string name="notes_history_back">返回列表</string>
+    <string name="notes_history_restore">恢复此版本</string>
+    <string name="notes_history_is_current">这就是当前版本</string>
+
+    <!-- Conflicts -->
+    <string name="notes_conflicts_title">同步冲突</string>
+    <string name="notes_conflicts_none_title">没有待处理的冲突</string>
+    <string name="notes_conflicts_none_hint">所有冲突副本都已处理。</string>
+    <string name="notes_conflict_title">处理冲突</string>
+    <string name="notes_conflict_intro">两台设备改了同一处，没办法自动合并。较旧的一份保存成了冲突副本，两份内容都还在。</string>
+    <string name="notes_conflict_main">当前笔记</string>
+    <string name="notes_conflict_copy">冲突副本</string>
+    <string name="notes_conflict_main_trashed">原笔记在回收站里。要用副本的内容或合并，先把它恢复。</string>
+</resources>

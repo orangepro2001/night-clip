@@ -17,6 +17,7 @@ import com.nightclip.app.logic.Strings
 import com.nightclip.app.logic.TransferReducer
 import com.nightclip.app.platform.ForegroundTracker
 import com.nightclip.app.platform.MediaStoreSaver
+import com.nightclip.app.platform.NotesSession
 import com.nightclip.app.platform.Notifications
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterIsInstance
@@ -76,6 +77,8 @@ class EventRouter(private val app: ClipBridgeApp) {
                 Notifications.postFileOffer(app, ev)
             }
             is CoreEvent.FileState, is CoreEvent.FileProgress, is CoreEvent.FileDone, is CoreEvent.FileFailed -> onTransferEvent(ev)
+            // Notes only change screens in this version (no notifications); the session keeps what must survive a missing screen.
+            is CoreEvent.NotesChanged, is CoreEvent.NotesSyncUpdated, is CoreEvent.NotesSyncConflict -> NotesSession.onEvent(ev)
             is CoreEvent.PeerRevoked ->
                 Notifications.postInfo(app, "revoked-${ev.deviceId}", app.getString(R.string.notif_peer_revoked_title), app.getString(R.string.notif_peer_revoked_text, ev.name.ifBlank { Strings.UNKNOWN_DEVICE }))
             is CoreEvent.UpdateReady ->
