@@ -12,6 +12,8 @@
     <string name="more">更多</string>
     <string name="send">发送</string>
     <string name="clear">清空</string>
+    <string name="clear_notifications">清除通知</string>
+    <string name="toast_notifications_cleared">已清除通知</string>
     <string name="remove">解除配对</string>
     <string name="rename">重命名</string>
     <string name="show">显示</string>

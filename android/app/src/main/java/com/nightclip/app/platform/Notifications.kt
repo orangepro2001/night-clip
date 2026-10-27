@@ -73,6 +73,20 @@ object Notifications {
 
     private fun cancel(context: Context, tag: String?, id: Int) = NotificationManagerCompat.from(context).cancel(tag, id)
 
+    /**
+     * Removes every dismissible notification this app has posted (clips, file offers, results, info,
+     * update), which is what drives the launcher's red count badge. Ongoing ones (the real-time
+     * connection and live transfer progress) stay. Inbox content is untouched.
+     */
+    fun clearAlerts(context: Context) {
+        val nm = context.getSystemService(NotificationManager::class.java)
+        for (sbn in nm.activeNotifications) {
+            val n = sbn.notification
+            if (n.flags and (Notification.FLAG_ONGOING_EVENT or Notification.FLAG_FOREGROUND_SERVICE) != 0) continue
+            nm.cancel(sbn.tag, sbn.id)
+        }
+    }
+
     private fun openApp(context: Context, tab: String): PendingIntent {
         val intent = Intent(context, MainActivity::class.java)
             .putExtra(Actions.EXTRA_TAB, tab)

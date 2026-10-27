@@ -35,6 +35,7 @@ import com.nightclip.app.logic.NotificationTexts
 import com.nightclip.app.logic.PeerTexts
 import com.nightclip.app.logic.Strings
 import com.nightclip.app.platform.ClipboardAccess
+import com.nightclip.app.platform.Notifications
 
 @Composable
 fun InboxScreen(vm: InboxViewModel, onMessage: (String) -> Unit, modifier: Modifier = Modifier) {
@@ -44,6 +45,7 @@ fun InboxScreen(vm: InboxViewModel, onMessage: (String) -> Unit, modifier: Modif
     var confirmClear by remember { mutableStateOf(false) }
     val copiedText = stringResource(R.string.toast_copied)
     val failedText = stringResource(R.string.toast_copy_failed)
+    val notificationsClearedText = stringResource(R.string.toast_notifications_cleared)
 
     LifecycleRefresh { vm.refresh() }
     CollectWhileStarted(vm.messages) { onMessage(it) }
@@ -58,6 +60,10 @@ fun InboxScreen(vm: InboxViewModel, onMessage: (String) -> Unit, modifier: Modif
                 stringResource(R.string.nav_inbox),
                 subtitle = "${items.size} 条内容",
                 actions = {
+                    TextButton(onClick = {
+                        Notifications.clearAlerts(context)
+                        onMessage(notificationsClearedText)
+                    }) { Text(stringResource(R.string.clear_notifications)) }
                     TextButton(onClick = { confirmClear = true }, enabled = items.isNotEmpty()) { Text(stringResource(R.string.clear)) }
                 },
             )
