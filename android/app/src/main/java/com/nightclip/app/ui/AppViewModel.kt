@@ -17,6 +17,7 @@ import com.nightclip.app.core.TransferInfo
 import com.nightclip.app.logic.PeerTexts
 import com.nightclip.app.logic.Strings
 import com.nightclip.app.logic.TransferReducer
+import com.nightclip.app.platform.CameraCapture
 import com.nightclip.app.platform.FileSender
 import com.nightclip.app.platform.NetworkMonitor
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -154,6 +155,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 say(app.getString(R.string.msg_file_send_failed) + " (" + e.javaClass.simpleName + ")")
             }
         }
+    }
+
+    /**
+     * The photo the camera app has just written to [file], offered to every device in [targets]. Each device
+     * gets its own descriptor (a descriptor can only be handed to the core once); the file stays in the cache
+     * folder, see [com.nightclip.app.logic.CaptureFiles].
+     */
+    fun sendCapture(file: java.io.File, targets: List<String>) {
+        if (!file.isFile || file.length() == 0L) {
+            file.delete()
+            say(app.getString(R.string.msg_capture_empty))
+            return
+        }
+        if (targets.isEmpty()) {
+            say(Strings.SEND_NOTHING)
+            return
+        }
+        val uri = CameraCapture.uriFor(app, file)
+        targets.forEach { sendFiles(listOf(uri), it) }
     }
 
     fun accept(id: String) = transferCall { CoreApi.acceptFile(id) }

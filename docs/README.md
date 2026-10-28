@@ -89,6 +89,7 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | [release-runbook.md](release-runbook.md) | **发版操作说明**：预检、发布到 release-publish、桥接旧源、真机验证、常见问题 |
 | [release-publish-integration.md](release-publish-integration.md) | 接入本机 release-publish 的可复用经验（决策、SDK 缺口、迁移、测试、清单） |
 | [handoff-2026-10-28-release-publish.md](handoff-2026-10-28-release-publish.md) | 更新分发迁移的交接与上下文恢复 |
+| [handoff-2026-10-28-android-media-send.md](handoff-2026-10-28-android-media-send.md) | Android 发送图片/视频与拍照并发送：行为、改动、验证、待真机确认 |
 | [ops-python-native-memory-bloat.md](ops-python-native-memory-bloat.md) | 运维记录：Python + 原生库常驻进程的 glibc arena 内存膨胀（7.8 GiB → 5.1 GiB），诊断方法与陷阱 |
 | [../HANDOFF-20261027-0835.md](../HANDOFF-20261027-0835.md) | **最新交接快照**：写前 begin_apply 剪贴板回声修复、0.1.76 发布 |
 | [../HANDOFF-20261027-0805.md](../HANDOFF-20261027-0805.md) | 上一轮快照：Android 底部导航 inset 修复、0.1.74 发布 |

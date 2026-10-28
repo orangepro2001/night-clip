@@ -73,6 +73,13 @@
     <string name="no_devices_title">还没有设备</string>
     <string name="no_devices_hint">还没有配对设备。请先在电脑上的 ClipBridge 里点“配对新设备”，再在这里扫码。</string>
     <string name="send_file">发送文件</string>
+    <string name="send_media">图片/视频</string>
+    <string name="capture_photo">拍照并发送</string>
+    <string name="capture_target_title">拍照后发送给哪台设备？</string>
+    <string name="capture_target_all">所有已连接的设备</string>
+    <string name="msg_camera_denied">没有相机权限，无法拍照。请在系统设置里允许 ClipBridge 使用相机。</string>
+    <string name="msg_camera_missing">没有可用的相机应用</string>
+    <string name="msg_capture_empty">没有拍到照片，未发送</string>
     <string name="repair">重新配对</string>
     <string name="last_seen">最后在线：%1$s</string>
     <string name="rename_device">重命名设备</string>

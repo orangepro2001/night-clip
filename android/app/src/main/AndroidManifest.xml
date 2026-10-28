@@ -197,8 +197,9 @@
             </intent-filter>
         </service>
 
-        <!-- Shares the verified update APK with the package installer and the notes attachments the user opens or shares
-             (res/xml/update_paths.xml lists the two folders; nothing else is shared). -->
+        <!-- Shares the verified update APK with the package installer, the notes attachments the user opens or shares and the
+             photo the camera app writes for "take a photo and send" (res/xml/update_paths.xml lists the three folders;
+             nothing else is shared). -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

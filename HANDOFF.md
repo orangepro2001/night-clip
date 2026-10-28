@@ -141,6 +141,7 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 - **Android 后台自动发送（可选，需先授权）**：设置向导、悬浮窗权限、`READ_LOGS` 授权后重启、在别的应用复制后对端是否 ≤2 秒收到且不重复、键盘是否被短暂打断、关闭开关后 `logcat` 进程是否消失、撤销权限/重启/开机后的状态。详见 [plan-android-background-read.md](docs/plan-android-background-read.md) §5。
 - **两端**：配对→双向同步→断网恢复→大文件（含 DERP 路径吞吐 P-D）→撤销。
 - **密码库**：创建→解锁→锁定；快速解锁/生物识别；剪贴板 20 秒清除且不进历史；防截屏**开关**（默认开；主设置页关闭后能截图，自动填充界面同样受控）；备份→恢复；导出 KDBX 用 KeePassXC 打开；Android 自动填充在 Chrome 和常用应用；**已配对设备默认自动同步、每台保存完整副本（无中心/主从节点）**；Windows 密码库页面与 `SystemEvents` 锁屏锁定。**在没有真机结果前，密码库只能按实验性发布。**
+- **图片/视频与拍照发送（2026-10-28，Android）**：设备卡片的“图片/视频”（系统相册选择器，可多选）、相机图标（拍照后自动发给这台设备）、设备页顶部的相机图标（一台设备时直接拍，多台时先选）。只编译、单测、lint，**没在真机上跑过**：相机权限弹窗、系统相机拿到 FileProvider 写权限、相册选择器返回视频、照片出现在对方电脑上，都请真机试一遍，细节见 [docs/handoff-2026-10-28-android-media-send.md](docs/handoff-2026-10-28-android-media-send.md)。
 - **文件发送**：设备卡片/分享入口；本轮把 Android 系统选择器改成兼容性更好的 `GET_CONTENT`，并在启动、打开、offer 三处兜住异常（失败显示提示并写 logcat），仍需要在真机上确认不再闪退。
 - 发现的问题请带上 `diagnostics.get` 输出（不含密钥）。
 
