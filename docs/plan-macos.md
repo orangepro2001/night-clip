@@ -142,6 +142,18 @@
 - **剪贴板**：每 0.5 秒读一次 `NSPasteboard.changeCount`，有变化就读文本，用来观察有没有隐私弹窗。
 - **日志**：结果同时写入 `~/Library/Logs/ClipBridgeSpike.log`。
 
+**在用户的 M1 上的运行结果**（macOS 15.5，8 GB，2026-10-28 20:52，经 SSH 传包、启动、读日志）：
+
+| 项 | 结果 |
+| --- | --- |
+| 启动 | **成功**。从 Linux 构建、ad-hoc 签名的包，经 `scp` 传过去没有隔离属性，`open` 直接能跑。`codesign --verify --deep --strict` 报「a sealed resource is missing or invalid」，原因就是上面说的托管 dll 没被封进签名，但不影响运行 |
+| Go 核心 | **成功**。`version` 正常返回，`cb_init` 用新数据目录和随机密钥初始化后，`identity.get` 返回了 device_id 和指纹。zig 加存根文件编出的库在真机上能用，SQLite、加密都正常 |
+| 剪贴板 | **成功**。轮询 `changeCount` 能及时发现 `pbcopy` 写入的变化，后台读文本没有阻塞，日志里也没有报错。屏幕上有没有隐私弹窗，要用户看一眼。macOS 26 以后的行为需要另测 |
+| 全局菜单 | **成功**。屏幕顶部显示「ClipBridge」「设备」两个菜单 |
+| 主题（应用自绘截图 `RenderTargetBitmap`） | 大体是 macOS 风格：圆角按钮、蓝色复选框、蓝色开关，中文字体（苹方）正常。**问题**：列表选中项显示成对勾，而不是 macOS 的蓝色高亮；下拉框没显示选中的文字；文本框的占位提示和开关的文字标签都没显示。这些可能是主题本身的问题，也可能是自绘截图的偏差，要对照真实屏幕确认 |
+| 菜单栏图标、窗口标题栏 | **未确认**。经 SSH 截屏时没有屏幕录制权限，截图里只有壁纸和全局菜单。需要用户看屏幕，或者在「隐私与安全性 → 屏幕录制」里给 `sshd-keygen-wrapper` 授权 |
+| 日志路径 | 首版用 `SpecialFolder.Personal`，.NET 在 macOS 上把它映射到 `~/Documents`，所以日志没写出来。改成 `$HOME/Library/Logs` 后正常 |
+
 **在 Mac 上的运行方法**：
 - 如果经浏览器下载，先执行 `xattr -cr ClipBridgeSpike.app` 去掉隔离属性。经 `scp` 传过去则没有隔离属性。
 - 然后双击打开。

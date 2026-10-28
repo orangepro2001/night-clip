@@ -19,7 +19,34 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Closing += (_, e) => { e.Cancel = true; Hide(); }; // stay in the menu bar
-        Opened += (_, _) => { ProbeCore(); StartClipboardWatch(); };
+        Opened += (_, _) =>
+        {
+            Report("Window", $"opened {Bounds.Width}x{Bounds.Height}, theme {ActualThemeVariant}");
+            ProbeCore();
+            StartClipboardWatch();
+            DispatcherTimer.RunOnce(Snapshot, TimeSpan.FromSeconds(2));
+        };
+    }
+
+    private static string LogDir => Path.Combine(Environment.GetEnvironmentVariable("HOME") ?? "/tmp", "Library/Logs");
+
+    /// <summary>Renders the window content to a PNG, so the theme can be inspected without screen-recording permission.</summary>
+    private void Snapshot()
+    {
+        try
+        {
+            var scale = RenderScaling;
+            var size = new Avalonia.PixelSize((int)(Bounds.Width * scale), (int)(Bounds.Height * scale));
+            using var bmp = new Avalonia.Media.Imaging.RenderTargetBitmap(size, new Avalonia.Vector(96 * scale, 96 * scale));
+            bmp.Render(this);
+            var path = Path.Combine(LogDir, $"ClipBridgeSpike-{ActualThemeVariant}.png");
+            bmp.Save(path);
+            Report("Window", "snapshot " + path);
+        }
+        catch (Exception ex)
+        {
+            Report("Window", "snapshot failed: " + ex.Message);
+        }
     }
 
     public void SimulateSend()
@@ -87,8 +114,7 @@ public partial class MainWindow : Window
         Set(name, text);
         try
         {
-            var log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "Library/Logs/ClipBridgeSpike.log");
-            File.AppendAllText(log, $"{DateTime.Now:HH:mm:ss} {name}: {text}\n");
+            File.AppendAllText(Path.Combine(LogDir, "ClipBridgeSpike.log"), $"{DateTime.Now:HH:mm:ss} {name}: {text}\n");
         }
         catch { /* the log is a convenience only */ }
     }
