@@ -38,7 +38,7 @@ export CB_VERSION_CODE := $(patsubst CB_VERSION_CODE=%,%,$(filter CB_VERSION_COD
 export CB_VERSION_NAME := $(patsubst CB_VERSION_NAME=%,%,$(filter CB_VERSION_NAME=%,$(CB_VERSION_VARS)))
 export CB_UPDATE_URL
 
-.PHONY: notes-check all test vet dll dll-smoke dll-wine test-interop build-windows-app cli aar apk dist-windows dist-android check clean
+.PHONY: notes-check all test vet dll dll-smoke dll-wine test-interop build-windows-app cli aar apk dist-windows dist-android dist-macos check clean
 
 all: test dll cli
 
@@ -105,6 +105,11 @@ dist-windows: dll cli
 		-o $(DIST)/publish-win
 	cp $(DIST)/windows-amd64/cbridge.exe $(DIST)/publish-win/cbridge.exe
 	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/clipbridge-windows.zip ClipBridge.exe clipbridge_core.dll cbridge.exe
+
+# macOS package (Apple Silicon), built on Linux: zig links the Go core, rcodesign signs ad hoc
+# (docs/plan-macos.md). Output: core/dist/clipbridge-macos.zip holding ClipBridge.app.
+dist-macos:
+	DOTNET=$(DOTNET) macos/build-app.sh
 
 # Android release APK (versionCode/versionName/update URL stamped from the environment above).
 dist-android: aar

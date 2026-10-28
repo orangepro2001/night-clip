@@ -3,7 +3,7 @@
 # (`relhub`, https://<host>/release), which signs the manifests and serves the update API
 # to the installed apps (docs/update.md, docs/release-publish-integration.md).
 #
-#   scripts/release-local.sh [--platform android|windows|all] [--notes TEXT] [--force]
+#   scripts/release-local.sh [--platform android|windows|macos|all] [--notes TEXT] [--force]
 #                            [--no-build] [--allow-dirty] [--check]
 #
 #   --check        only run the checks that come before building (service reachable, signing
@@ -34,7 +34,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-case "$platform" in android|windows|all) ;; *) echo "--platform must be android, windows or all" >&2; exit 2 ;; esac
+case "$platform" in android|windows|macos|all) ;; *) echo "--platform must be android, windows, macos or all" >&2; exit 2 ;; esac
 
 die() { echo "$*" >&2; exit 1; }
 
@@ -67,7 +67,7 @@ echo "release $CB_VERSION_NAME (code $CB_VERSION_CODE) -> $CB_UPDATE_URL (app $a
 
 # A platform's versionCode only goes up; learn now if this one is taken instead of after a
 # 5-minute build. (The local CLI talks to 127.0.0.1:18790 with the admin token.)
-for p in android windows; do
+for p in android windows macos; do
   if [ "$platform" = all ] || [ "$platform" = "$p" ]; then
     if out="$("$relhub" list -all -app "$app" -platform "$p" 2>/dev/null)" \
       && awk -v c="$CB_VERSION_CODE" 'NR>1 && $1+0>=c {f=1} END{exit !f}' <<<"$out"; then
@@ -123,15 +123,26 @@ if [ "$platform" = windows ] || [ "$platform" = all ]; then
   publish windows "$zip"
 fi
 
+if [ "$platform" = macos ] || [ "$platform" = all ]; then
+  # Built on Linux too (docs/plan-macos.md): zig links the Go core, rcodesign signs the bundle ad hoc.
+  [ "$build" = 1 ] && make dist-macos
+  zip="$root/core/dist/clipbridge-macos.zip"
+  [ -f "$zip" ] || die "package not found: $zip"
+  publish macos "$zip"
+fi
+
 # --- 3. verify as an installed app would ------------------------------------------------
 # scripts/probe-update.sh runs the real core update client (compiled-in key, app id, platform
 # names) against the public URL as if the previous version were installed, and downloads the
 # whole package; here we only compare it with what was built.
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-for p in android windows; do
+for p in android windows macos; do
   if [ "$platform" = all ] || [ "$platform" = "$p" ]; then
-    src=$([ "$p" = android ] && echo "$root/android/app/build/outputs/apk/release/app-release.apk" || echo "$root/core/dist/clipbridge-windows.zip")
+    case "$p" in
+      android) src="$root/android/app/build/outputs/apk/release/app-release.apk" ;;
+      *) src="$root/core/dist/clipbridge-$p.zip" ;;
+    esac
     read -r _ got_code _ got_size got_sha _ < <(scripts/probe-update.sh -u "$CB_UPDATE_URL" -c "$((CB_VERSION_CODE - 1))" -p "$p" -o "$tmp") \
       || die "$p: an installed app would not accept what the service offers (see the probe output above)"
     [ "$got_code" = "$CB_VERSION_CODE" ] || die "$p: the service offers versionCode $got_code, expected $CB_VERSION_CODE"

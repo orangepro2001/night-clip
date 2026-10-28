@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- macOS shell (docs/plan-macos.md): Avalonia + the Devolutions macOS theme, built on Linux
+       (`make dist-macos`). The shell logic is the Windows shell's portable Logic/ layer, linked
+       here unchanged; only the platform services and the views are macOS-specific. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ClipBridge</AssemblyName>
+    <RootNamespace>ClipBridge.Mac</RootNamespace>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- Stamped by `make dist-macos` (scripts/version.sh), like the Windows shell; a plain build
+       is a dev build (code 0) with self-update off. -->
+  <PropertyGroup>
+    <CbVersionCode Condition="'$(CbVersionCode)' == ''">0</CbVersionCode>
+    <CbVersionName Condition="'$(CbVersionName)' == ''">0.0.0-dev</CbVersionName>
+    <CbUpdateUrl Condition="'$(CbUpdateUrl)' == ''"></CbUpdateUrl>
+    <Version>$(CbVersionName)</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>CbVersionCode</_Parameter1>
+      <_Parameter2>$(CbVersionCode)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>CbVersionName</_Parameter1>
+      <_Parameter2>$(CbVersionName)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>CbUpdateUrl</_Parameter1>
+      <_Parameter2>$(CbUpdateUrl)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!-- Shared with the Windows shell (pure C#, already unit-tested there). -->
+  <PropertyGroup>
+    <WinShell>..\..\windows\ClipBridge.Windows\</WinShell>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(WinShell)Logic\*.cs" Exclude="$(WinShell)Logic\DpapiKeyStore.cs" Link="Shared\Logic\%(Filename)%(Extension)" />
+    <Compile Include="$(WinShell)Strings.cs" Link="Shared\Strings.cs" />
+    <Compile Include="$(WinShell)StringsVault.cs" Link="Shared\StringsVault.cs" />
+    <Compile Include="$(WinShell)StringsNotes.cs" Link="Shared\StringsNotes.cs" />
+    <Compile Include="$(WinShell)Interop\CoreInterop.cs" Link="Shared\CoreInterop.cs" />
+    <Compile Include="$(WinShell)Update\UpdateModel.cs" Link="Shared\UpdateModel.cs" />
+    <Compile Include="$(WinShell)Update\BuildInfo.cs" Link="Shared\BuildInfo.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <PackageReference Include="Devolutions.AvaloniaTheme.MacOS" Version="2026.10.13" />
+  </ItemGroup>
+</Project>
