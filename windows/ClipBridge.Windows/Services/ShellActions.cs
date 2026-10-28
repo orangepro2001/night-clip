@@ -213,6 +213,41 @@ internal sealed partial class ShellController
         }
     }
 
+    /// <summary>Typed text: to the named devices, or (null) to every device online now (<see cref="SendTargets.Online"/>).</summary>
+    public async Task<string?> SendTextAsync(string text, IReadOnlyCollection<string>? to)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var targets = to ?? SendTargets.Online(Peers);
+        if (targets.Count == 0) return Strings.SendNoOnline;
+        var (result, error) = await CallAsync(a => a.ClipSendTo(ClipText.ToCore(text), targets));
+        await ReloadPeersAsync();
+        return error ?? Strings.SentTo(result!.Sent.Count);
+    }
+
+    /// <summary>A device card's "发送剪贴板" (clipboard worker): the current clipboard to that device only.</summary>
+    public void SendClipboardTo(PeerItem peer) => _clipQueue.Post(() =>
+    {
+        if (_disposed) return;
+        var read = _clip.ReadText();
+        if (read.Status != ClipReadStatus.Ok)
+        {
+            UiPost(() => ShowStatus(Strings.SendNowNothing));
+            return;
+        }
+        try
+        {
+            Api.ClipSendTo(ClipText.ToCore(read.Text), new[] { peer.DeviceId });
+            UiPost(() => ShowStatus(Strings.SentTo(1)));
+        }
+        catch (CoreException ex) { UiPost(() => ShowStatus(ErrorMessages.ForCode(ex.Code))); }
+    });
+
+    public void SetNotifications(bool on)
+    {
+        Prefs.Notifications = on;
+        Prefs.Save(App.DataDir);
+    }
+
     // =====================================================================================
     //  Generic call helpers
     // =====================================================================================

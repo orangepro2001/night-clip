@@ -28,6 +28,7 @@ class ClipBridgeApp : Application() {
         super.onCreate()
         prefs = ShellPrefs(this)
         Notifications.createChannels(this)
+        Notifications.userEnabled = prefs.notifications.value
         registerActivityLifecycleCallbacks(ForegroundTracker)
         VaultSession.install(this)
         NotesSession.install(this)

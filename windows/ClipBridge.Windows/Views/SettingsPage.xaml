@@ -45,6 +45,8 @@
                     <CheckBox x:Name="SensitiveBox" Content="{x:Static local:Strings.SettingsSendSensitive}" Margin="0,8,0,0" />
                     <CheckBox x:Name="AutoStartBox" Content="{x:Static local:Strings.SettingsAutoStart}" Margin="0,4,0,0"
                               Click="AutoStartBox_Click" />
+                    <CheckBox x:Name="NotificationsBox" Content="{x:Static local:Strings.SettingsNotifications}" Margin="0,4,0,0"
+                              Click="NotificationsBox_Click" ToolTip="{x:Static local:Strings.SettingsNotificationsHint}" />
                 </StackPanel>
             </Border>
 

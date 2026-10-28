@@ -25,6 +25,18 @@ public class PeerModelTests
     }
 
     [Fact]
+    public void SendTargets_OnlineAreConnectedWithSendOn()
+    {
+        var list = PeerItem.ListFromJson(J(
+            "{\"peers\":[{\"device_id\":\"dev_a\",\"state\":\"connected\"}," +
+            "{\"device_id\":\"dev_b\",\"state\":\"offline\"}," +
+            "{\"device_id\":\"dev_c\",\"state\":\"connected\",\"send_enabled\":false}," +
+            "{\"device_id\":\"dev_d\",\"state\":\"connected\"}]}"), Now);
+        Assert.Equal(new[] { "dev_a", "dev_d" }, SendTargets.Online(list));
+        Assert.Empty(SendTargets.Online(list.Where(p => p.State == "offline")));
+    }
+
+    [Fact]
     public void Peers_PlatformText()
     {
         var list = PeerItem.ListFromJson(J(

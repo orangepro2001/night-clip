@@ -66,6 +66,10 @@ public sealed class CoreApi
 
     public SendResult ClipSend(string coreText) => ParseSend(_core.Call("clip.send", new { text = coreText }));
 
+    /// <summary>Sends to the named devices only (an explicit choice: their "自动发送" switch does not apply).</summary>
+    public SendResult ClipSendTo(string coreText, IReadOnlyCollection<string> deviceIds) =>
+        ParseSend(_core.Call("clip.send", new { text = coreText, to = deviceIds }));
+
     /// <summary>Open the echo window before the shell writes the clipboard; MarkApplied follows after a successful write.</summary>
     public void BeginApply(string eventId) => _core.Call("clip.begin_apply", new { event_id = eventId });
 

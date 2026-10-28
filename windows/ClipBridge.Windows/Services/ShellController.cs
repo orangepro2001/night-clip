@@ -191,7 +191,7 @@ internal sealed partial class ShellController : IDisposable
 
     public void Balloon(string title, string text, Action? onClick = null)
     {
-        if (!_disposed) _tray.ShowBalloon(title, text, onClick);
+        if (!_disposed && Prefs.Notifications) _tray.ShowBalloon(title, text, onClick); // Settings → 显示通知
     }
 
     private void UiPost(Action action)

@@ -56,6 +56,14 @@ public static partial class Strings
     public const string SendNowDone = "已发送当前剪贴板内容";
     public const string SendNowNothing = "剪贴板里没有可发送的文本";
     public const string SendNowNoPeers = "没有已配对的设备";
+    public const string SendNoOnline = "没有在线的设备，未发送。可以在设备上单独发送（离线设备会在上线后收到）。";
+    public const string BtnSendText = "发送文字…";
+    public const string BtnSendClipboardOne = "发送剪贴板";
+    public const string SendTextAllTitle = "发送文字";
+    public const string SendTextAllPrompt = "输入要发送的文字（发给所有在线设备）：";
+    public static string SendTextOneTitle(string name) => $"发送文字给 {name}";
+    public const string SendTextOnePrompt = "输入要发送的文字：";
+    public static string SentTo(int n) => n == 1 ? "已发送" : $"已发送到 {n} 台设备";
     public const string TooLargeToSend = "剪贴板文本太大（超过 64 KiB），请作为文件发送。";
     public const string SensitiveBlocked = "内容看起来像口令或令牌，已按设置阻止发送。";
     public const string NotSentTitle = "未发送";
@@ -225,6 +233,8 @@ public static partial class Strings
     public const string SettingsSensitiveDetection = "自动识别敏感内容（口令/令牌）";
     public const string SettingsSensitiveDetectionHint = "只对单个词做启发式判断：像密码、令牌、一次性验证码的内容会被隐藏且不会自动写入。Hello123 这类普通词也会被误判；关闭后不再隐藏，也不会因此阻止自动写入。密码库复制的内容仍然永远不会被自动发送。";
     public const string SettingsAutoStart = "开机自启（最小化到托盘）";
+    public const string SettingsNotifications = "显示通知";
+    public const string SettingsNotificationsHint = "关闭后不再弹出收到内容、文件和更新的提示；内容仍进收件箱，配对和接收文件的窗口照常出现。";
     public const string SettingsDownloadDir = "接收文件的保存位置";
     public const string SettingsSave = "保存设置";
     public const string SettingsSaved = "设置已保存";

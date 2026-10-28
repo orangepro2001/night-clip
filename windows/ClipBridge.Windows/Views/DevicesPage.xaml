@@ -11,6 +11,7 @@
 
         <DockPanel Grid.Row="0" Margin="0,0,0,12">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="{x:Static local:Strings.BtnSendText}" Click="SendTextAll_Click" ToolTip="{x:Static local:Strings.SendTextAllPrompt}" />
                 <Button Content="{x:Static local:Strings.BtnSendFiles}" Click="SendFiles_Click" />
                 <Button Content="{x:Static local:Strings.BtnJoinPair}" Click="Join_Click" />
                 <Button Content="{x:Static local:Strings.BtnPairNew}" Click="Pair_Click" Style="{StaticResource PrimaryButton}" />
@@ -59,6 +60,10 @@
                                     <ComboBoxItem Tag="manual" Content="{x:Static local:Strings.ModeManual}" />
                                     <ComboBoxItem Tag="auto" Content="{x:Static local:Strings.ModeAuto}" />
                                 </ComboBox>
+                                <Button Content="{x:Static local:Strings.BtnSendText}" Click="SendTextOne_Click"
+                                        Visibility="{Binding CanSendFile, Converter={StaticResource B2V}}" />
+                                <Button Content="{x:Static local:Strings.BtnSendClipboardOne}" Click="SendClipOne_Click"
+                                        Visibility="{Binding CanSendFile, Converter={StaticResource B2V}}" />
                                 <Button Content="{x:Static local:Strings.BtnSendFiles}" Click="SendOne_Click"
                                         Visibility="{Binding CanSendFile, Converter={StaticResource B2V}}" />
                                 <Button Content="{x:Static local:Strings.BtnRename}" Click="Rename_Click"

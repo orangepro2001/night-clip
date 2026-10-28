@@ -21,6 +21,10 @@ class ShellPrefs(context: Context) {
     private val _backgroundRead = MutableStateFlow(prefs.getBoolean(KEY_BACKGROUND_READ, false))
     val backgroundRead: StateFlow<Boolean> = _backgroundRead.asStateFlow()
 
+    /** The app's own on/off switch for its notifications (default on); the ongoing connection notification stays regardless. */
+    private val _notifications = MutableStateFlow(prefs.getBoolean(KEY_NOTIFICATIONS, true))
+    val notifications: StateFlow<Boolean> = _notifications.asStateFlow()
+
     /** Vault/autofill windows are excluded from screenshots by default; developers can turn it off. */
     private val _vaultPreventCapture = MutableStateFlow(prefs.getBoolean(KEY_VAULT_PREVENT_CAPTURE, true))
     val vaultPreventCapture: StateFlow<Boolean> = _vaultPreventCapture.asStateFlow()
@@ -37,6 +41,11 @@ class ShellPrefs(context: Context) {
     fun setRealtime(on: Boolean) {
         prefs.edit().putBoolean(KEY_REALTIME, on).apply()
         _realtime.value = on
+    }
+
+    fun setNotifications(on: Boolean) {
+        prefs.edit().putBoolean(KEY_NOTIFICATIONS, on).apply()
+        _notifications.value = on
     }
 
     fun setOnboarded(done: Boolean) {
@@ -125,6 +134,7 @@ class ShellPrefs(context: Context) {
         const val KEY_SAVED = "saved_transfers"
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_BACKGROUND_READ = "background_read_enabled"
+        const val KEY_NOTIFICATIONS = "notifications_enabled"
         const val KEY_VAULT_PREVENT_CAPTURE = "vault_prevent_capture"
         const val KEY_VAULT_BACKGROUND_LOCK = "vault_background_lock_s"
         const val KEY_VAULT_SCREEN_OFF_LOCK = "vault_lock_on_screen_off"

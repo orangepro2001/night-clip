@@ -42,6 +42,28 @@ public partial class DevicesPage : UserControl
 
     // ---- per-device actions --------------------------------------------------------------------
 
+    private static string? NonEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+
+    /// <summary>Top "发送文字…": typed text to every device online now.</summary>
+    private async void SendTextAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (InputWindow.Ask(OwnerWindow, Strings.SendTextAllTitle, Strings.SendTextAllPrompt, "", NonEmpty) is { } text)
+            Tell(await _shell.SendTextAsync(text, null));
+    }
+
+    /// <summary>A card's "发送文字…": typed text to that device only (queued while it is offline).</summary>
+    private async void SendTextOne_Click(object sender, RoutedEventArgs e)
+    {
+        if (PeerOf(sender) is not { } peer) return;
+        if (InputWindow.Ask(OwnerWindow, Strings.SendTextOneTitle(peer.DisplayName), Strings.SendTextOnePrompt, "", NonEmpty) is { } text)
+            Tell(await _shell.SendTextAsync(text, new[] { peer.DeviceId }));
+    }
+
+    private void SendClipOne_Click(object sender, RoutedEventArgs e)
+    {
+        if (PeerOf(sender) is { } peer) _shell.SendClipboardTo(peer);
+    }
+
     private async void SendOne_Click(object sender, RoutedEventArgs e)
     {
         if (PeerOf(sender) is { } peer) await SendFlowAsync(peer);

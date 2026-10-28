@@ -73,6 +73,7 @@ internal sealed class MacController : IDisposable
     public MacController()
     {
         Current = this;
+        SettingsModel.UnixPaths = true; // download folders are "/…" here (the shared validation is textual)
         Api = new CoreApi(_core);
         Prefs = ShellPrefs.Load(MacPaths.DataDir);
         Settings = new SettingsValues(true, "auto", SettingsValues.DefaultTtl, SettingsValues.DefaultHistory, true,
@@ -130,7 +131,18 @@ internal sealed class MacController : IDisposable
         if (!_disposed) StatusMessage?.Invoke(text);
     }
 
-    public static void Notify(string title, string text) => MacNotifier.Show(title, text);
+    /// <summary>A Notification Center banner, unless switched off in Settings → 显示通知.</summary>
+    public void Notify(string title, string text)
+    {
+        if (Prefs.Notifications) MacNotifier.Show(title, text);
+    }
+
+    public void SetNotifications(bool on)
+    {
+        Prefs.Notifications = on;
+        Prefs.Save(MacPaths.DataDir);
+        StateChanged?.Invoke();
+    }
 
     private void UiPost(Action action)
     {
@@ -341,6 +353,35 @@ internal sealed class MacController : IDisposable
         {
             var result = Api.ClipSend(ClipText.ToCore(read.Text));
             UiPost(() => ShowStatus(result.Sent.Count > 0 ? Strings.SendNowDone : Strings.SendNowNoPeers));
+        }
+        catch (CoreException ex) { UiPost(() => ShowStatus(ErrorMessages.ForCode(ex.Code))); }
+    });
+
+    /// <summary>Typed text: to the named devices, or (null) to every device online now (<see cref="SendTargets.Online"/>).</summary>
+    public async Task<string?> SendTextAsync(string text, IReadOnlyCollection<string>? to)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var targets = to ?? SendTargets.Online(Peers);
+        if (targets.Count == 0) return Strings.SendNoOnline;
+        var (result, error) = await CallAsync(a => a.ClipSendTo(ClipText.ToCore(text), targets));
+        await _peersReload.RunAsync();
+        return error ?? Strings.SentTo(result!.Sent.Count);
+    }
+
+    /// <summary>A device card's "发送剪贴板": the current clipboard to that device only.</summary>
+    public void SendClipboardTo(PeerItem peer) => _clipQueue.Post(() =>
+    {
+        if (_disposed) return;
+        var read = MacPasteboard.ReadText();
+        if (read.Status != PasteReadStatus.Ok)
+        {
+            UiPost(() => ShowStatus(Strings.SendNowNothing));
+            return;
+        }
+        try
+        {
+            Api.ClipSendTo(ClipText.ToCore(read.Text), new[] { peer.DeviceId });
+            UiPost(() => ShowStatus(Strings.SentTo(1)));
         }
         catch (CoreException ex) { UiPost(() => ShowStatus(ErrorMessages.ForCode(ex.Code))); }
     });

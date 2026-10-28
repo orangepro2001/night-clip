@@ -62,6 +62,7 @@ import com.nightclip.app.core.TransferInfo
 import com.nightclip.app.logic.CaptureFiles
 import com.nightclip.app.logic.Formatters
 import com.nightclip.app.logic.PeerTexts
+import com.nightclip.app.logic.SendTargets
 import com.nightclip.app.logic.Strings
 import com.nightclip.app.logic.TailscaleHint
 import com.nightclip.app.platform.CameraCapture
@@ -78,6 +79,7 @@ fun DevicesScreen(vm: AppViewModel, onPair: () -> Unit, modifier: Modifier = Mod
     var manualText by rememberSaveable { mutableStateOf("") }
     var fileTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf<PeerInfo?>(null) }
+    var textTarget by remember { mutableStateOf<PeerInfo?>(null) }
     var changingMode by remember { mutableStateOf<PeerInfo?>(null) }
     var removing by remember { mutableStateOf<PeerInfo?>(null) }
 
@@ -208,10 +210,16 @@ fun DevicesScreen(vm: AppViewModel, onPair: () -> Unit, modifier: Modifier = Mod
                         maxLines = 3,
                         keyboardOptions = KeyboardOptions.Default,
                     )
+                    // Typed text goes to the devices online now (offline ones are not queued); one device: its card's "发送文字".
                     Button(
                         onClick = {
-                            vm.sendText(manualText)
-                            manualText = ""
+                            val online = SendTargets.online(peers)
+                            if (online.isEmpty()) {
+                                vm.report(context.getString(R.string.send_no_online))
+                            } else {
+                                vm.sendText(manualText, online)
+                                manualText = ""
+                            }
                         },
                         enabled = manualText.isNotBlank() && peers.any { it.canSend },
                         modifier = Modifier.padding(top = 6.dp).height(40.dp),
@@ -256,6 +264,7 @@ fun DevicesScreen(vm: AppViewModel, onPair: () -> Unit, modifier: Modifier = Mod
                     }
                 },
                 onCapture = { takePhoto(listOf(peer.deviceId)) },
+                onSendText = { textTarget = peer },
                 onRename = { renaming = peer },
                 onMode = { changingMode = peer },
                 onToggleSend = { vm.setSend(peer.deviceId, !peer.sendEnabled) },
@@ -300,6 +309,21 @@ fun DevicesScreen(vm: AppViewModel, onPair: () -> Unit, modifier: Modifier = Mod
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { choosingCaptureTarget = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+    textTarget?.let { p ->
+        var text by remember(p.deviceId) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { textTarget = null },
+            title = { Text(stringResource(R.string.send_text_to_title, p.name.ifBlank { Strings.UNKNOWN_DEVICE })) },
+            text = { OutlinedTextField(value = text, onValueChange = { text = it }, minLines = 2, maxLines = 6) },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.sendText(text, listOf(p.deviceId))
+                    textTarget = null
+                }, enabled = text.isNotBlank()) { Text(stringResource(R.string.send)) }
+            },
+            dismissButton = { TextButton(onClick = { textTarget = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
     renaming?.let { p ->
@@ -364,6 +388,7 @@ private fun PeerCard(
     onSendFile: () -> Unit,
     onSendMedia: () -> Unit,
     onCapture: () -> Unit,
+    onSendText: () -> Unit,
     onRename: () -> Unit,
     onMode: () -> Unit,
     onToggleSend: () -> Unit,
@@ -416,6 +441,7 @@ private fun PeerCard(
             // Wraps onto a second line on a narrow screen instead of squeezing the labels.
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.Center) {
                 TextButton(onClick = onSendClipboard, modifier = Modifier.height(36.dp)) { Text(stringResource(R.string.send_clipboard)) }
+                TextButton(onClick = onSendText, modifier = Modifier.height(36.dp)) { Text(stringResource(R.string.send_text_one)) }
                 TextButton(onClick = onSendFile, modifier = Modifier.height(36.dp)) { Text(stringResource(R.string.send_file)) }
                 TextButton(onClick = onSendMedia, modifier = Modifier.height(36.dp)) { Text(stringResource(R.string.send_media)) }
                 IconButton(onClick = onCapture, modifier = Modifier.size(36.dp)) {

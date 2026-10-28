@@ -94,6 +94,16 @@ public sealed class ShellPrefsTests : IDisposable
         var p = ShellPrefs.Load(_dir);
         Assert.False(p.FirstRunDone);
         Assert.Null(p.DownloadDir);
+        Assert.True(p.Notifications);
+    }
+
+    [Fact]
+    public void Notifications_RoundTrip()
+    {
+        new ShellPrefs { Notifications = false }.Save(_dir);
+        Assert.False(ShellPrefs.Load(_dir).Notifications);
+        new ShellPrefs { Notifications = true }.Save(_dir);
+        Assert.True(ShellPrefs.Load(_dir).Notifications);
     }
 
     [Fact]

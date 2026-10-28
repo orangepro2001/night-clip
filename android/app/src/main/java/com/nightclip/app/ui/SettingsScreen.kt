@@ -53,6 +53,7 @@ import com.nightclip.app.logic.UpdatePresenter
 import com.nightclip.app.platform.BatteryOptimization
 import com.nightclip.app.platform.BackgroundReadRuntime
 import com.nightclip.app.platform.ClipboardAccess
+import com.nightclip.app.platform.Notifications
 import com.nightclip.app.platform.RealtimeMode
 import com.nightclip.app.platform.ShizukuRuntime
 
@@ -69,6 +70,7 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
     val realtime by context.app.prefs.realtime.collectAsStateWithLifecycle()
     val background by vm.backgroundRead.collectAsStateWithLifecycle()
     val vaultPreventCapture by context.app.prefs.vaultPreventCapture.collectAsStateWithLifecycle()
+    val notificationsOn by context.app.prefs.notifications.collectAsStateWithLifecycle()
     var showBackgroundSetup by remember { mutableStateOf(false) }
     var confirmEnableBackground by remember { mutableStateOf(false) }
     var confirmDisableVaultCapture by remember { mutableStateOf(false) }
@@ -89,6 +91,14 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
             SwitchRow(stringResource(R.string.settings_realtime_switch), realtime) { RealtimeMode.set(context, it) }
             Text(stringResource(R.string.settings_realtime_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedButton(onClick = { BatteryOptimization.open(context) }) { Text(stringResource(R.string.settings_battery)) }
+        }
+
+        SectionCard(stringResource(R.string.settings_notifications)) {
+            SwitchRow(stringResource(R.string.settings_notifications_switch), notificationsOn) { on ->
+                context.app.prefs.setNotifications(on)
+                Notifications.setUserEnabled(context, on)
+            }
+            Text(stringResource(R.string.settings_notifications_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
         ShizukuBackgroundCard(vm, realtime)

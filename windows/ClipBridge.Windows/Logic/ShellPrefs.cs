@@ -14,6 +14,9 @@ public sealed class ShellPrefs
     public bool FirstRunDone { get; set; }
     public string? DownloadDir { get; set; }
 
+    /// <summary>Show tray/Notification Center messages (default on). Off: received items still reach the inbox, dialogs still open.</summary>
+    public bool Notifications { get; set; } = true;
+
     /// <summary>Exclude the window from screenshots and recordings while the vault page is shown (default on).</summary>
     public bool PreventCapture { get; set; } = true;
 
@@ -32,6 +35,7 @@ public sealed class ShellPrefs
                 FirstRunDone = JsonRead.Bool(doc.RootElement, "first_run_done"),
                 DownloadDir = JsonRead.Str(doc.RootElement, "download_dir") is { Length: > 0 } d ? d : null,
                 PreventCapture = JsonRead.Bool(doc.RootElement, "prevent_capture", true),
+                Notifications = JsonRead.Bool(doc.RootElement, "notifications", true),
                 NotesView = NotesViewModes.Parse(JsonRead.Str(doc.RootElement, "notes_view")),
             };
         }
@@ -51,6 +55,7 @@ public sealed class ShellPrefs
                 ["first_run_done"] = FirstRunDone,
                 ["download_dir"] = DownloadDir,
                 ["prevent_capture"] = PreventCapture,
+                ["notifications"] = Notifications,
                 ["notes_view"] = NotesViewModes.Key(NotesView),
             });
             var path = Path.Combine(dataDir, FileName);

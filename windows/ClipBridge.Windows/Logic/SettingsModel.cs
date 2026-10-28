@@ -50,9 +50,17 @@ public static class SettingsModel
     private static readonly Regex Unc = new(@"^\\\\[^\\/?*""<>|\s][^\\/?*""<>|]*\\[^\\/?*""<>|]+", RegexOptions.Compiled);
     private static readonly char[] BadPathChars = { '<', '>', '"', '|', '?', '*' };
 
-    /// <summary>"C:\dir" or "\\server\share" (checked textually, so it also works off Windows).</summary>
+    /// <summary>
+    /// Set by the macOS shell at startup: local folders are "/…" paths there. The check stays textual
+    /// (no OS probing) so the Windows rules are unit-tested on Linux unchanged.
+    /// </summary>
+    public static bool UnixPaths { get; set; }
+
+    /// <summary>"C:\dir" or "\\server\share" (checked textually, so it also works off Windows); "/dir" when <see cref="UnixPaths"/>.</summary>
     public static bool IsAbsoluteWindowsPath(string? path)
     {
+        if (UnixPaths)
+            return !string.IsNullOrWhiteSpace(path) && path.Length < 1024 && path.IndexOf('\0') < 0 && path.StartsWith('/');
         if (string.IsNullOrWhiteSpace(path) || path.Length > 259 || path.IndexOf('\0') >= 0) return false;
         if (path.IndexOfAny(BadPathChars) >= 0) return false; // ':' is only legal as the drive separator, checked below
         var p = path.Trim();

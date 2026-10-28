@@ -61,9 +61,23 @@ object Notifications {
 
     private fun enabled(context: Context) = NotificationManagerCompat.from(context).areNotificationsEnabled()
 
+    /**
+     * The in-app switch (Settings → 通知). Off: nothing is posted except the real-time connection notification,
+     * which Android requires while the foreground service runs. Received items still land in the inbox.
+     */
+    @Volatile
+    var userEnabled: Boolean = true
+
+    /** Applies the in-app switch; turning it off also clears what is already showing. */
+    fun setUserEnabled(context: Context, on: Boolean) {
+        userEnabled = on
+        if (!on) clearAlerts(context)
+    }
+
     @Suppress("MissingPermission") // checked through areNotificationsEnabled(); POST_NOTIFICATIONS is requested at onboarding
     private fun post(context: Context, tag: String?, id: Int, n: Notification) {
         if (!enabled(context)) return
+        if (!userEnabled && id != ID_CONNECTION) return
         try {
             NotificationManagerCompat.from(context).notify(tag, id, n)
         } catch (e: SecurityException) {

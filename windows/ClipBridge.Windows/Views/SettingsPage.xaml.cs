@@ -40,6 +40,7 @@ public partial class SettingsPage : UserControl
         SensitiveBox.IsChecked = s.SendSensitive;
         DirBox.Text = s.DownloadDir;
         AutoStartBox.IsChecked = _shell.AutoStartEnabled; // registry read: only when the fields are (re)loaded
+        NotificationsBox.IsChecked = _shell.Prefs.Notifications;
     }
 
     /// <summary>Parts of the page that follow live state: sync switch, autostart, update section, about.</summary>
@@ -111,6 +112,8 @@ public partial class SettingsPage : UserControl
         Tell(await _shell.SetCaptureAsync(SyncBox.IsChecked == true));
         RefreshLive();
     }
+
+    private void NotificationsBox_Click(object sender, RoutedEventArgs e) => _shell.SetNotifications(NotificationsBox.IsChecked == true);
 
     private async void AutoStartBox_Click(object sender, RoutedEventArgs e)
     {

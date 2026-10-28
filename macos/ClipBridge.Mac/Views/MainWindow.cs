@@ -108,7 +108,7 @@ internal sealed class MainWindow : Window
                 Ui.Button(Strings.BtnPairNew, PairListenWindow.ShowOrActivate),
                 Ui.Button(Strings.BtnJoinPair, PairJoinWindow.ShowOrActivate),
                 Ui.Button(MacStrings.MenuSendClipboard, _shell.SendCurrentClipboard),
-                Ui.Button(MacStrings.SendText, SendTextAsync)));
+                Ui.Button(Strings.BtnSendText, SendTextAsync)));
         if (!_shell.CoreRunning) page.Children.Add(Ui.Text(Strings.StatusStarting));
         foreach (var w in WarningTexts()) page.Children.Add(Ui.Text(w).With(t => t.Foreground = Ui.ErrorBrush));
         if (_shell.Peers.Count == 0) page.Children.Add(Ui.Dim(Strings.DevicesEmpty));
@@ -149,6 +149,12 @@ internal sealed class MainWindow : Window
         };
 
         var buttons = Ui.Row(
+            Ui.Button(Strings.BtnSendText, async () =>
+            {
+                if (await Ui.PromptAsync(this, Strings.SendTextOneTitle(peer.DisplayName), Strings.SendTextOnePrompt) is { } text)
+                    Report(await _shell.SendTextAsync(text, new[] { peer.DeviceId }));
+            }, peer.CanSendFile),
+            Ui.Button(Strings.BtnSendClipboardOne, () => _shell.SendClipboardTo(peer), peer.CanSendFile),
             Ui.Button(Strings.BtnSendFiles, async () =>
             {
                 var files = await Ui.PickFilesAsync(this, Strings.FilePickTitle);
@@ -187,11 +193,11 @@ internal sealed class MainWindow : Window
     private static List<string> DroppedPaths(DragEventArgs e) =>
         e.DataTransfer.TryGetFiles()?.Select(f => f.TryGetLocalPath()).OfType<string>().ToList() ?? new List<string>();
 
+    /// <summary>Top "发送文字…": typed text to every device online now.</summary>
     private async Task SendTextAsync()
     {
-        if (await Ui.PromptAsync(this, MacStrings.SendText, MacStrings.SendTextPrompt) is not { Length: > 0 } text) return;
-        var (result, error) = await _shell.CallAsync(a => a.ClipSend(ClipText.ToCore(text)));
-        Report(error ?? (result!.Sent.Count > 0 ? Strings.SendNowDone : Strings.SendNowNoPeers));
+        if (await Ui.PromptAsync(this, Strings.SendTextAllTitle, Strings.SendTextAllPrompt) is { } text)
+            Report(await _shell.SendTextAsync(text, null));
     }
 
     // ---- inbox ---------------------------------------------------------------------------
@@ -258,6 +264,11 @@ internal sealed class MainWindow : Window
         {
             if ((autoStart.IsChecked ?? false) != _shell.AutoStartEnabled) Report(await _shell.SetAutoStartAsync(autoStart.IsChecked ?? false));
         };
+        var notifications = new ToggleSwitch { IsChecked = _shell.Prefs.Notifications, OnContent = "", OffContent = "" };
+        notifications.IsCheckedChanged += (_, _) =>
+        {
+            if ((notifications.IsChecked ?? false) != _shell.Prefs.Notifications) _shell.SetNotifications(notifications.IsChecked ?? false);
+        };
         var download = Ui.Dim(s.DownloadDir);
         var chooseDir = Ui.Button(MacStrings.SettingsChooseFolder, async () =>
         {
@@ -278,6 +289,7 @@ internal sealed class MainWindow : Window
             Ui.Card(Ui.Column(10,
                 Ui.Row(sync, Ui.Column(2, Ui.Text(Strings.SettingsSync), Ui.Dim(Strings.SettingsSyncHint))),
                 Ui.Row(autoStart, Ui.Text(MacStrings.SettingsAutoStart).With(t => t.VerticalAlignment = VerticalAlignment.Center)),
+                Ui.Row(notifications, Ui.Column(2, Ui.Text(Strings.SettingsNotifications), Ui.Dim(Strings.SettingsNotificationsHint))),
                 Ui.Column(4, Ui.Text(Strings.SettingsDownloadDir), Ui.Row(download, chooseDir)))),
             Ui.Card(Ui.Column(8,
                 Ui.Text(Strings.SettingsUpdateTitle, 14, FontWeight.SemiBold),

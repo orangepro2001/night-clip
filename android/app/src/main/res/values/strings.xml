@@ -68,7 +68,7 @@
     <!-- Devices -->
     <string name="send_clipboard">发送剪贴板</string>
     <string name="pair_new_device">配对新设备</string>
-    <string name="send_text_label">输入要发送的文字</string>
+    <string name="send_text_label">输入要发送的文字（发给所有在线设备）</string>
     <string name="paired_devices">已配对的设备</string>
     <string name="no_devices_title">还没有设备</string>
     <string name="no_devices_hint">还没有配对设备。请先在电脑上的 ClipBridge 里点“配对新设备”，再在这里扫码。</string>
@@ -311,4 +311,10 @@
     <string name="autofill_save_update_button">更新密码</string>
     <string name="autofill_save_as_new">另存为新条目</string>
     <string name="autofill_save_new_hint">用户名和网址不会离开本机。</string>
+    <string name="settings_notifications">通知</string>
+    <string name="settings_notifications_switch">显示通知</string>
+    <string name="settings_notifications_hint">关闭后不再弹出收到内容、文件和更新的通知；内容仍会进收件箱。实时模式运行时的常驻通知是系统要求，无法关闭。</string>
+    <string name="send_text_one">发送文字</string>
+    <string name="send_text_to_title">发送文字给 %1$s</string>
+    <string name="send_no_online">没有在线的设备，未发送。可以在设备卡片上单独发送（离线设备会在上线后收到）。</string>
 </resources>

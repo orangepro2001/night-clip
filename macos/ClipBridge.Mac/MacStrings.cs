@@ -23,7 +23,5 @@ internal static class MacStrings
     public const string SettingsChooseFolder = "选择…";
     public const string KeyStoreFailedTitle = "无法读取数据库密钥";
     public const string DropHere = "把文件拖到设备上即可发送";
-    public const string SendText = "发送文字";
-    public const string SendTextPrompt = "输入要发送给所有设备的文字";
     public const string ModeLabel = "收到内容时";
 }
