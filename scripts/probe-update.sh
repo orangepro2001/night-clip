@@ -8,7 +8,7 @@
 #
 # one line per platform. Read-only: nothing is published and no token is sent.
 #
-#   scripts/probe-update.sh [-u URL] [-c INSTALLED_CODE] [-p android|windows|all] [-o DIR]
+#   scripts/probe-update.sh [-u URL] [-c INSTALLED_CODE] [-p android|windows|macos|all] [-o DIR]
 #
 #   -u URL   update service base URL (default: CB_UPDATE_URL from release.local.env)
 #   -c CODE  versionCode to pretend to have installed (default 1)
@@ -33,7 +33,7 @@ while getopts "u:c:p:o:" opt; do
   esac
 done
 [ -n "$url" ] || { echo "no update URL: pass -u or set CB_UPDATE_URL in release.local.env" >&2; exit 2; }
-case "$platform" in android|windows|all) ;; *) echo "-p must be android, windows or all" >&2; exit 2 ;; esac
+case "$platform" in android|windows|macos|all) ;; *) echo "-p must be android, windows, macos or all" >&2; exit 2 ;; esac
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -81,7 +81,7 @@ func main() {
 	installed, err := strconv.ParseInt(os.Args[2], 10, 64)
 	check(err)
 	out := os.Args[4]
-	platforms := []string{update.PlatformAndroid, update.PlatformWindows}
+	platforms := []string{update.PlatformAndroid, update.PlatformWindows, update.PlatformMacOS}
 	if os.Args[3] != "all" {
 		platforms = []string{os.Args[3]}
 	}

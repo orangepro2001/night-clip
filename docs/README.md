@@ -89,6 +89,7 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | [release-runbook.md](release-runbook.md) | **发版操作说明**：预检、发布到 release-publish、桥接旧源、真机验证、常见问题 |
 | [release-publish-integration.md](release-publish-integration.md) | 接入本机 release-publish 的可复用经验（决策、SDK 缺口、迁移、测试、清单） |
 | [handoff-2026-10-28-release-publish.md](handoff-2026-10-28-release-publish.md) | 更新分发迁移的交接与上下文恢复 |
+| [handoff-2026-10-28-macos.md](handoff-2026-10-28-macos.md) | macOS 客户端：架构（共用 Windows 逻辑层）、Linux 上构建/发布、部署到 Mac、验证清单、限制 |
 | [handoff-2026-10-28-android-media-send.md](handoff-2026-10-28-android-media-send.md) | Android 发送图片/视频与拍照并发送：行为、改动、验证、待真机确认 |
 | [ops-python-native-memory-bloat.md](ops-python-native-memory-bloat.md) | 运维记录：Python + 原生库常驻进程的 glibc arena 内存膨胀（7.8 GiB → 5.1 GiB），诊断方法与陷阱 |
 | [../HANDOFF-20261027-0835.md](../HANDOFF-20261027-0835.md) | **最新交接快照**：写前 begin_apply 剪贴板回声修复、0.1.76 发布 |
@@ -114,7 +115,7 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | [vault-api.md](vault-api.md) | **密码库门面接口**：`vault.*` 方法、错误码、同步协议与壳层规则 |
 | [adr/007-password-vault.md](adr/007-password-vault.md) | **密码库决策**：KDBX 4、本机加密、经 tailnet 在已配对设备间自动同步；每台完整副本 |
 | [plan-auto-broadcast.md](plan-auto-broadcast.md) | **计划**：复制即自动广播到所有已配对设备（可行性、Android 限制、分阶段方案）与 Syncthing 评估 |
-| [plan-macos.md](plan-macos.md) | **计划（未开工）**：macOS 端——功能分级（完整/受限/难以做到）、UI 选型（SwiftUI 单独一份 vs Avalonia）、核心改动、签名与自更新、分阶段工期、待决策问题 |
+| [plan-macos.md](plan-macos.md) | **计划（路线 A 已实施，见 handoff-2026-10-28-macos.md）**：macOS 端——功能分级（完整/受限/难以做到）、UI 选型（SwiftUI 单独一份 vs Avalonia）、核心改动、签名与自更新、分阶段工期、待决策问题 |
 | [plan-android-background-read.md](plan-android-background-read.md) | **计划与实施记录**：Android 后台读取剪贴板（悬浮窗取焦 + `READ_LOGS`，ClipCascade 做法） |
 | [schemas/event.schema.json](schemas/event.schema.json) | 事件信封 JSON Schema |
 | [adr/005-go-core-and-tailnet-p2p.md](adr/005-go-core-and-tailnet-p2p.md) | **当前核心决策** |

@@ -109,3 +109,7 @@ rm -rf "$tmp"
 - 不要在生产数据目录上运行 `relhub keys rotate`，不要动 `go-nx` 等别的应用。
 - 不要为这个项目新增 `tailscale serve` 路径；不要对 serve 用 `reset`。
 - 签名私钥不进仓库、不进 CI。`~/backups/release-publish-keys/` 和 `~/backups/clipbridge-keys/` 请另存一份到本机之外。
+
+## 附：macOS（2026-10-28 起）
+
+`scripts/release-local.sh` 的 `--platform` 多了 `macos`，`all` 现在是 android + windows + macos，全部在 Linux 上构建（`make dist-macos`，需要 zig 和 rcodesign）。验证用 `scripts/probe-update.sh -p macos`。细节见 [handoff-2026-10-28-macos.md](handoff-2026-10-28-macos.md)。
