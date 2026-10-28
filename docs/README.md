@@ -86,6 +86,10 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | --- | --- |
 | [user-guide.md](user-guide.md) | **使用说明书**：现在能做什么、安装、界面、更新、排错、计划中的用法 |
 | [update.md](update.md) | 自动更新与本机分发：信任模型、发布流程 |
+| [release-runbook.md](release-runbook.md) | **发版操作说明**：预检、发布到 release-publish、桥接旧源、真机验证、常见问题 |
+| [release-publish-integration.md](release-publish-integration.md) | 接入本机 release-publish 的可复用经验（决策、SDK 缺口、迁移、测试、清单） |
+| [handoff-2026-10-28-release-publish.md](handoff-2026-10-28-release-publish.md) | 更新分发迁移的交接与上下文恢复 |
+| [ops-python-native-memory-bloat.md](ops-python-native-memory-bloat.md) | 运维记录：Python + 原生库常驻进程的 glibc arena 内存膨胀（7.8 GiB → 5.1 GiB），诊断方法与陷阱 |
 | [../HANDOFF-20261027-0835.md](../HANDOFF-20261027-0835.md) | **最新交接快照**：写前 begin_apply 剪贴板回声修复、0.1.76 发布 |
 | [../HANDOFF-20261027-0805.md](../HANDOFF-20261027-0805.md) | 上一轮快照：Android 底部导航 inset 修复、0.1.74 发布 |
 | [../HANDOFF-20261027-0745.md](../HANDOFF-20261027-0745.md) | 更早快照：Android/Windows 紧凑专业工具风 UI、0.1.73 发布 |
