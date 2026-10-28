@@ -90,6 +90,8 @@ public class CoreEventTests
         var s = Assert.IsType<PeerStateEvent>(P("{\"type\":\"peer.state\",\"device_id\":\"dev_a\",\"state\":\"connected\"}"));
         Assert.Equal("connected", s.State);
         Assert.Equal("Pixel", Assert.IsType<PeerRevokedEvent>(P("{\"type\":\"peer.revoked\",\"device_id\":\"d\",\"name\":\"Pixel\"}")).Name);
+        var intro = Assert.IsType<PeerIntroducedEvent>(P("{\"type\":\"peer.introduced\",\"device_id\":\"d\",\"name\":\"Mac\",\"via_name\":\"PC\"}"));
+        Assert.Equal(("d", "Mac", "PC"), (intro.DeviceId, intro.Name, intro.ViaName));
         Assert.Equal(2, Assert.IsType<OutboxExpiredEvent>(P("{\"type\":\"outbox.expired\",\"count\":2}")).Count);
         var a = Assert.IsType<ClipAckEvent>(P("{\"type\":\"clip.ack\",\"event_id\":\"e\",\"result\":\"ignored\",\"reason\":\"user_dismissed\"}"));
         Assert.Equal("ignored", a.Result);

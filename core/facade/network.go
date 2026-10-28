@@ -13,6 +13,7 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 
 	"nightclip/core/clip"
+	"nightclip/core/intro"
 	"nightclip/core/notes"
 	"nightclip/core/pairing"
 	"nightclip/core/peer"
@@ -30,6 +31,8 @@ type netState struct {
 	sync *vsync.Service
 	// notes is the notes module; its sync routes live on the same engine as the vault's.
 	notes *notes.Service
+	// intro shares our paired devices with each peer that connects (trust introductions).
+	intro *intro.Service
 
 	joinMu sync.Mutex
 	joins  map[string]context.CancelFunc
@@ -55,6 +58,9 @@ func (h handler) OnEvent(peerID string, env *proto.Envelope) {
 	case proto.KindFile:
 		n.xfer.OnOffer(peerID, env)
 	case proto.KindControl:
+		if n.intro.OnControl(peerID, env) {
+			return
+		}
 		n.xfer.OnControl(peerID, env)
 	}
 }
@@ -72,6 +78,7 @@ func (h handler) OnPeerState(peerID, state string) {
 	if n == nil {
 		return
 	}
+	n.intro.OnPeerState(peerID, state)
 	if n.sync != nil {
 		n.sync.OnPeerState(peerID, state)
 	}
@@ -103,6 +110,7 @@ func (c *Core) startNetwork(cfg Config) (*netState, error) {
 		Handler: handler{c}, Emit: c.emitNet, Hooks: n.hooks, Timing: n.timing,
 	})
 	n.pair = pairing.NewManager(n.eng, c.db, c.id, c.emitNet, nil, n.pairT)
+	n.intro = intro.New(n.eng, c.db, c.id.DeviceID, c.emitNet, nil)
 	n.clip = clip.New(n.eng, c.db, c.emitNet, nil)
 	n.xfer = xfer.New(xfer.Config{
 		Engine: n.eng, DB: c.db, DataDir: cfg.DataDir, Platform: cfg.Platform, Emit: c.emitNet, Timing: n.xferT,
@@ -324,7 +332,7 @@ func orEmpty[T any](in []T) []T {
 // ---- settings ------------------------------------------------------------------
 
 var settingKeys = []string{settingVaultAutoLock, settingVaultClipClear, clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingSensitiveDetection, clip.SettingApplyMode, clip.SettingPausedUntil,
-	xfer.SettingDownloadDir, xfer.SettingMaxFileBytes}
+	xfer.SettingDownloadDir, xfer.SettingMaxFileBytes, intro.SettingTrustIntroductions}
 
 func isFileSetting(key string) bool {
 	return key == xfer.SettingDownloadDir || key == xfer.SettingMaxFileBytes
@@ -341,6 +349,8 @@ func (c *Core) settingValue(n *netState, key string) string {
 		return n.xfer.DownloadDir()
 	case xfer.SettingMaxFileBytes:
 		return strconv.FormatInt(n.xfer.MaxFileBytes(), 10)
+	case intro.SettingTrustIntroductions:
+		return n.intro.Setting()
 	}
 	return n.clip.Setting(key)
 }
@@ -351,6 +361,9 @@ func validateSetting(key, value string) error {
 	}
 	if isFileSetting(key) {
 		return xfer.ValidateSetting(key, value)
+	}
+	if key == intro.SettingTrustIntroductions {
+		return intro.ValidateSetting(value)
 	}
 	return clip.ValidateSetting(key, value)
 }

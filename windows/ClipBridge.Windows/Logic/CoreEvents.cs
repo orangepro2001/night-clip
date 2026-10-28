@@ -30,6 +30,14 @@ public sealed record PeerStateEvent : CoreEvent
     public string State { get; init; } = "";
 }
 
+/// <summary>A paired device vouched for another one, which is now paired here too (core/intro).</summary>
+public sealed record PeerIntroducedEvent : CoreEvent
+{
+    public string DeviceId { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string ViaName { get; init; } = "";
+}
+
 public sealed record PeerRevokedEvent : CoreEvent
 {
     public string DeviceId { get; init; } = "";
@@ -208,6 +216,10 @@ public static class CoreEventParser
                 break;
             case "peer.state":
                 ev = new PeerStateEvent { DeviceId = Id("device_id"), State = Id("state") };
+                id = Id("device_id");
+                break;
+            case "peer.introduced":
+                ev = new PeerIntroducedEvent { DeviceId = Id("device_id"), Name = Id("name"), ViaName = Id("via_name") };
                 id = Id("device_id");
                 break;
             case "peer.revoked":

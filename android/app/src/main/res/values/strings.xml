@@ -331,4 +331,6 @@
     <string name="image_gone">这张图片已经不在了（关闭过预览，或应用重启过）。</string>
     <string name="notif_image_title">收到图片：%1$s</string>
     <string name="notif_image_text">点开预览，复制或保存到你选的位置。</string>
+    <string name="notif_peer_introduced_title">已自动信任新设备</string>
+    <string name="notif_peer_introduced_text">%2$s 介绍了 %1$s，已把它加为已配对设备。不认识的话，请在设备页解除配对。</string>
 </resources>

@@ -42,6 +42,10 @@ class CoreEventTest {
     fun peerEvents() {
         assertEquals(CoreEvent.PeerState("dev_a", "connected"), parse<CoreEvent.PeerState>("""{"type":"peer.state","device_id":"dev_a","state":"connected"}"""))
         assertEquals(CoreEvent.PeerRevoked("dev_a", "PC"), parse<CoreEvent.PeerRevoked>("""{"type":"peer.revoked","device_id":"dev_a","name":"PC"}"""))
+        assertEquals(
+            CoreEvent.PeerIntroduced("dev_c", "Mac", "PC"),
+            parse<CoreEvent.PeerIntroduced>("""{"type":"peer.introduced","device_id":"dev_c","name":"Mac","via_name":"PC","via_device_id":"dev_a"}"""),
+        )
     }
 
     @Test

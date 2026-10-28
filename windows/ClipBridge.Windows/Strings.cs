@@ -67,6 +67,8 @@ public static partial class Strings
     public const string ImageCopied = "图片已复制到剪贴板，可以直接粘贴。";
     public const string ImageCopyFailed = "复制失败：剪贴板被其他程序占用，或图片无法读取。";
     public const string ImageLoadFailed = "无法显示预览（图片格式不受支持或文件已损坏）。";
+    public const string PeerIntroducedTitle = "已自动信任新设备";
+    public static string PeerIntroducedText(string name, string via) => $"{via} 介绍了 {name}，已把它加为已配对设备。不认识的话，请在设备页解除配对。";
     public const string SendNoOnline = "没有在线的设备，未发送。可以在设备上单独发送（离线设备会在上线后收到）。";
     public const string BtnSendText = "发送文字…";
     public const string BtnSendClipboardOne = "发送剪贴板";

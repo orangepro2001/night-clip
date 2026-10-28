@@ -186,6 +186,11 @@ internal sealed partial class MacController : IDisposable
                 case PeerStateEvent:
                     _ = _peersReload.RunAsync();
                     break;
+                case PeerIntroducedEvent pi:
+                    Notify(Strings.PeerIntroducedTitle, Strings.PeerIntroducedText(pi.Name.Length > 0 ? pi.Name : pi.DeviceId,
+                        pi.ViaName.Length > 0 ? pi.ViaName : Strings.Unknown));
+                    _ = _peersReload.RunAsync();
+                    break;
                 case PeerRevokedEvent r:
                     Notify(Strings.PeerRevokedTitle, Strings.PeerRevokedText(r.Name.Length > 0 ? r.Name : r.DeviceId));
                     _ = _peersReload.RunAsync();

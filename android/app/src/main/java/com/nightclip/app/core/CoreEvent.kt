@@ -19,6 +19,9 @@ sealed interface CoreEvent {
     data class PeerState(val deviceId: String, val state: String) : CoreEvent { override val type = "peer.state" }
     data class PeerRevoked(val deviceId: String, val name: String) : CoreEvent { override val type = "peer.revoked" }
 
+    /** A paired device vouched for another one, which is now paired here too (core/intro). */
+    data class PeerIntroduced(val deviceId: String, val name: String, val viaName: String) : CoreEvent { override val type = "peer.introduced" }
+
     data class ClipReceived(
         val eventId: String,
         val from: String,
@@ -167,6 +170,7 @@ sealed interface CoreEvent {
             "core.warning" -> CoreWarning(o.optString("code"))
             "peer.state" -> PeerState(o.optString("device_id"), o.optString("state"))
             "peer.revoked" -> PeerRevoked(o.optString("device_id"), o.optString("name"))
+            "peer.introduced" -> PeerIntroduced(o.optString("device_id"), o.optString("name"), o.optString("via_name"))
             "clip.received" -> ClipReceived(
                 eventId = o.optString("event_id"),
                 from = o.optString("from"),

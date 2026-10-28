@@ -59,7 +59,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun onEvent(ev: CoreEvent) {
         when (ev) {
-            is CoreEvent.PeerState, is CoreEvent.PeerRevoked, is CoreEvent.CoreStarted, is CoreEvent.OutboxExpired -> refreshPeers()
+            is CoreEvent.PeerState, is CoreEvent.PeerRevoked, is CoreEvent.PeerIntroduced, is CoreEvent.CoreStarted, is CoreEvent.OutboxExpired -> refreshPeers()
             is CoreEvent.PairResult -> if (ev.state == "accepted") refreshPeers()
             is CoreEvent.FileOffered, is CoreEvent.FileState, is CoreEvent.FileProgress, is CoreEvent.FileDone, is CoreEvent.FileFailed -> {
                 _transfers.value = TransferReducer.apply(_transfers.value, ev)

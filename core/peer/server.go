@@ -278,7 +278,9 @@ func (e *Engine) authenticate(w http.ResponseWriter, r *http.Request) (Caller, b
 		writeJSONError(w, http.StatusServiceUnavailable, proto.CodeDBUnavailable, "temporarily unavailable")
 		return Caller{}, false
 	}
-	if found && p.State == "paired" {
+	// The pinned fingerprint fixes the certificate; its key must also be the one the device id was
+	// derived from (a record that came by introduction carries the introducer's word for the id).
+	if found && p.State == "paired" && identity.DeviceID(r.TLS.PeerCertificates[0].RawSubjectPublicKeyInfo) == p.DeviceID {
 		caller.Peer = &p
 	}
 	return caller, true
