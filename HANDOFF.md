@@ -77,7 +77,7 @@ cd peer && WINEDEBUG=-all WINEPREFIX=$HOME/.wine-clipbridge WINEDLLOVERRIDES="ms
 | `clip` | 文本规范化、回声抑制、敏感识别、策略、历史 | 17 |
 | `xfer` | 文件传输（见 api-spec §5.4） | 26 |
 | `pipe` + `cli` + `cmd/cbridge` | 本地控制通道与命令行 | 9 + 9 |
-| `update` + `update/updatetest` | release-publish 客户端（SDK + 验签/重定向/卡死/响应体保护）、管理器、假服务端；对真实 `relhub` 的集成测试（没有二进制时跳过） | 29 |
+| `update` + `update/updatetest` | release-publish 客户端（SDK + 验签/重定向/卡死/响应体保护）、管理器、假服务端；对真实 `relhub` 的集成测试（没有二进制时跳过） | 30 |
 | `facade` | 全部方法与事件；事件顺序保证 `core.started` 在先 | 32 |
 | `internal/testnet` | 测试用的“多台真实设备”夹具（仅 _test 使用） | — |
 | `cmd/cbcore-dll`、`mobile` | C ABI / gomobile 入口 | ABI 冒烟 + Wine |
