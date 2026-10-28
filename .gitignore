@@ -21,3 +21,8 @@ release.local.env
 
 # probe build output
 tools/clipboard-probes/out/
+
+# macOS spike build output
+macos/out/
+macos/**/bin/
+macos/**/obj/

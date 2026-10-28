@@ -1,0 +1,25 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ClipBridge.MacSpike.App"
+             Name="ClipBridge"
+             RequestedThemeVariant="Default">
+  <Application.Styles>
+    <DevolutionsMacOsTheme />
+  </Application.Styles>
+
+  <!-- Menu-bar (NSStatusItem) icon with a native menu. -->
+  <TrayIcon.Icons>
+    <TrayIcons>
+      <TrayIcon Icon="/Assets/tray.png" ToolTipText="ClipBridge">
+        <TrayIcon.Menu>
+          <NativeMenu>
+            <NativeMenuItem Header="显示窗口" Click="OnShow" />
+            <NativeMenuItem Header="发送剪贴板" Click="OnSendClipboard" />
+            <NativeMenuItemSeparator />
+            <NativeMenuItem Header="退出" Click="OnQuit" />
+          </NativeMenu>
+        </TrayIcon.Menu>
+      </TrayIcon>
+    </TrayIcons>
+  </TrayIcon.Icons>
+</Application>

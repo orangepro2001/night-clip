@@ -115,6 +115,37 @@
 - **结论：** macOS 上用 Devolutions 主题能做到「看起来像」，但不是 100%。这款应用主要是菜单栏加几个简单窗口，用到的控件大多在已完成的列表里，风险可控。
 - **验证办法：** 用这个主题做一个示例窗口，包含设备列表、按钮、开关、文本框和菜单栏图标，放到用户的 M1 上看，再决定是否继续。
 
+### 2.4 最小验证（2026-10-28，在 Linux 上已构建，**Mac 上尚未运行**）
+
+**工具**：装在用户目录，不改动系统。
+- zig 0.17.0：`~/.local/opt/zig-x86_64-linux-0.17.0`，链接到 `~/.local/bin/zig`。
+- rcodesign 0.29.0：`~/.local/opt/apple-codesign-0.29.0`，链接到 `~/.local/bin/rcodesign`。
+- 两者都对照官方发布的 sha256 校验过。
+
+**构建**：一条命令 `macos/build-spike.sh`，产物是 `macos/out/ClipBridgeSpike.zip`，解压后 131 MB，未裁剪。
+
+| 步骤 | 结果 |
+| --- | --- |
+| Go 核心编成 darwin/arm64 动态库 | 成功。只用 zig 会因为找不到 CoreFoundation、Security、libresolv 而链接失败。解决办法是 `macos/sdk-stubs/` 里的三个 `.tbd` 存根，只列出 Go 标准库实际导入的符号（从 GOROOT 的 `cgo_import_dynamic` 生成），不需要苹果 SDK。产物检查过：链接这四个系统库，5 个 `cb_*` 都已导出，带链接器生成的 ad-hoc 签名，最低系统为 13.0 |
+| Avalonia 12.1.2 + `Devolutions.AvaloniaTheme.MacOS` 2026.10.13 | `dotnet publish -r osx-arm64 --self-contained` 在 Linux 上一次编过 |
+| 组装 `.app`、ad-hoc 签名 | 所有 Mach-O 文件和主程序都已签名。**遗留问题**：.NET 的托管 dll 放在 `Contents/MacOS/` 下，rcodesign 不会把它们封进签名（`CodeResources` 里没有这些 dll）。对「去掉隔离属性后直接运行」应无影响，但 `codesign --verify --deep` 和 Gatekeeper 评估会不通过。正式版要调整包结构，把托管文件移出 `Contents/MacOS`，或改用别的布局，再验证 |
+
+**示例应用验证什么**（`macos/ClipBridge.MacSpike`，用完即弃）：
+- **主题外观**：列表、按钮、复选框、开关、下拉框、文本框、明暗模式。
+- **原生集成**：
+  - 菜单栏图标，带原生菜单；
+  - 顶部全局菜单；
+  - 关窗口后应用留在菜单栏。
+- **核心**：
+  - 加载 dylib，调用 `version`；
+  - 用临时目录和随机密钥执行 `cb_init`，再调用 `identity.get`，以此验证 SQLite、加密和身份在 macOS 上能用。平台暂时传 `windows`，原因见 §4。
+- **剪贴板**：每 0.5 秒读一次 `NSPasteboard.changeCount`，有变化就读文本，用来观察有没有隐私弹窗。
+- **日志**：结果同时写入 `~/Library/Logs/ClipBridgeSpike.log`。
+
+**在 Mac 上的运行方法**：
+- 如果经浏览器下载，先执行 `xattr -cr ClipBridgeSpike.app` 去掉隔离属性。经 `scp` 传过去则没有隔离属性。
+- 然后双击打开。
+
 ## 3. 功能移植分级
 
 依据：Windows 壳的功能清单，以及 Android 独有的功能。

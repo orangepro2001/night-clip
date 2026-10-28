@@ -1,0 +1,62 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ClipBridge.MacSpike.MainWindow"
+        Title="ClipBridge（macOS 验证版）"
+        Width="720" Height="560" MinWidth="520" MinHeight="420"
+        Icon="/Assets/icon.png">
+  <NativeMenu.Menu>
+    <NativeMenu>
+      <NativeMenuItem Header="设备">
+        <NativeMenu>
+          <NativeMenuItem Header="配对新设备…" Gesture="Cmd+N" />
+          <NativeMenuItem Header="发送剪贴板" Gesture="Cmd+Shift+V" Click="OnSendMenu" />
+        </NativeMenu>
+      </NativeMenuItem>
+    </NativeMenu>
+  </NativeMenu.Menu>
+
+  <DockPanel Margin="16">
+    <TextBlock DockPanel.Dock="Top" Text="设备" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8" />
+
+    <Border DockPanel.Dock="Bottom" Padding="8" Margin="0,12,0,0" BorderThickness="1" CornerRadius="6"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+      <StackPanel Spacing="4">
+        <TextBlock x:Name="CoreStatus" Text="核心：未加载" TextWrapping="Wrap" />
+        <TextBlock x:Name="ClipStatus" Text="剪贴板：等待变化" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <StackPanel DockPanel.Dock="Right" Width="220" Spacing="10" Margin="12,0,0,0">
+      <Button Content="发送剪贴板" Click="OnSend" HorizontalAlignment="Stretch" />
+      <Button Content="发送文件…" HorizontalAlignment="Stretch" />
+      <CheckBox Content="复制后自动发送" IsChecked="True" />
+      <ToggleSwitch OnContent="接收后写入剪贴板" OffContent="接收后只通知" IsChecked="True" />
+      <ComboBox SelectedIndex="0" HorizontalAlignment="Stretch">
+        <ComboBoxItem Content="发给所有已连接设备" />
+        <ComboBoxItem Content="只发给 ORANGEMAINPC" />
+      </ComboBox>
+      <TextBox x:Name="Note" Watermark="输入要发送的文本" AcceptsReturn="True" Height="80" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <ListBox x:Name="Devices" SelectedIndex="0">
+      <ListBoxItem>
+        <StackPanel>
+          <TextBlock Text="ORANGEMAINPC" FontWeight="SemiBold" />
+          <TextBlock Text="Windows · 已连接" Opacity="0.7" />
+        </StackPanel>
+      </ListBoxItem>
+      <ListBoxItem>
+        <StackPanel>
+          <TextBlock Text="MINIPC-XOH4T" FontWeight="SemiBold" />
+          <TextBlock Text="Windows · 已连接" Opacity="0.7" />
+        </StackPanel>
+      </ListBoxItem>
+      <ListBoxItem>
+        <StackPanel>
+          <TextBlock Text="Pixel" FontWeight="SemiBold" />
+          <TextBlock Text="Android · 离线" Opacity="0.7" />
+        </StackPanel>
+      </ListBoxItem>
+    </ListBox>
+  </DockPanel>
+</Window>
