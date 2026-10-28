@@ -19,7 +19,7 @@
 | 项目 | 值 |
 | --- | --- |
 | 对外地址（仅 tailnet） | `https://tony-ai-pc-1.tail9f7f1f.ts.net/release`；后端 `127.0.0.1:18790`；tailscale 会剥掉 `/release` 前缀，服务同时兼容有无前缀 |
-| 运行 | systemd 用户服务 `release-publish.service`（linger）；程序 `~/.local/bin/relhub` |
+| 运行 | 2026-10-28 先是 systemd 用户服务 `release-publish.service`，同日由 release-publish 项目改为 podman 容器（仍监听回环 `127.0.0.1:18790`）；以它自己的文档为准。命令行仍是 `~/.local/bin/relhub` |
 | 签名公钥（要编译进应用） | `k4thZR+OVYSGAT/9j5F39csgGqTL0t3X6GYdNCmuRI8=`（`relhub keys` 查看） |
 | 读 / 写 | 读取（检查、下载）不需要 token，边界是 tailnet；写入需要 Bearer token。本机 CLI 自动读管理员 token（`~/.local/share/release-publish/admin.token`）；CI 或别的机器用**按应用限定**的 token：`relhub token create -name ci-<app> -app <app>` |
 | 共用 | 同一个服务托管多个应用。接入时 `relhub list` 已经能看到别的项目（例如 `go-nx`）。**只创建、导入、发布、撤回你自己的应用**；服务的 `serve` 路径属于 release-publish 项目，你的应用不新增路径 |
@@ -192,7 +192,7 @@ SDK 做得好、不用重复造的：按清单**本地重新判断**是否更新
 ## 8. 下一个应用的接入清单
 
 **服务侧**
-- [ ] `systemctl --user status release-publish`；`curl https://<本机>.ts.net/release/healthz`
+- [ ] `curl https://<本机>.ts.net/release/healthz`（服务怎么跑见 release-publish 项目文档）
 - [ ] 定好 app id / platform / versionCode 规则（§1）；`relhub app create -id … -name …`
 - [ ] 有旧版本要保留：`relhub import … -dry-run`，核对后正式导入，核对 SHA-256
 - [ ] CI 或别机器发布：`relhub token create -name ci-<app> -app <app>`（只显示一次，存进密钥库）

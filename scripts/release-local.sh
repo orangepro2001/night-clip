@@ -55,7 +55,7 @@ fi
 trusted="$(sed -n 's/^[[:space:]]*"\([A-Za-z0-9+\/]\{43\}=\)".*/\1/p' core/update/keys.go)"
 [ -n "$trusted" ] || die "no trusted keys found in core/update/keys.go"
 info="$(curl -fsS --max-time 15 "${CB_UPDATE_URL%/}/v1/info")" \
-  || die "cannot reach the update service at $CB_UPDATE_URL (tailscale serve /release -> 127.0.0.1:18790; systemctl --user status release-publish)"
+  || die "cannot reach the update service at $CB_UPDATE_URL (tailscale serve /release -> 127.0.0.1:18790; is the release-publish service up? see its docs)"
 active="$(printf '%s' "$info" | python3 -c 'import json,sys; print("\n".join(k["publicKey"] for k in json.load(sys.stdin)["keys"] if k["active"]))')"
 [ -n "$active" ] || die "the service at $CB_UPDATE_URL reports no active signing key"
 grep -qxF "$active" <<<"$trusted" \

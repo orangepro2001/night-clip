@@ -4,9 +4,9 @@
 
 ## 0. 一句话状态
 
-**代码、测试、脚本、文档都已完成并提交；生产的 release-publish 里已注册 `clipbridge` 并导入了 0.1.79 之前的历史；但还没有发布新版本，已装的设备仍在走旧源 `/clipbridge`。** 要让设备真正过来，还差一个「桥接版」发布，那一步会让真机收到更新（§3）。
+**0.1.83（versionCode 83）已在 2026-10-28 发布到 release-publish，并已桥接到旧源**：两边是同一份包（android sha256 `862c3418…`、windows `75c17380…`），release-publish 一侧用编译进 App 的公钥验过，旧源一侧用 `cbdist verify` 验过签名、并通过旧的公开地址下载比对了字节。已装的 ≤ 0.1.79 设备会从旧源收到它；装上之后它们只问 release-publish。**还没做的是真机验证**（§3 第 3 条）：目前没有任何设备确认已经更新。
 
-**2026-10-28 用户已批准发布桥接版，第一次尝试 `scripts/release-local.sh` 在构建的 R8 阶段被系统因内存不足中止**（机器上另有一台约 10 GB 的 qemu 虚拟机在跑；中止发生在发布之前，relhub 与仓库都没有变化，`relhub list` 仍只有 0.1.79）。未自动重试；释放内存后按 [release-runbook.md](release-runbook.md) 原样重跑即可。操作步骤（发布、桥接、真机验证、常见问题）都在那份说明里。
+经过：用户批准后第一次构建（0.1.82）在 R8 阶段因系统内存不足被中止（当时有一台约 10 GB 的虚拟机在跑），没有发布任何东西；用户关掉虚拟机后重跑，因提交了文档所以号码是 0.1.83。
 
 ## 1. 做了什么
 
@@ -26,21 +26,21 @@
 | 项目 | 状态 | 证据 / 怎么看 |
 | --- | --- | --- |
 | 仓库 `main` | 代码提交 `31bc6b1`（提交数 81）；本文随后一个提交 | `git log --oneline -3` |
-| 下一次发布的号码 | = 提交数（`git rev-list --count HEAD`）。代码提交 `31bc6b1` 是第 81 个，本文的提交是第 82 个 ⇒ 现在发布就是 **0.1.82（versionCode 82）**；每多一个提交 +1。发布脚本要求工作区干净 | `scripts/version.sh` |
-| 生产 release-publish | `clipbridge`：`android/stable=0.1.79`、`windows/stable=0.1.79`；另有别的项目的应用 `go-nx`（**不是我们的，别动**） | `relhub list` |
-| 旧分发 `clipbridge-dist` | 仍在运行，`/clipbridge` 仍在 `tailscale serve` 上，最新是 0.1.79；不记访问日志 | `systemctl --user status clipbridge-dist`、`tailscale serve status` |
-| 设备 | 都在 0.1.79 或更早，编译着旧公钥和旧地址，**只会问旧源** | — |
+| 下一次发布的号码 | = 提交数（`git rev-list --count HEAD`）。0.1.83 是从第 83 个提交 `714dd83` 发布的；之后每多一个提交 +1（下一个提交之后就是 0.1.84）。发布脚本要求工作区干净 | `scripts/version.sh` |
+| 生产 release-publish | `clipbridge`：`android/stable=0.1.83`、`windows/stable=0.1.83`（2026-10-28 13:07 发布）；服务本身 2026-10-28 13:05 起由另一个会话改成 podman 容器运行（仍是 `127.0.0.1:18790` 和 tailnet `/release`，签名公钥不变），本项目只依赖 URL、公钥和 `relhub` 命令行；另有别的项目的应用 `go-nx`（**不是我们的，别动**） | `relhub list` |
+| 旧分发 `clipbridge-dist` | 仍在运行，`/clipbridge` 仍在 `tailscale serve` 上，最新是 **0.1.83（桥接版）**；不记访问日志 | `systemctl --user status clipbridge-dist`、`tailscale serve status` |
+| 设备 | ≤ 0.1.79 的编译着旧公钥和旧地址，**只会问旧源**，现在能从旧源收到 0.1.83；是否已更新**尚未确认** | 各设备「关于」里的版本号；`relhub stats -app clipbridge` 里出现来自 0.1.83 的检查 |
 | GitHub CI | 推送后再看 | `gh run list --limit 3`（`gh` 已登录 `orangepro2001`） |
 
 ## 3. 待办（按顺序）与需要用户决定的
 
-1. **发布新版本（现在是 0.1.82）到 release-publish。** 不影响任何设备（没有设备读它），可以先做，用来在生产上跑通整条脚本。命令（工作区必须干净、已提交）：
+1. ~~发布新版本到 release-publish~~ **已完成（0.1.83）。**（下面是当时的命令，之后每次发版照用，号码以提交数为准。）**发布新版本到 release-publish。** 不影响任何设备（没有设备读它），可以先做，用来在生产上跑通整条脚本。命令（工作区必须干净、已提交）：
    ```sh
    scripts/release-local.sh --check                       # 预检，只读
    scripts/release-local.sh --notes "更新分发改用本机 release-publish（实时通知、统计、撤回）"
    ```
    约 5 分钟（Gradle + dotnet 构建）。脚本最后用真实核心客户端从公开地址验证。号码一旦占用就不会回来。
-2. **桥接到旧源（需要用户明确同意——这一步会让真机收到更新）。** 同一份包、同一个号码，用旧工具推到旧源，命令见 [update.md §7](update.md#7-从旧分发服务cbdist迁移)。推之前确认第 1 步的验证输出全绿；桥接版链路有错的话，装了它的设备再也收不到更新。
+2. ~~桥接到旧源~~ **已完成（0.1.83，用户批准）。**原说明：**桥接到旧源（需要用户明确同意——这一步会让真机收到更新）。** 同一份包、同一个号码，用旧工具推到旧源，命令见 [update.md §7](update.md#7-从旧分发服务cbdist迁移)。推之前确认第 1 步的验证输出全绿；桥接版链路有错的话，装了它的设备再也收不到更新。
 3. **真机上完整走一遍桥接更新**（Android：通知栏 → 允许安装未知应用 → 安装；Windows：任务栏闪烁 → 点击更新），装好后确认 `relhub stats -app clipbridge` 出现 `checks from stable/<桥接版的号码>`，并再发一个小的下一版验证新通道真的把更新推给了设备（秒级通知）。
 4. 所有设备确认升级后**退役旧源**（update.md §7，几条命令都影响线上，需明确决定）。之后 `~/.config/clipbridge/release-ed25519.key` 和 `scripts/backup-keys.sh` 里的这一项可以去掉。
 5. 把 `~/backups/release-publish-keys/` 另存一份到本机之外（清单签名私钥现在只在 release-publish 里；丢失意味着无法再给已装设备推可验证的更新）。
@@ -54,7 +54,7 @@
 常用命令：
 
 ```sh
-systemctl --user status release-publish            # 服务在不在
+curl -fsS https://<本机>.ts.net/release/healthz    # 服务在不在（它的运行方式由 release-publish 项目决定，目前是容器）
 relhub list                                        # 看所有应用（注意：里面有别人的）
 relhub list -all -app clipbridge -platform android # 我们的版本，含已撤回
 relhub stats -app clipbridge                       # 各已装版本的检查次数

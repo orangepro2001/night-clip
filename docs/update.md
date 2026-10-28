@@ -109,7 +109,7 @@
 
 ```sh
 # 1) release-publish 在跑，且 /release 已在 tailscale serve 上（属于 release-publish 项目，见它的 docs/USAGE.md §1）
-systemctl --user status release-publish
+podman ps --filter name=release-publish      # 2026-10-28 起是容器；以 release-publish 项目的文档为准
 curl -fsS https://<本机>.ts.net/release/healthz
 
 # 2) 应用注册 + 旧版本导入（2026-10-28 完成；重复运行是安全的）

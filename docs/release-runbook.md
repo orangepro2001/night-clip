@@ -99,7 +99,7 @@ rm -rf "$tmp"
 | --- | --- |
 | 预检报 `the service signs with … which core/update/keys.go does not trust` | 服务换过签名密钥。**不要继续发版。** 把新公钥加进 `core/update/keys.go`（保留旧的）并提交后再发，且先让设备装上一个同时信任两把钥匙的版本。 |
 | 预检报 `already has versionCode … or higher` | 这个提交数已经发过。先提交新的内容再发，不要改脚本。 |
-| `cannot reach the update service` | `systemctl --user status release-publish`；`curl -fsS $CB_UPDATE_URL/healthz`；`release.local.env` 里的 `CB_UPDATE_URL` 要是 `https://<本机>.ts.net/release`（注意它会覆盖命令行里同名的环境变量）。 |
+| `cannot reach the update service` | `curl -fsS $CB_UPDATE_URL/healthz`（服务怎么跑由 release-publish 项目决定，目前是容器 `release-publish`，`podman ps` 可看）；`release.local.env` 里的 `CB_UPDATE_URL` 要是 `https://<本机>.ts.net/release`（注意它会覆盖命令行里同名的环境变量）。 |
 | Android 签名与上次不一致 | 脚本钉了签名证书 SHA-256（`~/.config/clipbridge/android-signer.sha256`）。签名不同的 APK 装不上去，检查是不是换了 keystore。 |
 | 构建被杀 / 内存不足 | 见 §1 第 1 条；释放内存后原样重跑。 |
 | 想撤回一个坏版本 | `relhub channel promote` 把渠道指回旧版本，再 `relhub yank`。已升级的设备不会被降级；要让它们换到修复版，必须发更高 `versionCode` 的新版本，必要时 `--force`。 |
