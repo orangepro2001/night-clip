@@ -104,6 +104,17 @@ scripts/probe-update.sh -c <旧号> -p macos         # 像已安装的应用一�
 - **设备的接收模式**：改用单选按钮，不再用下拉框。
 - **新增诊断参数 `--snapshot`**：执行 `open -a ClipBridge --args --snapshot` 后，应用会把四个页面渲染到 `~/Library/Logs/ClipBridge/page-*.png`，不需要屏幕录制权限就能远程检查外观。**注意**：这种自绘截图里，单选、复选和下拉框的「已选中」标记会画在错误的位置（窗口中间会多出一个对勾）。这是截图本身的偏差，选中状态要以真实屏幕为准。
 
+## 4.2 之后的版本
+
+- **0.1.99（三端）**：
+  - 「设置 → 显示通知」开关；
+  - 输入的文字只发给在线设备；
+  - 设备卡片上可以单独发送文字或剪贴板；
+  - Mac 上可以更改接收文件的保存位置（`SettingsModel.UnixPaths`）。
+- **0.1.101（Windows、macOS）**：收到图片后弹出预览窗口（`ImagePreviewWindow`），可以「复制到剪贴板」或「保存到本地」（在资源管理器或 Finder 中显示并选中）。
+  - Mac 上用诊断参数 `--preview-image PATH` 实测过：剪贴板里出现 TIFF、PNG、JPEG 图片，预览窗口渲染正常。
+  - Windows 端只编译通过、单元测试通过，没在真机上跑过。
+
 ## 5. 已知限制和待办
 
 - **托管 dll 没被封进签名**：`codesign --verify --deep --strict` 不通过，只影响 Gatekeeper 评估，不影响运行和自更新。正式修法是调整包的结构（plan §2.4）。
