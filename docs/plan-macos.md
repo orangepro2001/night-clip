@@ -28,6 +28,42 @@
 | 架构 | arm64；Intel 用 `lipo` 合成 universal | 待定 |
 | 签名 | 三选一：ad-hoc、自签证书或 Developer ID（§6） | 待定 |
 
+### 2.1 能不能不在 Mac 上编译（2026-10-28 补充）
+
+用户的 Mac 是 M1、250 GB，希望不在它上面开发。逐层看：
+
+| 部分 | 在 Linux 上交叉编译 | 说明 |
+| --- | --- | --- |
+| Go 核心（纯 Go 部分） | **能**，已实测 | `CGO_ENABLED=0 GOOS=darwin GOARCH=arm64`，Go 链接器会自动给 arm64 程序加 ad-hoc 签名 |
+| Go 核心做成库（`c-archive`/`c-shared`，有 cgo） | **能，要装 zig** | 用 `CC="zig cc -target aarch64-macos"`，纯 C 不依赖 macOS SDK；未实测 |
+| Go 核心做成独立进程，壳经套接字调用 | 能，不需要 cgo | 但现在的控制套接字只开放 15 个方法、没有事件流（`pipe/server.go` 的 `Allowed`），要新开一个全权限通道，有安全代价。不推荐 |
+| SwiftUI 壳 | **不能** | Swift 在 Linux 上没有受支持的 AppKit/SwiftUI 目标 |
+| Avalonia（.NET）壳 | **能** | `dotnet publish -r osx-arm64` 支持在 Linux 上发布；`.app` 只是目录加 `Info.plist`；签名用能在 Linux 上运行的 `rcodesign`（apple-codesign）。未实测 |
+| 纯 Go 调 AppKit（purego/objc，无 cgo） | 能 | 菜单栏、剪贴板这些小功能可以，复杂界面（笔记、密码库）手写 `objc_msgSend` 太费力 |
+
+所以有两条路线：
+
+- **A. Avalonia 壳 + zig 编译核心，全部在 Linux 上构建。** Mac 只用来装和测。
+  - 能直接共用 Windows 的 `Logic/`（约 6.8k 行）和测试；发布流程留在本机。
+  - 代价：
+    - 界面不是 Mac 原生；
+    - 包体积约 60–100 MB；
+    - 钥匙串、剪贴板 `changeCount` 要用 P/Invoke 调系统框架。
+  - 交叉编译不受 Mac 性能影响，**推荐用于这个约束**。
+- **B. SwiftUI 壳，Mac 当远程构建机。**
+  - 只装 Command Line Tools（几 GB，不装完整 Xcode），用 SwiftPM 构建。
+  - 打开「远程登录」后，经 tailscale SSH 由本机驱动构建，也能用 `screencapture` 远程截图。
+  - M1 编一个万行级的 SwiftUI 应用只要一两分钟，性能不是瓶颈。
+  - 缺点：每次发布都要那台 Mac 在线。
+
+两条路线都还要先做半天验证。A 要验证三件事：
+
+1. zig 能编出 darwin 的 Go 动态库；
+2. `dotnet publish osx-arm64` 加 `rcodesign` 签名后，在 M1 上能直接运行；
+3. Avalonia 的托盘和剪贴板在这台 Mac 上能正常工作。
+
+验证要在本机用户目录装 zig 和 rcodesign，需用户同意。
+
 ## 3. 功能移植分级
 
 依据：Windows 壳的功能清单，以及 Android 独有的功能。
