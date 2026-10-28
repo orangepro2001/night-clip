@@ -56,6 +56,14 @@ public static partial class Strings
     public const string SendNowDone = "已发送当前剪贴板内容";
     public const string SendNowNothing = "剪贴板里没有可发送的文本";
     public const string SendNowNoPeers = "没有已配对的设备";
+    public static string ImagePreviewTitle(string from) => $"收到来自 {from} 的图片";
+    public static string ImageSavedAt(string path) => $"已保存到：{path}";
+    public const string BtnCopyImage = "复制到剪贴板";
+    public const string BtnSaveLocal = "保存到本地";
+    public const string BtnSaveLocalTip = "图片已存在接收文件夹里；点这里在资源管理器中显示它。";
+    public const string ImageCopied = "图片已复制到剪贴板，可以直接粘贴。";
+    public const string ImageCopyFailed = "复制失败：剪贴板被其他程序占用，或图片无法读取。";
+    public const string ImageLoadFailed = "无法显示预览（图片格式不受支持或文件已损坏）。";
     public const string SendNoOnline = "没有在线的设备，未发送。可以在设备上单独发送（离线设备会在上线后收到）。";
     public const string BtnSendText = "发送文字…";
     public const string BtnSendClipboardOne = "发送剪贴板";

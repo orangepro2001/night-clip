@@ -340,9 +340,14 @@ internal sealed partial class ShellController : IDisposable
                 break;
             }
             case FileDoneEvent d when d.Direction == "in":
+            {
+                // Images open a preview (copy to clipboard / show in Explorer); other files, or too many previews, a balloon.
+                var from = Transfers.Find(d.TransferId)?.PeerName is { Length: > 0 } n ? n : Strings.Unknown;
+                if (FileDisplay.IsPreviewableImage(d.Name, d.Size) && ImagePreviewWindow.TryOpen(d.Path, d.Name, from)) break;
                 Balloon(Strings.FileDoneTitle, Strings.FileDoneText(FileDisplay.Shorten(d.Name, 60)),
                     () => OpenContainingFolder(d.Path));
                 break;
+            }
             case FileFailedEvent f:
                 Balloon(Strings.FileFailedTitle, ErrorMessages.ForFile(f.Code), () => ShowMainWindow(MainPage.Transfers));
                 break;

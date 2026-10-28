@@ -36,6 +36,26 @@ public static class MacPasteboard
         return string.IsNullOrEmpty(text) ? new PasteRead(PasteReadStatus.Empty, "") : new PasteRead(PasteReadStatus.Ok, text);
     });
 
+    /// <summary>
+    /// Puts the image file on the clipboard as an NSImage (pastes as a picture in other apps, local only).
+    /// Returns the new change count, or null when the file cannot be read as an image.
+    /// </summary>
+    public static uint? WriteImageFile(string path) => ObjC.Pool<uint?>(() =>
+    {
+        var url = ObjC.Send(ObjC.Class("NSURL"), ObjC.Sel("fileURLWithPath:"), ObjC.NSString(path));
+        var image = ObjC.Send(ObjC.Send(ObjC.Class("NSImage"), ObjC.Sel("alloc")), ObjC.Sel("initWithContentsOfURL:"), url);
+        if (image == IntPtr.Zero) return null;
+        try
+        {
+            var pb = General();
+            ObjC.SendLongArg(pb, ObjC.Sel("prepareForNewContentsWithOptions:"), CurrentHostOnly);
+            var items = ObjC.Send(ObjC.Class("NSArray"), ObjC.Sel("arrayWithObject:"), image);
+            if (!ObjC.SendBool(pb, ObjC.Sel("writeObjects:"), items, IntPtr.Zero)) return null;
+            return unchecked((uint)ObjC.SendLong(pb, ObjC.Sel("changeCount")));
+        }
+        finally { ObjC.Send(image, ObjC.Sel("release")); }
+    });
+
     /// <summary>Replaces the clipboard with <paramref name="text"/>; returns the new change count, or null on failure.</summary>
     public static uint? WriteText(string text, bool sensitive) => ObjC.Pool<uint?>(() =>
     {

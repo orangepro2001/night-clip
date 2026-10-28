@@ -368,6 +368,22 @@ internal sealed class MacController : IDisposable
         return error ?? Strings.SentTo(result!.Sent.Count);
     }
 
+    /// <summary>A received image onto the clipboard. Our own write: the poller must not treat it as a copy.</summary>
+    public bool CopyImageFile(string path)
+    {
+        try
+        {
+            if (MacPasteboard.WriteImageFile(path) is not { } change) return false;
+            _ownWriteChange = change;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            MacLog.Error("image copy", ex);
+            return false;
+        }
+    }
+
     /// <summary>A device card's "发送剪贴板": the current clipboard to that device only.</summary>
     public void SendClipboardTo(PeerItem peer) => _clipQueue.Post(() =>
     {
@@ -612,8 +628,13 @@ internal sealed class MacController : IDisposable
                 break;
             }
             case FileDoneEvent d when d.Direction == "in":
+            {
+                // Images open a preview (copy to clipboard / show in Finder); other files, or too many previews, a banner.
+                var from = Transfers.Find(d.TransferId)?.PeerName is { Length: > 0 } n ? n : Strings.Unknown;
+                if (FileDisplay.IsPreviewableImage(d.Name, d.Size) && Views.ImagePreviewWindow.TryOpen(d.Path, d.Name, from)) break;
                 Notify(Strings.FileDoneTitle, Strings.FileDoneText(FileDisplay.Shorten(d.Name, 60)));
                 break;
+            }
             case FileFailedEvent f:
                 Notify(Strings.FileFailedTitle, ErrorMessages.ForFile(f.Code));
                 break;

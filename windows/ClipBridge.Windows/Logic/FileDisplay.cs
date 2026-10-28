@@ -52,6 +52,21 @@ public static class FileDisplay
         return dot > 0 && dot < s.Length - 1 ? s[dot..].ToLowerInvariant() : "";
     }
 
+    private static readonly HashSet<string> PreviewImage = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
+    };
+
+    /// <summary>Received images above this size get no preview window (decoding them costs too much memory).</summary>
+    public const long MaxPreviewBytes = 64L << 20;
+
+    /// <summary>
+    /// A received file that opens the image preview (copy to clipboard / show in folder): an image type
+    /// both desktops decode, and not empty or huge.
+    /// </summary>
+    public static bool IsPreviewableImage(string? name, long size) =>
+        PreviewImage.Contains(Extension(name)) && size > 0 && size <= MaxPreviewBytes;
+
     /// <summary>True for file types Windows runs when opened; the UI asks before opening them.</summary>
     public static bool IsExecutable(string? name) => Executable.Contains(Extension(name));
 

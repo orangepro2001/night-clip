@@ -93,6 +93,33 @@ public sealed partial class App : Application
         if (!args.Contains("--minimized")) ShowMain(null);
         UpdateMenu();
         if (args.Contains("--snapshot")) DispatcherTimer.RunOnce(() => _ = SnapshotPagesAsync(), TimeSpan.FromSeconds(3));
+        if (Array.IndexOf(args, "--preview-image") is var i and >= 0 && i + 1 < args.Length)
+            DispatcherTimer.RunOnce(() => _ = PreviewImageAsync(args[i + 1]), TimeSpan.FromSeconds(2));
+    }
+
+    /// <summary>
+    /// Diagnostics (`--preview-image PATH`): opens the received-image preview for PATH, copies the image to the
+    /// clipboard and renders the window to ~/Library/Logs/ClipBridge/preview.png; results go to the log.
+    /// </summary>
+    private async Task PreviewImageAsync(string path)
+    {
+        var opened = ImagePreviewWindow.TryOpen(path, Path.GetFileName(path), "diagnostics");
+        var copied = _shell?.CopyImageFile(path) ?? false;
+        MacLog.Write($"preview-image opened={opened} copied={copied}");
+        await Task.Delay(800);
+        if (ImagePreviewWindow.Latest is { } w) Render(w, Path.Combine(MacPaths.LogDir, "preview.png"));
+    }
+
+    private static void Render(Window w, string file)
+    {
+        try
+        {
+            var scale = w.RenderScaling;
+            using var bmp = new RenderTargetBitmap(new PixelSize((int)(w.Bounds.Width * scale), (int)(w.Bounds.Height * scale)), new Vector(96 * scale, 96 * scale));
+            bmp.Render(w);
+            bmp.Save(file);
+        }
+        catch (Exception ex) { MacLog.Error("snapshot", ex); }
     }
 
     /// <summary>

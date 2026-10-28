@@ -68,6 +68,20 @@ public class FormattingTests
 public class FileDisplayTests
 {
     [Fact]
+    public void IsPreviewableImage_ByTypeAndSize()
+    {
+        Assert.True(FileDisplay.IsPreviewableImage("IMG_20261028_133012.jpg", 2_000_000));
+        Assert.True(FileDisplay.IsPreviewableImage("截图.PNG", 10));
+        Assert.True(FileDisplay.IsPreviewableImage("a.webp", FileDisplay.MaxPreviewBytes));
+        Assert.False(FileDisplay.IsPreviewableImage("a.webp", FileDisplay.MaxPreviewBytes + 1));
+        Assert.False(FileDisplay.IsPreviewableImage("a.png", 0));
+        Assert.False(FileDisplay.IsPreviewableImage("movie.mp4", 1000));
+        Assert.False(FileDisplay.IsPreviewableImage("photo.heic", 1000));
+        Assert.False(FileDisplay.IsPreviewableImage("evil\u202Egnp.exe", 1000));
+        Assert.False(FileDisplay.IsPreviewableImage(null, 1000));
+    }
+
+    [Fact]
     public void Sanitize_RemovesControlsAndBidiOverrides()
     {
         // U+202E (RLO) makes "evilfdp.exe" render as "evilexe.pdf".
