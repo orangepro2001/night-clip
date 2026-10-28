@@ -320,13 +320,13 @@ NextEvent(timeoutMs: int) -> string                  // 事件 JSON；超时返�
   "port": 47821,
   "app_version_code": 12,
   "app_version_name": "0.1.12",
-  "update_url": "https://…/clipbridge"
+  "update_url": "https://…/release"
 }
 ```
 
 Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传入，核心不落盘。`data_dir` 必须是绝对路径，`db_key_b64` 解码后必须正好 32 字节。
 
-`app_version_code`（安装包的 versionCode，单调递增）与 `update_url`（构建期写入的分发地址，https；仅回环地址允许 http）用于自更新，见 [update.md](update.md)。`app_version_code` 为 0 或未设置（开发构建）、或没有 `update_url`，则自更新关闭。
+`app_version_code`（安装包的 versionCode，单调递增）与 `update_url`（构建期写入的 release-publish 服务基地址，含挂载路径，https；仅回环地址允许 http）用于自更新，见 [update.md](update.md)。`app_version_code` 为 0 或未设置（开发构建）、或没有 `update_url`，则自更新关闭。
 
 ### 7.3 方法
 

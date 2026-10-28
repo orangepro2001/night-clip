@@ -8,6 +8,7 @@ require (
 	github.com/tobischo/gokeepasslib/v3 v3.7.1
 	golang.org/x/mobile v0.0.0-20261011034528-197770444867
 	modernc.org/sqlite v1.61.0
+	relhub v0.0.0
 )
 
 require (
@@ -29,3 +30,5 @@ require (
 )
 
 replace github.com/tobischo/gokeepasslib/v3 => ./third_party/gokeepasslib
+
+replace relhub => ./third_party/relhub

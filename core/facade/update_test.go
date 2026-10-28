@@ -12,46 +12,36 @@ import (
 	"time"
 
 	"nightclip/core/update"
+	"nightclip/core/update/updatetest"
+	"relhub/pkg/relproto"
 )
 
-// updateFixture publishes one windows release signed with a throwaway key,
-// serves it, and points the facade's trust list at that key.
+// updateFixture serves one windows release signed with a throwaway key (a
+// fake release-publish) and points the facade's trust list at that key.
 type updateFixture struct {
 	url  string
 	name string
 	code int64
 	body []byte
+	srv  *updatetest.Server
 }
 
 func newUpdateFixture(t *testing.T, code int64, force bool) *updateFixture {
 	t.Helper()
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	srv := updatetest.New(t)
 	old := updateKeys
-	updateKeys = func() []ed25519.PublicKey { return []ed25519.PublicKey{pub} }
+	updateKeys = func() []ed25519.PublicKey { return []ed25519.PublicKey{srv.PublicKey()} }
 	t.Cleanup(func() { updateKeys = old })
 
 	body := make([]byte, 64_000)
 	for i := range body {
 		body[i] = byte(i * 13)
 	}
-	src := filepath.Join(t.TempDir(), "pkg.zip")
-	if err := os.WriteFile(src, body, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	m, err := update.Publish(update.PublishOptions{
-		Dir: dir, Platform: update.PlatformWindows, Source: src, VersionCode: code,
-		VersionName: "0.1." + string(rune('0'+code%10)), Notes: "hello", Force: force, Key: priv,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := httptest.NewServer(update.NewHandler(dir, ""))
-	t.Cleanup(srv.Close)
-	return &updateFixture{url: srv.URL, name: m.VersionName, code: code, body: body}
+	name := "0.1." + string(rune('0'+code%10))
+	srv.PublishWith(update.PlatformWindows, code, name, body, force, func(m *relproto.Manifest) { m.Notes = "hello" })
+	hs := httptest.NewServer(srv.Handler())
+	t.Cleanup(hs.Close)
+	return &updateFixture{url: hs.URL, name: name, code: code, body: body, srv: srv}
 }
 
 func updateCfg(t *testing.T, dir string, mutate func(map[string]any)) string {
@@ -135,6 +125,15 @@ func TestUpdateCheckDownloadReadyThroughFacade(t *testing.T) {
 	latest := st["latest"].(map[string]any)
 	if latest["version_code"].(float64) != 9 || latest["notes"] != "hello" {
 		t.Fatalf("latest = %v", latest)
+	}
+
+	// The service is told who is asking: the installed version (it counts checks per
+	// version, `relhub stats`) and the app version in the User-Agent (its access log).
+	if got := fx.srv.Checks(); len(got) == 0 || got[0] != 5 {
+		t.Fatalf("installed versionCode sent to the service = %v, want 5 first", got)
+	}
+	if got := fx.srv.Agents(); len(got) == 0 || got[0] != "clipbridge/0.1.5" {
+		t.Fatalf("User-Agent = %v", got)
 	}
 
 	ev := nextEventOfType(t, c, "update.ready")

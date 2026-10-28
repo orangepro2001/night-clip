@@ -2,7 +2,7 @@
 
 > 更新于 2026-10-27（剪贴板回声修复、0.1.76 发布、待真机验证阶段）。读完这一份就能接着干活。
 > **最新一轮的交接快照：[HANDOFF-20261027-0835.md](HANDOFF-20261027-0835.md)**（写前 begin_apply 回声修复、0.1.76 发布）。
-> 用户文档：[docs/user-guide.md](docs/user-guide.md)。设计：[docs/README.md](docs/README.md) → `architecture.md` → `api-spec.md`。更新/发布：[docs/update.md](docs/update.md)。壳层开发指南：[docs/shell-guide.md](docs/shell-guide.md)。
+> 用户文档：[docs/user-guide.md](docs/user-guide.md)。设计：[docs/README.md](docs/README.md) → `architecture.md` → `api-spec.md`。更新/发布：[docs/update.md](docs/update.md)（**2026-10-28 起更新分发改用本机 release-publish**，交接见 [docs/handoff-2026-10-28-release-publish.md](docs/handoff-2026-10-28-release-publish.md)，可复用的接入经验见 [docs/release-publish-integration.md](docs/release-publish-integration.md)）。壳层开发指南：[docs/shell-guide.md](docs/shell-guide.md)。
 
 ## 0. 一页摘要
 
@@ -10,7 +10,7 @@
 - **架构**：一个 Go 核心承载全部业务；Windows 用 C# WPF 壳 + Go 编译的 DLL；Android 用 Kotlin Compose 壳 + gomobile AAR。壳只通过 `Call(method, json)` / `NextEvent(timeoutMs)` 访问核心。
 - **现状：功能完整但未真机验收**。已按 [docs/plan-auto-broadcast.md](docs/plan-auto-broadcast.md) 把“复制即自动广播”做成默认；密码库 V1–V3（KDBX 4、备份/恢复、Android 设备同步、Android 自动填充）已合并，实验性；Android 后台自动发送（悬浮窗 + `READ_LOGS`）默认关闭。配对、文本同步、文件传输、离线补发、撤销、命名管道与命令行、自动更新与本机分发、两端界面都已实现，核心有测试。**两端壳的系统相关行为（托盘、剪贴板、通知、相机、前台服务、MediaStore、密码库、自动填充…）只编译、没在真机上跑过**——这是现在最大的未知，见 §6。
 - **验证**：`make check` 全绿（核心 `-race`、KeePassXC 互操作、541 个 C# 测试、443 个 Android JVM 测试、Wine 下 DLL）；GitHub CI（linux / windows / android）此前全绿。
-- **本机分发**：`clipbridge-dist` 用户服务（`127.0.0.1:18780`，`Linger=yes`）经 `tailscale serve --set-path /clipbridge` 暴露；下载页 `https://tony-ai-pc-1.tail9f7f1f.ts.net/clipbridge/`。**0.1.76 已发布**（Android + Windows，minVersionCode=0），远端下载哈希已复核。修复自动写入后的剪贴板回声：写前 `clip.begin_apply`、写后 `clip.mark_applied`；Android/Windows 所有自动和手动复制路径都遵循。UI、底部导航、密码库、Shizuku 改动保留。
+- **本机分发**：2026-10-28 起由本机共用的 **release-publish** 服务（`relhub`，`127.0.0.1:18790`，`tailscale serve` 的 `/release` 路径，属于 release-publish 项目）托管并签名；应用 id `clipbridge`，平台 `android` / `windows`。App 里的更新客户端用它的 Go SDK（`core/third_party/relhub`，原样复制）。旧的 `clipbridge-dist`（`cbdist`，`/clipbridge`）仍在运行，只为 update.md §7 的**桥接版**服务——已装的旧版本编译进了旧公钥和旧地址，不会自己过来；**迁移状态与待办见 [docs/handoff-2026-10-28-release-publish.md](docs/handoff-2026-10-28-release-publish.md)**。0.1.79 是最后一个只走旧源的版本。
 - **下一步**：真机验证清单（§6）→ 修问题 → 全部满意后配置 GitHub `nightly` 滚动发布（§7）。
 
 ## 1. 接手：5 分钟上手
@@ -57,6 +57,7 @@ cd peer && WINEDEBUG=-all WINEPREFIX=$HOME/.wine-clipbridge WINEDLLOVERRIDES="ms
 | 10-26 | 数据库密钥：Windows DPAPI / Android Keystore；旧明文文件一次性迁移 | 用户接受测试 key 作为过渡，现已替换 |
 | 10-26 | 自更新：Ed25519 签名清单 + SHA-256 + 可续传下载；`watch` 长轮询实时通知 | Windows 无 OS 级同签名校验；见 update.md |
 | 10-26 | 版本号 = 提交数；工作区不干净拒绝发布 | 单调、无需手工 bump |
+| 10-28 | 更新分发改用本机共用的 release-publish：SDK 复制进 `core/third_party/relhub`；核心里的 `cbdist`（分发服务器、发布器、清单签名）删除；旧设备经桥接版迁移 | 少维护一套服务；签名/渠道/统计/撤回现成；见 docs/release-publish-integration.md |
 | 10-26 | 命名管道用白名单（`pair.*`、`peers.update/remove`、`update.*`、`settings.set` 不开放） | 同用户其它进程不得改变信任关系 |
 | 10-26 | 文件：监听方服务字节（pull=GET+Range，push=file_accept{offset}+PUT）；`.part` 校验后原子改名 | 见 api-spec §5.4 |
 | 10-26 | 对抗式安全审查后的修复：每对端独立 event_id；监听方向加入方出示 `ServerProof`；被移除设备可再配对；pull 传输由接收方发 `file_done` 才算送达；PUT 可被取消/过期/解除配对中止并可用 `bytes */N` 补完；事件载荷/寿命/收件箱/并发连接上限；管道调用方不能传 `fd`/`save_dir`、读不到敏感正文；更新清单“最高见过版本”防回滚、拒绝 https→http 重定向 | 审查报告 14 项，见 core 各包 `security_test.go` 与 api-spec |
@@ -76,7 +77,7 @@ cd peer && WINEDEBUG=-all WINEPREFIX=$HOME/.wine-clipbridge WINEDLLOVERRIDES="ms
 | `clip` | 文本规范化、回声抑制、敏感识别、策略、历史 | 17 |
 | `xfer` | 文件传输（见 api-spec §5.4） | 26 |
 | `pipe` + `cli` + `cmd/cbridge` | 本地控制通道与命令行 | 9 + 9 |
-| `update` + `cmd/cbdist` | 签名清单、下载器、管理器、分发服务器、发布器 | 37 |
+| `update` + `update/updatetest` | release-publish 客户端（SDK + 验签/重定向/卡死/响应体保护）、管理器、假服务端；对真实 `relhub` 的集成测试（没有二进制时跳过） | 29 |
 | `facade` | 全部方法与事件；事件顺序保证 `core.started` 在先 | 32 |
 | `internal/testnet` | 测试用的“多台真实设备”夹具（仅 _test 使用） | — |
 | `cmd/cbcore-dll`、`mobile` | C ABI / gomobile 入口 | ABI 冒烟 + Wine |
@@ -88,7 +89,7 @@ WPF + WinForms NotifyIcon。托盘、单实例、DPAPI 密钥与迁移、剪贴�
 Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与迁移、首次引导、扫码/粘贴/手动配对、四种发送入口、接收通知（复制/忽略）、实时模式前台服务与开机恢复、设备/收件箱/设置页、文件分享发送（fd 交接）与 MediaStore 保存；另有密码库、快速解锁、设备同步、Android 自动填充、后台自动发送。443 个 JVM 单测。
 
 ### 3.4 构建、CI、发布
-`Makefile`（`check`、`dist-windows`、`dist-android`、`cbdist`…）；`scripts/release-local.sh`、`scripts/backup-keys.sh`、`scripts/install-dist-service.sh`；`.github/workflows/ci.yml` 三个任务全绿。
+`Makefile`（`check`、`dist-windows`、`dist-android`…）；`scripts/release-local.sh`（预检→构建→`relhub publish`→按 App 视角验证）、`scripts/probe-update.sh`（对线上服务的只读探测）、`scripts/sync-relhub.sh`、`scripts/backup-keys.sh`；`.github/workflows/ci.yml` 三个任务全绿。
 
 ### 3.5 密码库（2026-10-27 合并，实验性）
 - 核心：`core/vault`（KDBX 4，vendored gokeepasslib + 补丁）、`core/vsync`（整库密文同步）、`vault.*` 门面、schema v5、剪贴板 `vault_origin` 抑制；KeePassXC 2.7.10 双向互操作测试通过；`go test -race` 全绿。
@@ -146,16 +147,16 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 ## 7. 下一步
 
 1. 真机验证与修复（§6），密码库优先做“备份演练 + 锁定/剪贴板/自动填充/同步”这四项；没有结果前不要宣称密码库已验证。
-2. **GitHub `nightly` 滚动发布**（用户要求：全部功能完成后）：CI 在推送到 `main` 时构建 APK 与 Windows zip，更新名为 `nightly` 的预发布。需要把 **同一把** Android 签名密钥与 Ed25519 发布密钥作为仓库密钥提供（否则无法覆盖本机分发的安装、更新清单也无法验证）；版本号用提交数（`fetch-depth: 0`）。应用内更新源仍是本机分发地址。详见 update.md §9。**此项需要用户决定如何提供密钥。**
+2. **GitHub `nightly` 滚动发布**（用户要求：全部功能完成后）：CI 在推送到 `main` 时构建 APK 与 Windows zip，更新名为 `nightly` 的预发布。需要把 **同一把** Android 签名密钥作为仓库密钥提供（否则无法覆盖本机分发的安装）；清单现在由 release-publish 的服务端私钥签名，**不能给 CI**，所以 GitHub 上的包只是对外下载渠道，应用内更新仍走本机服务；版本号用提交数（`fetch-depth: 0`）。详见 update.md §10。**此项需要用户决定如何提供 Android 密钥。**
 3. Windows 安装程序（目前是解压即用的 zip；自包含 .NET 还是框架依赖待定）。
 4. 可选：Android 的 `SEND_TEXT` 外部 Intent；发布体积优化；日志落盘与脱敏的统一实现。
 
 ## 8. 运维备忘与待用户决定
 
-- 密钥（只在本机，**已备份到 `~/backups/clipbridge-keys/`，请另存一份到本机之外**）：`~/.config/clipbridge/` 下的 Ed25519 发布密钥、Android JKS 与 `android-signing.properties`。丢失 JKS = 已安装的 Android 应用只能卸载重装。
-- `release.local.env`（git 忽略）里是更新地址；仓库公开，tailnet 名不入库。
+- 密钥（只在本机，**已备份到 `~/backups/clipbridge-keys/`，请另存一份到本机之外**）：`~/.config/clipbridge/` 下的 Android JKS 与 `android-signing.properties`（以及迁移期还要用的旧 Ed25519 发布密钥）。丢失 JKS = 已安装的 Android 应用只能卸载重装。**清单签名私钥现在在 release-publish 里**（`~/.local/share/release-publish/keys/`，备份在 `~/backups/release-publish-keys/`，同样请另存一份到本机之外）。
+- `release.local.env`（git 忽略）里是更新地址 `CB_UPDATE_URL=https://<本机>.ts.net/release`；仓库公开，tailnet 名不入库。
 - 发布：`git commit` → `git push` → `scripts/release-local.sh --notes "…"`（工作区必须干净）。
-- `tailscale serve` 只新增过 `/clipbridge`，其余路径未动。
+- `tailscale serve`：本项目只新增过 `/clipbridge`（旧分发，待退役）；`/release` 属于 release-publish，本项目不再新增路径。
 - 权限策略多次拦截“未在当次请求点名”的暴露服务/常驻服务/对公开仓库的推送；这类动作需用户当次明确说出。
 
 ## 9. 我没有核实的断言（别当事实）
@@ -171,12 +172,11 @@ Compose。Application 级唯一事件泵 + SharedFlow、Keystore 包装密钥与
 
 ```text
 night-clip/
-├── core/        Go 核心（proto identity store peer pairing clip xfer pipe cli update facade）、cmd/{cbcore-dll,cbridge,cbdist}、mobile、test/abi、internal/testnet
+├── core/        Go 核心（proto identity store peer pairing clip xfer pipe cli update facade）、cmd/{cbcore-dll,cbridge}、mobile、third_party/{gokeepasslib,relhub}、test/abi、internal/testnet
 ├── windows/     ClipBridge.Windows（WPF）与 ClipBridge.Windows.Tests（xUnit）
 ├── android/     Compose 应用（app/）
 ├── docs/        设计、规范、说明书、更新与发布、壳层指南、ADR、archive-v2
-├── scripts/     version.sh release-local.sh backup-keys.sh install-dist-service.sh zipdir.py
-├── deploy/      clipbridge-dist.service
+├── scripts/     version.sh release-local.sh probe-update.sh sync-relhub.sh backup-keys.sh zipdir.py
 ├── .github/workflows/ci.yml
 └── Makefile  VERSION_BASE  release.local.env.example
 ```

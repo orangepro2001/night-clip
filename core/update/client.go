@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,34 +13,51 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"nightclip/core/proto"
+	"relhub/pkg/relclient"
+	"relhub/pkg/relproto"
 )
 
-const (
-	maxManifestBytes = 64 << 10
-	stallTimeout     = 60 * time.Second
-)
+const stallTimeout = 60 * time.Second
 
-// ErrNoRelease is returned by Latest when the server has nothing published
-// for the platform.
+// MaxWatchWait is the longest one watch request may block (release-publish
+// answers 204 after 50 s, below the usual 60 s proxy idle limit).
+const MaxWatchWait = time.Duration(relproto.MaxWatchSeconds) * time.Second
+
+// ErrNoRelease is returned by Check when the service has nothing published
+// for the app and platform (not yet registered, or no stable release).
 var ErrNoRelease = errors.New("no release published")
 
-// Client talks to a distribution server (cbdist) for one platform.
+// ErrWatchUnsupported means the service cannot answer watch for this app
+// (it is not registered yet): fall back to polling.
+var ErrWatchUnsupported = errors.New("server does not support watch")
+
+// Progress is called with the bytes on disk so far and the total.
+type Progress func(received, total int64)
+
+// Client talks to a release-publish service for one platform of one app. It
+// wraps the vendored SDK (relhub/pkg/relclient) and adds what a phone or a
+// desktop needs on top: only https (or loopback http), no redirect off the
+// configured host, a stalled download is aborted and resumed, and a build
+// without trusted keys can never accept an update.
 type Client struct {
-	BaseURL  string // e.g. https://host/clipbridge ; see ValidateBaseURL
+	BaseURL  string // e.g. https://host/release ; see ValidateBaseURL
+	App      string // release-publish app id; empty: AppID
 	Platform string
 	Keys     []ed25519.PublicKey
 	HTTP     *http.Client // nil: a default client with sane timeouts
-	// Stall overrides stallTimeout (tests).
-	Stall time.Duration
+
+	UserAgent string        // sent to the service (it logs it); empty: relclient's default
+	Stall     time.Duration // overrides stallTimeout (tests)
+	RetryWait time.Duration // first pause between download attempts (default 1 s; tests)
 }
 
 // ValidateBaseURL accepts https URLs, and http only for a loopback host
-// (development against a local cbdist). It returns the URL without a
+// (development against a local release-publish). It returns the URL without a
 // trailing slash.
 func ValidateBaseURL(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
@@ -71,279 +87,38 @@ func isLoopbackHost(h string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func (c *Client) http() *http.Client {
-	if c.HTTP != nil {
-		return c.HTTP
+// refuseOffsiteRedirect stops a redirect (an open redirect on the service or a
+// compromised proxy) from moving a request off the configured server or from
+// https to http.
+func refuseOffsiteRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 3 {
+		return errors.New("too many redirects")
 	}
-	return defaultHTTP
+	if req.URL.Host != via[0].URL.Host {
+		return errors.New("redirect to another host refused")
+	}
+	if req.URL.Scheme != via[0].URL.Scheme {
+		return errors.New("redirect to another scheme refused") // https -> http would drop the transport security
+	}
+	return nil
 }
 
-var defaultHTTP = &http.Client{
-	Transport: &http.Transport{
+func newTransport(headerTimeout time.Duration) *http.Transport {
+	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		TLSHandshakeTimeout:   15 * time.Second,
-		ResponseHeaderTimeout: 30 * time.Second,
+		ResponseHeaderTimeout: headerTimeout,
 		MaxIdleConns:          2,
-		IdleConnTimeout:       30 * time.Second,
-	},
-	// Following a redirect to another host would let an open redirect move
-	// the download off the configured server.
-	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 3 {
-			return errors.New("too many redirects")
-		}
-		if req.URL.Host != via[0].URL.Host {
-			return errors.New("redirect to another host refused")
-		}
-		if req.URL.Scheme != via[0].URL.Scheme {
-			return errors.New("redirect to another scheme refused") // https -> http would drop the transport security
-		}
-		return nil
-	},
-}
-
-func (c *Client) endpoint(parts ...string) string {
-	return c.BaseURL + "/v1/" + c.Platform + "/" + strings.Join(parts, "/")
-}
-
-// Latest fetches and verifies the current manifest. It returns ErrNoRelease
-// on 404, a *proto.Error otherwise.
-func (c *Client) Latest(ctx context.Context) (*Manifest, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint("latest"), nil)
-	if err != nil {
-		return nil, proto.Errorf(proto.CodeInvalid, "update url: %v", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	resp, err := c.http().Do(req)
-	if err != nil {
-		return nil, failed("manifest request: %v", err)
-	}
-	defer resp.Body.Close()
-	switch {
-	case resp.StatusCode == http.StatusNotFound:
-		return nil, ErrNoRelease
-	case resp.StatusCode != http.StatusOK:
-		return nil, failed("manifest request: HTTP %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxManifestBytes+1))
-	if err != nil {
-		return nil, failed("manifest read: %v", err)
-	}
-	if len(body) > maxManifestBytes {
-		return nil, rejected("manifest too large")
-	}
-	var m Manifest
-	if err := json.Unmarshal(body, &m); err != nil {
-		return nil, rejected("not valid JSON")
-	}
-	if err := m.Verify(c.Keys); err != nil {
-		return nil, err
-	}
-	if m.Platform != c.Platform {
-		return nil, rejected("manifest is for %q, not %q", m.Platform, c.Platform)
-	}
-	return &m, nil
-}
-
-// ErrWatchUnsupported means the server has no watch endpoint (an older cbdist).
-var ErrWatchUnsupported = errors.New("server does not support watch")
-
-// watchHTTP allows a response header to arrive up to a minute after the request
-// (the server holds a watch for up to MaxWatchWait).
-var watchHTTP = &http.Client{
-	Transport: &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		TLSHandshakeTimeout:   15 * time.Second,
-		ResponseHeaderTimeout: MaxWatchWait + 20*time.Second,
-		MaxIdleConns:          1,
 		IdleConnTimeout:       90 * time.Second,
-	},
-	CheckRedirect: defaultHTTP.CheckRedirect,
+	}
 }
 
-// Watch blocks until the server has a release newer than `known`, and returns
-// its verified manifest; it returns (nil, nil) when `wait` elapsed with
-// nothing new (ask again) and ErrWatchUnsupported when the route is missing.
-func (c *Client) Watch(ctx context.Context, known int64, wait time.Duration) (*Manifest, error) {
-	if wait <= 0 || wait > MaxWatchWait {
-		wait = MaxWatchWait
-	}
-	url := fmt.Sprintf("%s?code=%d&wait=%s", c.endpoint("watch"), known, strconv.FormatFloat(wait.Seconds(), 'f', -1, 64))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, proto.Errorf(proto.CodeInvalid, "update url: %v", err)
-	}
-	hc := watchHTTP
-	if c.HTTP != nil {
-		hc = c.HTTP
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, failed("watch request: %v", err)
-	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
-	case http.StatusNoContent:
-		return nil, nil
-	case http.StatusNotFound, http.StatusMethodNotAllowed:
-		return nil, ErrWatchUnsupported
-	case http.StatusOK:
-	default:
-		return nil, failed("watch request: HTTP %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxManifestBytes+1))
-	if err != nil {
-		return nil, failed("watch read: %v", err)
-	}
-	if len(body) > maxManifestBytes {
-		return nil, rejected("manifest too large")
-	}
-	var m Manifest
-	if err := json.Unmarshal(body, &m); err != nil {
-		return nil, rejected("not valid JSON")
-	}
-	if err := m.Verify(c.Keys); err != nil {
-		return nil, err
-	}
-	if m.Platform != c.Platform {
-		return nil, rejected("manifest is for %q, not %q", m.Platform, c.Platform)
-	}
-	return &m, nil
-}
-
-// Progress is called with the bytes on disk so far and the total.
-type Progress func(received, total int64)
-
-// Download fetches the package described by m into dir and returns its final
-// path. It resumes a previous <file>.part, verifies size and SHA-256 and only
-// then renames it into place, so a path returned (or found already present)
-// is always a verified file. m must already be verified.
-func (c *Client) Download(ctx context.Context, m *Manifest, dir string, progress Progress) (string, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", failed("create update dir: %v", err)
-	}
-	final := filepath.Join(dir, m.File)
-	if VerifyFile(final, m) == nil {
-		return final, nil
-	}
-	part := final + ".part"
-
-	for attempt := 0; attempt < 2; attempt++ {
-		restart, err := c.fetchInto(ctx, m, part, progress)
-		if err != nil {
-			return "", err
-		}
-		if restart {
-			continue
-		}
-		if err := VerifyFile(part, m); err != nil {
-			_ = os.Remove(part)
-			return "", err
-		}
-		if err := os.Rename(part, final); err != nil {
-			return "", failed("finalise download: %v", err)
-		}
-		return final, nil
-	}
-	return "", failed("server keeps rejecting the resume request")
-}
-
-// fetchInto appends the missing bytes to part. restart is true when the
-// server could not serve the requested range and part was discarded.
-func (c *Client) fetchInto(ctx context.Context, m *Manifest, part string, progress Progress) (restart bool, err error) {
-	offset := int64(0)
-	if st, err := os.Stat(part); err == nil {
-		offset = st.Size()
-	}
-	if offset > m.Size {
-		_ = os.Remove(part)
-		offset = 0
-	}
-	if offset == m.Size {
-		return false, nil
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	guard := time.AfterFunc(c.stall(), cancel)
-	defer guard.Stop()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint("files", m.File), nil)
-	if err != nil {
-		return false, failed("download request: %v", err)
-	}
-	if offset > 0 {
-		req.Header.Set("Range", "bytes="+strconv.FormatInt(offset, 10)+"-")
-	}
-	resp, err := c.http().Do(req)
-	if err != nil {
-		return false, failed("download request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	flags := os.O_WRONLY | os.O_CREATE
-	switch resp.StatusCode {
-	case http.StatusOK:
-		offset = 0 // server ignored the range: take the whole body
-		flags |= os.O_TRUNC
-	case http.StatusPartialContent:
-		start, total, ok := parseContentRange(resp.Header.Get("Content-Range"))
-		if !ok || start != offset || total != m.Size {
-			_ = os.Remove(part)
-			return true, nil
-		}
-		flags |= os.O_APPEND
-	case http.StatusRequestedRangeNotSatisfiable:
-		_ = os.Remove(part)
-		return true, nil
-	case http.StatusNotFound:
-		return false, failed("server no longer has %s (a newer release may have been published)", m.File)
-	default:
-		return false, failed("download request: HTTP %d", resp.StatusCode)
-	}
-
-	f, err := os.OpenFile(part, flags, 0o600)
-	if err != nil {
-		return false, failed("open %s: %v", part, err)
-	}
-	defer f.Close()
-
-	received := offset
-	buf := make([]byte, 64<<10)
-	body := io.LimitReader(resp.Body, m.Size-offset+1) // +1 detects an overlong body
-	for {
-		n, rerr := body.Read(buf)
-		if n > 0 {
-			guard.Reset(c.stall())
-			if received+int64(n) > m.Size {
-				_ = f.Close()
-				_ = os.Remove(part)
-				return false, proto.Errorf(proto.CodeHashMismatch, "server sent more than the announced %d bytes", m.Size)
-			}
-			if _, werr := f.Write(buf[:n]); werr != nil {
-				return false, failed("write %s: %v", part, werr)
-			}
-			received += int64(n)
-			if progress != nil {
-				progress(received, m.Size)
-			}
-		}
-		if rerr == io.EOF {
-			break
-		}
-		if rerr != nil {
-			// Keep the .part: the next attempt resumes from here.
-			if ctx.Err() != nil {
-				return false, failed("download stalled or cancelled after %d of %d bytes", received, m.Size)
-			}
-			return false, failed("download interrupted after %d of %d bytes: %v", received, m.Size, rerr)
-		}
-	}
-	if received != m.Size {
-		return false, failed("download ended after %d of %d bytes", received, m.Size)
-	}
-	return false, nil
-}
+var (
+	defaultHTTP = &http.Client{Transport: newTransport(30 * time.Second), CheckRedirect: refuseOffsiteRedirect}
+	// watchHTTP allows a response header to arrive up to 20 s after the
+	// service's longest hold.
+	watchHTTP = &http.Client{Transport: newTransport(MaxWatchWait + 20*time.Second), CheckRedirect: refuseOffsiteRedirect}
+)
 
 func (c *Client) stall() time.Duration {
 	if c.Stall > 0 {
@@ -352,14 +127,247 @@ func (c *Client) stall() time.Duration {
 	return stallTimeout
 }
 
-// parseContentRange parses "bytes START-END/TOTAL".
-func parseContentRange(h string) (start, total int64, ok bool) {
-	var end int64
-	if _, err := fmt.Sscanf(h, "bytes %d-%d/%d", &start, &end, &total); err != nil {
-		return 0, 0, false
+func (c *Client) app() string {
+	if c.App != "" {
+		return c.App
 	}
-	return start, total, end >= start && end < total
+	return AppID
 }
+
+func (c *Client) target() relclient.Target {
+	return relclient.Target{App: c.app(), Platform: c.Platform}
+}
+
+// rel builds an SDK client over hc. The SDK treats an empty key list as
+// "check the shape only"; an app must never run that way.
+func (c *Client) rel(hc *http.Client) (*relclient.Client, error) {
+	if len(c.Keys) == 0 {
+		return nil, rejected("no trusted release key is built into this app")
+	}
+	opts := []relclient.Option{relclient.WithHTTPClient(hc), relclient.WithTrustedKeys(c.Keys...)}
+	if c.UserAgent != "" {
+		opts = append(opts, relclient.WithUserAgent(c.UserAgent))
+	}
+	rc, err := relclient.New(c.BaseURL, opts...)
+	if err != nil {
+		return nil, proto.Errorf(proto.CodeInvalid, "update url: %v", err)
+	}
+	return rc, nil
+}
+
+func (c *Client) httpOr(def *http.Client) *http.Client {
+	if c.HTTP != nil {
+		return c.HTTP
+	}
+	return def
+}
+
+// accept applies this app's own limits to a manifest the SDK has verified.
+func (c *Client) accept(m *Manifest) (*Manifest, error) {
+	switch {
+	case m == nil:
+		return nil, rejected("the server sent no manifest")
+	case !ValidPlatform(m.Platform):
+		return nil, rejected("unknown platform %q", m.Platform)
+	case m.Size > MaxPackageBytes:
+		return nil, rejected("size %d out of range", m.Size)
+	}
+	return m, nil
+}
+
+// Check asks for the current stable release. installed is the running
+// versionCode: the service counts checks per installed version (relhub stats).
+// The manifest is returned even when it is not newer. It returns ErrNoRelease
+// when nothing is published and a *proto.Error otherwise.
+func (c *Client) Check(ctx context.Context, installed int64) (*Manifest, error) {
+	rc, err := c.rel(c.httpOr(defaultHTTP))
+	if err != nil {
+		return nil, err
+	}
+	res, err := rc.Check(ctx, c.target(), installed)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNoRelease
+		}
+		return nil, mapError("manifest request", err)
+	}
+	return c.accept(res.Manifest)
+}
+
+// Watch blocks until the service offers a release newer than `known`, and
+// returns its verified manifest; it returns (nil, nil) when `wait` elapsed
+// with nothing new (ask again) and ErrWatchUnsupported when the app is not
+// registered.
+func (c *Client) Watch(ctx context.Context, known int64, wait time.Duration) (*Manifest, error) {
+	if wait <= 0 || wait > MaxWatchWait {
+		wait = MaxWatchWait
+	}
+	rc, err := c.rel(c.httpOr(watchHTTP))
+	if err != nil {
+		return nil, err
+	}
+	res, err := rc.Watch(ctx, c.target(), known, wait)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrWatchUnsupported
+		}
+		return nil, mapError("watch request", err)
+	}
+	if res == nil {
+		return nil, nil
+	}
+	return c.accept(res.Manifest)
+}
+
+// Download fetches the package described by m into dir and returns its final
+// path. It resumes a previous <file>.part, verifies size and SHA-256 and only
+// then renames it into place, so a path returned (or found already present)
+// is always a verified file. m must come from Check or Watch.
+func (c *Client) Download(ctx context.Context, m *Manifest, dir string, progress Progress) (string, error) {
+	if _, err := c.accept(m); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", failed("create update dir: %v", err)
+	}
+	final := filepath.Join(dir, m.File)
+	if VerifyFile(final, m) == nil {
+		return final, nil
+	}
+	base := c.httpOr(defaultHTTP)
+	// A response never needs more than the whole package; one extra byte is
+	// let through so the SDK reports an overlong body as a checksum mismatch.
+	guarded := &guardTransport{rt: transportOf(base), idle: c.stall(), maxBody: m.Size + 1}
+	rc, err := c.rel(&http.Client{Transport: guarded, CheckRedirect: base.CheckRedirect})
+	if err != nil {
+		return "", err
+	}
+	err = rc.Download(ctx, *m, final, &relclient.DownloadOptions{Progress: progress, RetryWait: c.RetryWait})
+	if err != nil {
+		if isNotFound(err) {
+			return "", failed("server no longer has %s (withdrawn, or a newer release replaced it)", m.File)
+		}
+		return "", mapError("download", err)
+	}
+	return final, nil
+}
+
+func transportOf(hc *http.Client) http.RoundTripper {
+	if hc.Transport != nil {
+		return hc.Transport
+	}
+	return http.DefaultTransport
+}
+
+// isNotFound reports a not_found that the service itself answered, i.e. with its JSON error
+// envelope: the app is not registered, or the platform has no release yet. A 404 from anything
+// else (a proxy without the /release mount, a wrong URL) is a broken feed, not "nothing to
+// update", and must stay visible as an error; without a JSON envelope the SDK reports it with
+// the HTTP status line as the message ("404 Not Found: …").
+func isNotFound(err error) bool {
+	var re *relproto.Error
+	return errors.As(err, &re) && re.Code == relproto.CodeNotFound && !strings.HasPrefix(re.Message, "404 ")
+}
+
+// mapError turns SDK and transport errors into the stable codes the shells
+// show: a refused manifest (bad signature, wrong app, malformed) is
+// UPDATE_REJECTED, a package that does not match its manifest is HASH_MISMATCH,
+// everything else (network, 5xx) is UPDATE_FAILED and worth retrying.
+func mapError(what string, err error) error {
+	var re *relproto.Error
+	switch {
+	case errors.Is(err, relclient.ErrChecksum):
+		return proto.Errorf(proto.CodeHashMismatch, "%v", err)
+	case errors.As(err, &re) && re.Code == relproto.CodeInvalid:
+		return rejected("%s", re.Message)
+	case errors.Is(err, context.Canceled):
+		return failed("%s cancelled", what)
+	}
+	return failed("%s: %v", what, err)
+}
+
+// guardTransport protects a download from a server that misbehaves:
+//
+//   - a response whose body goes quiet for idle is aborted. A phone that walks
+//     out of Wi-Fi leaves the connection open and silent, and without this the
+//     download would hang until the OS gives up. The .part file is kept and the
+//     SDK resumes it;
+//   - a body longer than maxBody is cut off, so a runaway server cannot fill
+//     the disk (the SDK itself writes whatever arrives).
+//
+// It is only used for downloads: a watch is silent by design.
+type guardTransport struct {
+	rt      http.RoundTripper
+	idle    time.Duration
+	maxBody int64
+}
+
+func (s *guardTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	ctx, cancel := context.WithCancel(req.Context())
+	g := &stallGuard{idle: s.idle, cancel: cancel}
+	g.timer = time.AfterFunc(s.idle, g.fire)
+	resp, err := s.rt.RoundTrip(req.WithContext(ctx))
+	if err != nil {
+		g.timer.Stop()
+		cancel()
+		if g.fired.Load() {
+			err = g.err()
+		}
+		return nil, err
+	}
+	resp.Body = &guardBody{ReadCloser: resp.Body, g: g, left: s.maxBody}
+	return resp, nil
+}
+
+type stallGuard struct {
+	idle   time.Duration
+	timer  *time.Timer
+	cancel context.CancelFunc
+	fired  atomic.Bool
+}
+
+func (g *stallGuard) fire() { g.fired.Store(true); g.cancel() }
+
+func (g *stallGuard) err() error { return stalledError{g.idle} }
+
+type guardBody struct {
+	io.ReadCloser
+	g    *stallGuard
+	left int64
+}
+
+func (b *guardBody) Read(p []byte) (int, error) {
+	if b.left <= 0 {
+		return 0, io.EOF
+	}
+	if int64(len(p)) > b.left {
+		p = p[:b.left]
+	}
+	n, err := b.ReadCloser.Read(p)
+	b.left -= int64(n)
+	if n > 0 {
+		b.g.timer.Reset(b.g.idle)
+	}
+	if err != nil && err != io.EOF && b.g.fired.Load() {
+		err = b.g.err()
+	}
+	return n, err
+}
+
+func (b *guardBody) Close() error {
+	b.g.timer.Stop()
+	err := b.ReadCloser.Close()
+	b.g.cancel()
+	return err
+}
+
+// stalledError is a timeout, so the SDK treats it as a network error and
+// resumes from the .part file.
+type stalledError struct{ idle time.Duration }
+
+func (e stalledError) Error() string   { return fmt.Sprintf("download stalled: no data for %s", e.idle) }
+func (e stalledError) Timeout() bool   { return true }
+func (e stalledError) Temporary() bool { return true }
 
 // VerifyFile reports nil when path exists with exactly the announced size and
 // SHA-256.
@@ -388,4 +396,8 @@ func VerifyFile(path string, m *Manifest) error {
 
 func failed(format string, args ...any) error {
 	return proto.Errorf(proto.CodeUpdateFailed, format, args...)
+}
+
+func rejected(format string, args ...any) error {
+	return proto.Errorf(proto.CodeUpdateRejected, "manifest: "+format, args...)
 }

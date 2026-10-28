@@ -194,7 +194,7 @@ func (m *Manager) Check(ctx context.Context) (Status, error) {
 	m.st.Error = nil
 	m.mu.Unlock()
 
-	latest, err := client.Latest(ctx)
+	latest, err := client.Check(ctx, m.opt.CurrentCode)
 
 	m.mu.Lock()
 	if m.client != client { // server changed while we were asking

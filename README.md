@@ -39,7 +39,7 @@ runs everything below and passes on the dev machine (Ubuntu 26.04, no KVM, no Wi
 | WPF app | compiles (XAML included) for `net10.0-windows` | `make build-windows-app` |
 | Android | gomobile AAR builds (arm64-v8a, x86_64); debug and release (R8) APKs build; lint runs | `make apk` |
 | `store` + persistent identity | schema v1 + migrations, AES-256-GCM field sealing, identity persistence, data-layer CRUD; 40 `store` + 15 `facade` tests. `device_id` is stable across restarts for the same `data_dir` + key. Shells keep a temporary plaintext `devkey.b64` (DPAPI/Keystore later) | `make check` (see [HANDOFF-STORE.md](HANDOFF-STORE.md)) |
-| Self-update | signed manifest, resumable verified download, Windows swap-with-rollback, Android installer hand-off, local `cbdist` distribution; real-key end-to-end probe passed. Needs `tailscale serve` + service approval to reach devices ([docs/update.md](docs/update.md)) | `make check`, `scripts/release-local.sh` |
+| Self-update | signed manifest, resumable verified download, Windows swap-with-rollback, Android installer hand-off, distributed by the local release-publish service (signed manifests, `watch` push, `scripts/probe-update.sh` read-only probe); see [docs/update.md](docs/update.md) and [docs/release-publish-integration.md](docs/release-publish-integration.md) | `make check`, `scripts/release-local.sh` |
 | Networking, pairing, files | not started | — |
 
 ### What this machine cannot prove

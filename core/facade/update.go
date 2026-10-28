@@ -39,7 +39,7 @@ func (c *Core) newUpdateManager(cfg Config, db *store.DB) (*update.Manager, erro
 		raw = v
 	}
 	return update.NewManager(update.Options{
-		Client:      newUpdateClient(cfg.Platform, raw),
+		Client:      newUpdateClient(cfg, raw),
 		Dir:         filepath.Join(cfg.DataDir, "updates"),
 		CurrentCode: cfg.AppVersionCode,
 		CurrentName: cfg.AppVersionName,
@@ -54,8 +54,9 @@ func (c *Core) newUpdateManager(cfg Config, db *store.DB) (*update.Manager, erro
 	}), nil
 }
 
-// newUpdateClient returns nil (updates off) for an empty or unusable URL.
-func newUpdateClient(platform, rawURL string) *update.Client {
+// newUpdateClient returns nil (updates off) for an empty or unusable URL. rawURL
+// is the base URL of the release-publish service (https://<host>/release).
+func newUpdateClient(cfg Config, rawURL string) *update.Client {
 	if strings.TrimSpace(rawURL) == "" {
 		return nil
 	}
@@ -63,7 +64,10 @@ func newUpdateClient(platform, rawURL string) *update.Client {
 	if err != nil {
 		return nil
 	}
-	return &update.Client{BaseURL: base, Platform: platform, Keys: updateKeys()}
+	return &update.Client{
+		BaseURL: base, Platform: cfg.Platform, Keys: updateKeys(),
+		UserAgent: "clipbridge/" + cfg.AppVersionName, // shows up in the service's access log
+	}
 }
 
 func (c *Core) updateCall(method, paramsJSON string) (any, error) {
@@ -122,7 +126,7 @@ func (c *Core) updateConfig(upd *update.Manager, db *store.DB, cfg Config, param
 		} else if err := db.SetSetting(settingUpdateURL, want); err != nil {
 			return nil, err
 		}
-		upd.SetClient(newUpdateClient(cfg.Platform, effective))
+		upd.SetClient(newUpdateClient(cfg, effective))
 	}
 	if p.Auto != nil {
 		v := "0"

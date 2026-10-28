@@ -10,10 +10,9 @@
 #   make apk         debug APK (needs JDK 17, Android SDK, make aar first)
 #   make cli         cbridge.exe (Windows) and cbridge (host)
 #   make aar         Android AAR (needs gomobile + Android NDK, see below)
-#   make cbdist      the release publisher/server (core/dist/host/cbdist)
-#   make dist-windows  signed-manifest-ready zip of the WPF app (core/dist/clipbridge-windows.zip)
+#   make dist-windows  update-ready zip of the WPF app (core/dist/clipbridge-windows.zip)
 #   make dist-android  release APK signed with the key in ~/.config/clipbridge
-#   scripts/release-local.sh   build + publish to the local release directory (see docs/update.md)
+#   scripts/release-local.sh   build + publish to the local release-publish service (see docs/update.md)
 #   make notes-check  the notes module only: Go (vet, gofmt, race tests) and the notes tests of both shells
 #   make clean
 
@@ -39,7 +38,7 @@ export CB_VERSION_CODE := $(patsubst CB_VERSION_CODE=%,%,$(filter CB_VERSION_COD
 export CB_VERSION_NAME := $(patsubst CB_VERSION_NAME=%,%,$(filter CB_VERSION_NAME=%,$(CB_VERSION_VARS)))
 export CB_UPDATE_URL
 
-.PHONY: notes-check all test vet dll dll-smoke dll-wine test-interop build-windows-app cli aar apk cbdist dist-windows dist-android check clean
+.PHONY: notes-check all test vet dll dll-smoke dll-wine test-interop build-windows-app cli aar apk dist-windows dist-android check clean
 
 all: test dll cli
 
@@ -95,10 +94,6 @@ aar:
 
 apk: aar
 	cd android && ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
-
-cbdist:
-	mkdir -p $(DIST)/host
-	cd core && $(GO) build -trimpath -ldflags="-s -w" -o dist/host/cbdist ./cmd/cbdist
 
 # Windows release package: the published WPF app (framework-dependent, win-x64) plus
 # clipbridge_core.dll and the cbridge.exe command line, zipped flat so the updater can copy it over the install folder.
