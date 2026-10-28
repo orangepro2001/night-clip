@@ -88,6 +88,33 @@
   - 看效果要截图，或者你亲自看。
   - 发布：`release-local.sh` 经 SSH 让 Mac 构建同一提交。Mac 不在线时跳过 macos 平台，其余平台照常发布。
 
+### 2.3 选定路线 A 后：Avalonia 的「原生感」主题（2026-10-28 网上查证，未实测）
+
+用户选了路线 A。下面是对社区主题包的查证结果。
+
+- **macOS：`Devolutions.AvaloniaTheme.MacOS`。**
+  - MIT 协议，作者是 Devolutions（Remote Desktop Manager 的厂商），在 GitHub 仓库 `Devolutions/avalonia-extensions` 维护。
+  - 最新版 2026.10.13，总下载约 6.3 万次。README 标题自称「Work in Progress」。
+  - 按 AppKit 外观做好的控件：
+    - 按钮、复选框、单选、下拉框、文本框、数字框、列表、树、选项卡；
+    - 菜单、右键菜单、提示、滚动条、DataGrid、Expander、日历；
+    - 支持暗色，窗口失焦时变淡。
+  - 未完成的控件：Slider、DatePicker、SplitButton、HyperlinkButton、标题栏等。这些回退到 Fluent 样式，所以会出现局部风格不一致。
+  - 同一仓库里还有 Linux（Yaru）、WinUI（🚧 未完成）和 DevExpress 主题。
+  - 版本对应：2026.6.16 是最后一个支持 Avalonia 11 的版本，2026.6.23 起只支持 Avalonia 12。
+- **Windows：**
+  - Avalonia 自带 Fluent 主题，外观接近 Win11，跟随系统明暗。
+  - 窗口支持 Mica 和 Acrylic 背景（`TransparencyLevelHint`，Mica 需要 Win11）。在 Win11 上，原生标题栏会跟随应用的明暗主题。
+  - 社区的 FluentAvalonia 提供 WinUI 风格控件，如 NavigationView 和 ContentDialog。它是否支持 Avalonia 12，**没查到**项目方的确认。
+  - 现在的 WPF 壳本来就用自定义主题（`Themes/ClipBridgeTheme.xaml`），也谈不上「原生」。
+- **主题解决不了的「非视觉」原生感：**
+  - 字体渲染和滚动手感；
+  - 文本框的系统行为：拼写检查、macOS 文本服务、部分快捷键；
+  - 辅助功能。
+  - 但菜单栏图标（`TrayIcon` 对应 `NSStatusItem`）、全局菜单（`NativeMenu`）、文件对话框和窗口红绿灯按钮都是真原生。
+- **结论：** macOS 上用 Devolutions 主题能做到「看起来像」，但不是 100%。这款应用主要是菜单栏加几个简单窗口，用到的控件大多在已完成的列表里，风险可控。
+- **验证办法：** 用这个主题做一个示例窗口，包含设备列表、按钮、开关、文本框和菜单栏图标，放到用户的 M1 上看，再决定是否继续。
+
 ## 3. 功能移植分级
 
 依据：Windows 壳的功能清单，以及 Android 独有的功能。
