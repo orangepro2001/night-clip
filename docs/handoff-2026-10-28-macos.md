@@ -115,6 +115,13 @@ scripts/probe-update.sh -c <旧号> -p macos         # 像已安装的应用一�
   - Mac 上用诊断参数 `--preview-image PATH` 实测过：剪贴板里出现 TIFF、PNG、JPEG 图片，预览窗口渲染正常。
   - Windows 端只编译通过、单元测试通过，没在真机上跑过。
 
+- **0.1.103（三端）**：收到的图片先不保存。
+  - 用默认文件夹接收的图片先放进暂存目录：桌面端是 `<数据目录>/received-images/<传输ID>/`，Android 是 `<cacheDir>/received-images/…`。
+  - 预览里可以「复制到剪贴板」，或者「保存到…」：弹出另存为，保存后电脑上自动在资源管理器或 Finder 中选中文件，Android 会提示保存位置。关闭预览即丢弃。
+  - Android：应用在前台时直接打开预览，在后台时弹带缩略图的通知；通知发不出去时，图片照旧存进「下载」。另外修了一个问题：剪贴板里只有 URI 时，不再把 URI 当作文字同步出去。
+  - 共用规则是 `ReceivedImages`（C# 和 Kotlin 各一份），都有单元测试。
+  - **三端都没在真机上跑过这条完整流程。**
+
 ## 5. 已知限制和待办
 
 - **托管 dll 没被封进签名**：`codesign --verify --deep --strict` 不通过，只影响 Gatekeeper 评估，不影响运行和自更新。正式修法是调整包的结构（plan §2.4）。
