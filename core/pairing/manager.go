@@ -316,7 +316,7 @@ func (m *Manager) servePair(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusForbidden, proto.CodePairingFailed, "pairing failed")
 		return
 	}
-	if req.Name == "" || len(req.Name) > 64 || (req.Platform != "windows" && req.Platform != "android") || len(req.Nonce) < 16 || len(req.Nonce) > 64 {
+	if req.Name == "" || len(req.Name) > 64 || !proto.KnownPlatform(req.Platform) || len(req.Nonce) < 16 || len(req.Nonce) > 64 {
 		fail(w, http.StatusBadRequest, proto.CodeInvalid, "malformed pairing request")
 		return
 	}

@@ -39,7 +39,7 @@ type Config struct {
 	DataDir    string `json:"data_dir"`   // absolute path; holds clipbridge.db
 	DBKeyB64   string `json:"db_key_b64"` // base64 of exactly 32 bytes
 	DeviceName string `json:"device_name"`
-	Platform   string `json:"platform"` // "windows" | "android"
+	Platform   string `json:"platform"` // "windows" | "android" | "macos"
 	Listen     bool   `json:"listen"`
 	Port       int    `json:"port"`
 
@@ -124,8 +124,8 @@ func (c *Core) Init(configJSON string) (err error) {
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return proto.Errorf(proto.CodeInvalid, "config: %v", err)
 	}
-	if cfg.Platform != "windows" && cfg.Platform != "android" {
-		return proto.Errorf(proto.CodeInvalid, "platform must be windows or android")
+	if !proto.KnownPlatform(cfg.Platform) {
+		return proto.Errorf(proto.CodeInvalid, "platform must be windows, android or macos")
 	}
 	if cfg.DeviceName == "" {
 		return proto.Errorf(proto.CodeInvalid, "device_name is required")

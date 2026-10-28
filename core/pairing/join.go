@@ -169,8 +169,8 @@ func finish(p JoinParams, cap *peer.Capture, st pairResponse) (store.Peer, error
 		name = "device"
 	}
 	plat := st.Platform
-	if plat != "windows" && plat != "android" {
-		plat = "windows"
+	if !proto.KnownPlatform(plat) {
+		plat = proto.PlatformWindows // an unknown future desktop: treat it like Windows
 	}
 	return store.Peer{
 		DeviceID: st.DeviceID, Name: name, Platform: plat, CertFP: cap.FP(),

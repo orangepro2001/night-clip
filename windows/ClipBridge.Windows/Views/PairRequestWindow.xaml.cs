@@ -24,7 +24,7 @@ public partial class PairRequestWindow : Window
         _expires = Countdown.ParseRfc3339(request.ExpiresAt);
         InitializeComponent();
         Title = Strings.PairRequestTitle;
-        var platform = request.Platform switch { "windows" => Strings.PlatformWindows, "android" => Strings.PlatformAndroid, "" => Strings.Unknown, var p => p };
+        var platform = request.Platform switch { "windows" => Strings.PlatformWindows, "android" => Strings.PlatformAndroid, "macos" => Strings.PlatformMacOS, "" => Strings.Unknown, var p => p };
         RequestText.Text = Strings.PairRequestText(request.Name.Length > 0 ? request.Name : request.DeviceId, platform);
         SasPrompt.Text = Strings.PairRequestSasPrompt;
         SasText.Text = request.Sas;

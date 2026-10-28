@@ -36,6 +36,7 @@ object PeerTexts {
     fun platformLabel(platform: String): String = when (platform) {
         "windows" -> "Windows"
         "android" -> "Android"
+        "macos" -> "macOS"
         "" -> ""
         else -> platform
     }

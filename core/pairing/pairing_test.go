@@ -153,7 +153,7 @@ func (d *dev) startJoin(link Link) *joiner {
 	go func() {
 		defer close(j.done)
 		j.peer, j.err = Join(context.Background(), JoinParams{
-			Link: link, Identity: d.id, Platform: d.platform, Listen: d.platform == "windows", ListenPort: d.e.ListenPort(),
+			Link: link, Identity: d.id, Platform: d.platform, Listen: proto.DesktopPlatform(d.platform), ListenPort: d.e.ListenPort(),
 			AllowAddr: d.e.AddrAllowed, Now: d.clk.Now, Poll: 20 * time.Millisecond, Timeout: 5 * time.Second,
 			OnSAS: func(s string) { j.sas <- s },
 		})
@@ -284,6 +284,27 @@ func TestPairWinToWinStoresTheJoinersPort(t *testing.T) {
 	}
 	// exactly one side dials (the smaller device_id); either way they end up connected
 	waitUntil(t, "link up", func() bool { return connected(a, b) && connected(b, a) })
+}
+
+func TestPairMacWithWindowsAndWithAPhone(t *testing.T) {
+	clk := newClock()
+	mac := newDev(t, "mac", "macos", true, clk, fastTimings())
+	win := newDev(t, "win", "windows", true, clk, fastTimings())
+	pix := newDev(t, "pixel", "android", false, clk, fastTimings())
+
+	// the Mac joins a Windows listener: desktop to desktop, one side dials
+	pairViaQR(t, win, mac)
+	if p, _, _ := win.db.GetPeer(mac.id.DeviceID); p.Platform != "macos" || p.Port != mac.e.ListenPort() {
+		t.Fatalf("windows' record of the mac = %+v", p)
+	}
+	waitUntil(t, "mac-win link up", func() bool { return connected(mac, win) && connected(win, mac) })
+
+	// a phone joins the Mac like it joins Windows, and the Mac never dials it
+	pairViaQR(t, mac, pix)
+	if p, _, _ := pix.db.GetPeer(mac.id.DeviceID); p.Platform != "macos" {
+		t.Fatalf("phone's record of the mac = %+v", p)
+	}
+	waitUntil(t, "phone-mac link up", func() bool { return connected(pix, mac) && connected(mac, pix) })
 }
 
 func TestRejectingEndsThePairingForBoth(t *testing.T) {

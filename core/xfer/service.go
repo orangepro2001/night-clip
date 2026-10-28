@@ -101,7 +101,7 @@ type Config struct {
 	Engine   *peer.Engine
 	DB       *store.DB
 	DataDir  string // the core's data directory (outgoing copies of non-seekable sources live here)
-	Platform string // "windows" | "android": decides the default save directory
+	Platform string // "windows" | "android" | "macos": decides the default save directory
 	Emit     func(map[string]any)
 	Now      func() time.Time
 	Timing   Timing
@@ -219,7 +219,7 @@ func (s *Service) DownloadDir() string {
 	if v, found, _ := s.db.GetSetting(SettingDownloadDir); found && filepath.IsAbs(v) {
 		return v
 	}
-	if s.plat == "windows" {
+	if proto.DesktopPlatform(s.plat) {
 		if home, err := os.UserHomeDir(); err == nil {
 			return filepath.Join(home, "Downloads", "ClipBridge")
 		}

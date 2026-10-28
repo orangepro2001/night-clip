@@ -112,3 +112,14 @@ func TestClipboardTooLarge(t *testing.T) {
 		t.Fatalf("want TOO_LARGE, got %v", pe)
 	}
 }
+
+func TestPlatforms(t *testing.T) {
+	for _, c := range []struct {
+		p              string
+		known, desktop bool
+	}{{"windows", true, true}, {"macos", true, true}, {"android", true, false}, {"linux", false, false}, {"", false, false}, {"MacOS", false, false}} {
+		if KnownPlatform(c.p) != c.known || DesktopPlatform(c.p) != c.desktop {
+			t.Errorf("%q: known=%v desktop=%v", c.p, KnownPlatform(c.p), DesktopPlatform(c.p))
+		}
+	}
+}

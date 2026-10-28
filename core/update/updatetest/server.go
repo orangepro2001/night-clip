@@ -73,7 +73,7 @@ func (s *Server) Publish(platform string, versionCode int64, name string, body [
 // PublishWith lets a test bend the manifest before it is signed.
 func (s *Server) PublishWith(platform string, versionCode int64, name string, body []byte, force bool, mutate func(*relproto.Manifest)) *relproto.Manifest {
 	s.t.Helper()
-	ext := map[string]string{"android": ".apk", "windows": ".zip"}[platform]
+	ext := map[string]string{"android": ".apk", "windows": ".zip", "macos": ".zip"}[platform]
 	sum := sha256.Sum256(body)
 	m := relproto.Manifest{
 		App: AppID, Platform: platform, Channel: relproto.DefaultChannel,

@@ -24,6 +24,7 @@ public sealed record PeerItem(
     {
         "windows" => Strings.PlatformWindows,
         "android" => Strings.PlatformAndroid,
+        "macos" => Strings.PlatformMacOS,
         "" => Strings.Unknown,
         _ => Platform,
     };

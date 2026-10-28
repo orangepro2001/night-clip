@@ -25,6 +25,15 @@ public class PeerModelTests
     }
 
     [Fact]
+    public void Peers_PlatformText()
+    {
+        var list = PeerItem.ListFromJson(J(
+            "{\"peers\":[{\"device_id\":\"dev_m\",\"name\":\"Mac\",\"platform\":\"macos\",\"state\":\"connected\"}," +
+            "{\"device_id\":\"dev_w\",\"name\":\"PC\",\"platform\":\"windows\",\"state\":\"connected\"}]}"), Now);
+        Assert.Equal(new[] { "macOS", "Windows" }, list.Select(p => p.PlatformText).ToArray());
+    }
+
+    [Fact]
     public void Peers_MapFromPeersList()
     {
         var list = PeerItem.ListFromJson(J(

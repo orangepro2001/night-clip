@@ -38,7 +38,7 @@ func (e *Engine) shouldDial(p store.Peer) bool {
 	if !e.cfg.Listen {
 		return true
 	}
-	return p.Platform == "windows" && e.id.DeviceID < p.DeviceID
+	return proto.DesktopPlatform(p.Platform) && e.id.DeviceID < p.DeviceID
 }
 
 // startPeer makes the engine responsible for a paired peer: it creates the link

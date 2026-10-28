@@ -179,6 +179,14 @@ func TestInitAcceptsUnpaddedBase64Key(t *testing.T) {
 	}
 }
 
+func TestInitAcceptsMacOS(t *testing.T) {
+	c := New()
+	defer c.Shutdown()
+	if err := c.Init(configFor(t, t.TempDir(), func(m map[string]any) { m["platform"] = "macos" })); err != nil {
+		t.Fatalf("macos rejected: %v", err)
+	}
+}
+
 func TestDoubleInitFails(t *testing.T) {
 	c, dir := newCore(t)
 	if err := c.Init(configFor(t, dir, nil)); errorCode(err) != "INVALID" {

@@ -121,6 +121,7 @@ public static partial class Strings
     public const string ModeAuto = "自动写入";
     public const string PlatformWindows = "Windows";
     public const string PlatformAndroid = "Android";
+    public const string PlatformMacOS = "macOS";
     public const string StateConnected = "已连接";
     public const string StateConnecting = "正在连接";
     public const string StateOffline = "离线";

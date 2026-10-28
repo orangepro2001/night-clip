@@ -16,6 +16,7 @@ const AppID = "clipbridge"
 const (
 	PlatformAndroid = "android"
 	PlatformWindows = "windows"
+	PlatformMacOS   = "macos"
 )
 
 // MaxPackageBytes bounds what a manifest may announce. release-publish allows
@@ -27,7 +28,9 @@ const MaxPackageBytes = 512 << 20
 type Manifest = relproto.Manifest
 
 // ValidPlatform reports whether p is an updatable platform.
-func ValidPlatform(p string) bool { return p == PlatformAndroid || p == PlatformWindows }
+func ValidPlatform(p string) bool {
+	return p == PlatformAndroid || p == PlatformWindows || p == PlatformMacOS
+}
 
 // ValidFileName reports whether name is safe to use as a bare file name.
 func ValidFileName(name string) bool { return relproto.ValidFileName(name) }

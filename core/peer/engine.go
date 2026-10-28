@@ -93,7 +93,7 @@ type Config struct {
 	Store    *store.DB
 	Listen   bool   // Windows: accept connections on tailnet addresses; Android: dial only
 	Port     int    // 0 = DefaultPort (tests pass a port and read it back with ListenPort)
-	Platform string // "windows" | "android"
+	Platform string // "windows" | "android" | "macos"
 	Handler  Handler
 	// Emit receives engine events as JSON-ready maps (core.warning, ...).
 	Emit   func(map[string]any)
@@ -146,7 +146,7 @@ func New(cfg Config) *Engine {
 
 func (e *Engine) now() time.Time { return e.cfg.Now() }
 
-// Platform returns "windows" or "android" as configured.
+// Platform returns "windows", "android" or "macos" as configured.
 func (e *Engine) Platform() string { return e.cfg.Platform }
 
 func (e *Engine) emit(ev map[string]any) { e.cfg.Emit(ev) }

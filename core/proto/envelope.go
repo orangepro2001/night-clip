@@ -131,3 +131,19 @@ func (e *Envelope) Validate(now time.Time) error {
 	}
 	return nil
 }
+
+// Device platforms, as reported at pairing and stored for each peer.
+// Desktops (Windows, macOS) accept connections on their tailnet address; Android only dials.
+const (
+	PlatformWindows = "windows"
+	PlatformAndroid = "android"
+	PlatformMacOS   = "macos"
+)
+
+// KnownPlatform reports whether p is a platform this core understands.
+func KnownPlatform(p string) bool {
+	return p == PlatformWindows || p == PlatformAndroid || p == PlatformMacOS
+}
+
+// DesktopPlatform reports whether p is a desktop platform (it listens for peers).
+func DesktopPlatform(p string) bool { return p == PlatformWindows || p == PlatformMacOS }
