@@ -25,7 +25,11 @@ object ClipboardAccess {
         val clip = cm.primaryClip ?: return null
         if (clip.itemCount == 0) return null
         if (clip.description?.label == VaultClipboard.MARKER_LABEL) return null // a vault copy is never a user copy (auto send, manual send)
-        val text = clip.getItemAt(0).coerceToText(context)?.toString()?.takeIf { it.isNotEmpty() } ?: return null
+        val item = clip.getItemAt(0)
+        // A copied picture or file (a content Uri, no text): coerceToText would turn it into its Uri string,
+        // which must never be sent as if the user had copied text.
+        if (item.text == null && item.htmlText == null && item.uri != null) return null
+        val text = item.coerceToText(context)?.toString()?.takeIf { it.isNotEmpty() } ?: return null
         return ClipRead(text, clip.description?.timestamp ?: 0L)
     }
 

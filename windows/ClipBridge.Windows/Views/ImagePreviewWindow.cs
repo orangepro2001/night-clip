@@ -9,8 +9,10 @@ using ClipBridge.Windows.Services;
 namespace ClipBridge.Windows.Views;
 
 /// <summary>
-/// A received image (already saved in the download folder): a preview, "复制到剪贴板" (the full image as a
-/// bitmap) and "保存到本地" (shows the saved file selected in Explorer and closes). At most a few at once.
+/// A received image: a preview and "复制到剪贴板" (the full image as a bitmap). A <em>held</em> image
+/// (ReceivedImages: not saved yet) offers "保存到…" — a save dialog, then Explorer shows the saved file — and
+/// is deleted when the window closes without saving. An image saved into a folder the user chose offers
+/// "保存到本地" (show it in Explorer). At most a few windows at once.
 /// </summary>
 public sealed class ImagePreviewWindow : Window
 {
@@ -19,11 +21,11 @@ public sealed class ImagePreviewWindow : Window
     private static int _open;
 
     /// <summary>Opens a preview unless too many are open already; false = the caller should notify instead.</summary>
-    internal static bool TryOpen(string path, string name, string from)
+    internal static bool TryOpen(string path, string name, string from, bool held)
     {
         if (_open >= MaxOpen || !File.Exists(path)) return false;
         _open++;
-        var w = new ImagePreviewWindow(path, name, from);
+        var w = new ImagePreviewWindow(path, name, from, held);
         w.Closed += (_, _) => _open--;
         w.Show();
         w.Activate();
@@ -33,11 +35,15 @@ public sealed class ImagePreviewWindow : Window
 
     private readonly ShellController _shell = ShellController.Current;
     private readonly string _path;
+    private readonly string _name;
+    private readonly bool _held;
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
 
-    private ImagePreviewWindow(string path, string name, string from)
+    private ImagePreviewWindow(string path, string name, string from, bool held)
     {
         _path = path;
+        _name = name;
+        _held = held;
         Title = Strings.ImagePreviewTitle(from) + " — " + FileDisplay.Shorten(name, 40);
         Width = 680;
         Height = 600;
@@ -56,9 +62,12 @@ public sealed class ImagePreviewWindow : Window
 
         var copy = new Button { Content = Strings.BtnCopyImage, Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
         copy.Click += (_, _) => Copy();
-        var save = new Button { Content = Strings.BtnSaveLocal, ToolTip = Strings.BtnSaveLocalTip, Margin = new Thickness(0, 0, 8, 0) };
+        var save = held
+            ? new Button { Content = Strings.BtnSaveAs, Margin = new Thickness(0, 0, 8, 0) }
+            : new Button { Content = Strings.BtnSaveLocal, ToolTip = Strings.BtnSaveLocalTip, Margin = new Thickness(0, 0, 8, 0) };
         save.Click += (_, _) =>
         {
+            if (_held) { SaveAs(); return; }
             if (_shell.OpenContainingFolder(_path) is { } error) _status.Text = error;
             else Close();
         };
@@ -66,7 +75,7 @@ public sealed class ImagePreviewWindow : Window
         close.Click += (_, _) => Close();
 
         var bottom = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-        bottom.Children.Add(new TextBlock { Text = Strings.ImageSavedAt(path), TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
+        bottom.Children.Add(new TextBlock { Text = held ? Strings.ImageNotSavedYet : Strings.ImageSavedAt(path), TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
         buttons.Children.Add(copy);
         buttons.Children.Add(save);
@@ -79,6 +88,46 @@ public sealed class ImagePreviewWindow : Window
         root.Children.Add(bottom);
         root.Children.Add(new Border { Child = image, Background = new SolidColorBrush(Color.FromArgb(16, 128, 128, 128)) });
         Content = root;
+        Closed += (_, _) => DiscardIfUnsaved();
+    }
+
+    /// <summary>The save dialog (download folder, original name), then Explorer with the saved file selected.</summary>
+    private void SaveAs()
+    {
+        var dir = _shell.Settings.DownloadDir;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = Strings.BtnSaveAs,
+            FileName = ReceivedImages.UniqueName(_name, n => File.Exists(Path.Combine(dir, n))),
+            InitialDirectory = Directory.Exists(dir) ? dir : null,
+            Filter = $"{FileDisplay.Extension(_name).TrimStart('.').ToUpperInvariant()}|*{FileDisplay.Extension(_name)}|*.*|*.*",
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            File.Copy(_path, dialog.FileName, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            AppLog.Error("image save", ex);
+            _status.Text = Strings.ImageSaveFailed(ex.Message);
+            return;
+        }
+        _shell.OpenContainingFolder(dialog.FileName); // "已保存的路径" in Explorer, file selected
+        Close();
+    }
+
+    /// <summary>The held copy is always removed on close: a saved copy lives where the user put it.</summary>
+    private void DiscardIfUnsaved()
+    {
+        if (!_held) return;
+        try
+        {
+            var dir = Path.GetDirectoryName(_path);
+            if (dir is not null && ReceivedImages.IsHeld(_path, ShellController.ImageHoldRoot)) Directory.Delete(dir, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { AppLog.Error("image discard", ex); }
     }
 
     /// <summary>Decodes into memory (no file lock left behind); <paramref name="maxWidth"/> 0 = full size.</summary>

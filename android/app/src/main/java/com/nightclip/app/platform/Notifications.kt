@@ -40,6 +40,7 @@ object Notifications {
     private const val ID_FILE_OFFER = 11
     private const val ID_TRANSFER = 12
     private const val ID_INFO = 13
+    private const val ID_IMAGE = 14
 
     private const val PI_FLAGS = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
 
@@ -214,6 +215,29 @@ object Notifications {
         if (code == "HASH_MISMATCH") Strings.FILE_HASH_MISMATCH else ErrorMessages.forCode(code)
 
     // ---- misc ------------------------------------------------------------------------------
+
+    /** Whether a notification would actually show (system permission and the in-app switch). */
+    fun canPost(context: Context): Boolean = userEnabled && enabled(context)
+
+    /** A received image waiting in the preview: a thumbnail, and tapping opens the preview screen. */
+    fun postImage(context: Context, transferId: String, file: java.io.File, name: String, from: String) {
+        val open = PendingIntent.getActivity(
+            context, transferId.hashCode(),
+            com.nightclip.app.ImagePreviewActivity.intent(context, transferId, file, name, from).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            PI_FLAGS,
+        )
+        val thumb = runCatching { com.nightclip.app.ImagePreviewActivity.decode(file, 512) }.getOrNull()
+        val text = context.getString(R.string.notif_image_text)
+        val builder = NotificationCompat.Builder(context, CH_FILES)
+            .setSmallIcon(R.drawable.ic_stat_clip)
+            .setContentTitle(context.getString(R.string.notif_image_title, from))
+            .setContentText(text)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+        if (thumb != null) builder.setLargeIcon(thumb).setStyle(NotificationCompat.BigPictureStyle().bigPicture(thumb).bigLargeIcon(null as android.graphics.Bitmap?))
+        else builder.setStyle(NotificationCompat.BigTextStyle().bigText(text))
+        post(context, transferId, ID_IMAGE, builder.build())
+    }
 
     fun postInfo(context: Context, tag: String, title: String, text: String) {
         val n = NotificationCompat.Builder(context, CH_FILES)

@@ -317,4 +317,18 @@
     <string name="send_text_one">发送文字</string>
     <string name="send_text_to_title">发送文字给 %1$s</string>
     <string name="send_no_online">没有在线的设备，未发送。可以在设备卡片上单独发送（离线设备会在上线后收到）。</string>
+    <string name="image_preview_title">收到来自 %1$s 的图片</string>
+    <string name="image_copy">复制到剪贴板</string>
+    <string name="image_save_as">保存到…</string>
+    <string name="image_close">关闭</string>
+    <string name="image_not_saved">图片还没有保存：点“保存到…”选择位置，关闭则丢弃。</string>
+    <string name="image_copied">图片已复制到剪贴板</string>
+    <string name="image_copy_failed">复制失败</string>
+    <string name="image_saved_to">已保存到：%1$s</string>
+    <string name="image_saved">已保存</string>
+    <string name="image_save_failed">保存失败</string>
+    <string name="image_load_failed">无法显示预览（格式不受支持或文件已损坏）</string>
+    <string name="image_gone">这张图片已经不在了（关闭过预览，或应用重启过）。</string>
+    <string name="notif_image_title">收到图片：%1$s</string>
+    <string name="notif_image_text">点开预览，复制或保存到你选的位置。</string>
 </resources>

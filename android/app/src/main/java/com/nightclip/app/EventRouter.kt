@@ -1,6 +1,7 @@
 package com.nightclip.app
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -12,6 +13,7 @@ import com.nightclip.app.core.CoreHost
 import com.nightclip.app.core.CoreState
 import com.nightclip.app.core.TransferInfo
 import com.nightclip.app.logic.PathGuard
+import com.nightclip.app.logic.ReceivedImages
 import com.nightclip.app.logic.ReceiveDecider
 import com.nightclip.app.logic.Strings
 import com.nightclip.app.logic.TransferReducer
@@ -43,6 +45,11 @@ class EventRouter(private val app: ClipBridgeApp) {
     private val lastProgressAt = HashMap<String, Long>()
 
     fun start() {
+        // Held images nobody opened within a day (the notification was swiped away): never saved, so they go.
+        app.appScope.launch(Dispatchers.IO) {
+            val cutoff = System.currentTimeMillis() - 24L * 60 * 60 * 1000
+            ImagePreviewActivity.holdRoot(app).listFiles()?.filter { it.lastModified() < cutoff }?.forEach { it.deleteRecursively() }
+        }
         app.appScope.launch {
             CoreHost.state.filterIsInstance<CoreState.Ready>().first()
             bootstrap()
@@ -158,7 +165,7 @@ class EventRouter(private val app: ClipBridgeApp) {
                     Notifications.postTransferResult(app, id, app.getString(R.string.notif_file_sent_title), Strings.fileSentDone(t.name))
                 } else {
                     // Heavy copy: do not hold up the event collector.
-                    app.appScope.launch { saveReceived(id, ev.name.ifEmpty { t.name }, ev.path.ifEmpty { t.path }) }
+                    app.appScope.launch { saveReceived(id, ev.name.ifEmpty { t.name }, ev.path.ifEmpty { t.path }, t.peerName) }
                 }
             }
             is CoreEvent.FileFailed -> {
@@ -170,8 +177,37 @@ class EventRouter(private val app: ClipBridgeApp) {
         }
     }
 
+    /**
+     * A received image is held for the preview instead (logic/ReceivedImages.kt): copied into the hold folder, the
+     * core's copy released, then the preview opens (app in front) or a notification with a thumbnail offers it.
+     * False when it cannot be offered (no notifications while in the background): it is saved like any file.
+     */
+    private suspend fun holdImage(id: String, src: File, name: String, from: String): Boolean {
+        val dir = File(ImagePreviewActivity.holdRoot(app), ReceivedImages.holdFolder(id))
+        val held = File(dir, File(name).name.ifBlank { "image" })
+        val foreground = ForegroundTracker.isForeground
+        if (!foreground && !Notifications.canPost(app)) return false
+        try {
+            withContext(Dispatchers.IO) {
+                dir.mkdirs()
+                src.copyTo(held, overwrite = true)
+            }
+        } catch (e: IOException) {
+            Log.w(tag, "holding image $id failed: ${e.javaClass.simpleName}")
+            dir.deleteRecursively()
+            return false
+        }
+        app.prefs.markSaved(id)
+        CoreApi.releaseFile(id)
+        val shown = foreground && runCatching {
+            app.startActivity(ImagePreviewActivity.intent(app, id, held, name, from).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        if (!shown) Notifications.postImage(app, id, held, name, from)
+        return true
+    }
+
     /** Copies a received file into Downloads, then tells the core it may delete its private copy. */
-    private suspend fun saveReceived(id: String, name: String, path: String) {
+    private suspend fun saveReceived(id: String, name: String, path: String, from: String = "") {
         if (!saving.add(id)) return
         try {
             val src = File(path)
@@ -182,6 +218,10 @@ class EventRouter(private val app: ClipBridgeApp) {
             }
             if (!PathGuard.isInside(dataDir, src)) {
                 Log.w(tag, "ignoring file outside the data directory for $id")
+                return
+            }
+            if (ReceivedImages.isPreviewable(name, src.length()) && holdImage(id, src, name, from)) {
+                Notifications.cancelTransfer(app, id)
                 return
             }
             val saved = try {

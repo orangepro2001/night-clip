@@ -103,7 +103,7 @@ public sealed partial class App : Application
     /// </summary>
     private async Task PreviewImageAsync(string path)
     {
-        var opened = ImagePreviewWindow.TryOpen(path, Path.GetFileName(path), "diagnostics");
+        var opened = ImagePreviewWindow.TryOpen(path, Path.GetFileName(path), "diagnostics", held: false);
         var copied = _shell?.CopyImageFile(path) ?? false;
         MacLog.Write($"preview-image opened={opened} copied={copied}");
         await Task.Delay(800);

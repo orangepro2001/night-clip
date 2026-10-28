@@ -61,6 +61,9 @@ public static partial class Strings
     public const string BtnCopyImage = "复制到剪贴板";
     public const string BtnSaveLocal = "保存到本地";
     public const string BtnSaveLocalTip = "图片已存在接收文件夹里；点这里在资源管理器中显示它。";
+    public const string BtnSaveAs = "保存到…";
+    public const string ImageNotSavedYet = "图片还没有保存：点“保存到…”选择位置，关闭窗口则丢弃。";
+    public static string ImageSaveFailed(string reason) => $"保存失败：{reason}";
     public const string ImageCopied = "图片已复制到剪贴板，可以直接粘贴。";
     public const string ImageCopyFailed = "复制失败：剪贴板被其他程序占用，或图片无法读取。";
     public const string ImageLoadFailed = "无法显示预览（图片格式不受支持或文件已损坏）。";

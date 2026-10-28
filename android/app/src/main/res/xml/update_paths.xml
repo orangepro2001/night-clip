@@ -7,4 +7,6 @@
     <files-path name="updates" path="clipbridge/updates/" />
     <cache-path name="notes_open" path="notes-open/" />
     <cache-path name="camera" path="camera/" />
+    <!-- received images waiting in the preview ("复制到剪贴板" shares them as a content Uri) -->
+    <cache-path name="received_images" path="received-images/" />
 </paths>

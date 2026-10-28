@@ -124,6 +124,13 @@
             android:taskAffinity=""
             android:theme="@style/Theme.ClipBridge.Transparent" />
 
+        <!-- A received image: preview, copy to the clipboard, save where the user picks (EventRouter / notification). -->
+        <activity
+            android:name=".ImagePreviewActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="" />
+
         <!-- The library's scanner screen, allowed to follow the phone's orientation. -->
         <activity
             android:name=".PortraitCaptureActivity"

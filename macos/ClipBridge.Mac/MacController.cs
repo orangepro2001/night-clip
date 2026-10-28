@@ -92,6 +92,9 @@ internal sealed class MacController : IDisposable
     public async Task StartAsync()
     {
         Directory.CreateDirectory(MacPaths.DataDir);
+        // Held images of an earlier run have no preview window any more: they were never saved, so they go.
+        try { if (Directory.Exists(ImageHoldRoot)) Directory.Delete(ImageHoldRoot, recursive: true); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { MacLog.Error("image hold cleanup", ex); }
         var key = await Task.Run(() => MacKeyStore.LoadOrCreate(MacPaths.DataDir));
         _core.EventReceived += OnPumpEvent;
         var config = new
@@ -631,7 +634,10 @@ internal sealed class MacController : IDisposable
             {
                 // Images open a preview (copy to clipboard / show in Finder); other files, or too many previews, a banner.
                 var from = Transfers.Find(d.TransferId)?.PeerName is { Length: > 0 } n ? n : Strings.Unknown;
-                if (FileDisplay.IsPreviewableImage(d.Name, d.Size) && Views.ImagePreviewWindow.TryOpen(d.Path, d.Name, from)) break;
+                var held = ReceivedImages.IsHeld(d.Path, ImageHoldRoot);
+                if (FileDisplay.IsPreviewableImage(d.Name, d.Size) && Views.ImagePreviewWindow.TryOpen(d.Path, d.Name, from, held)) break;
+                // No preview window free: a held image must not be lost, so it goes to the download folder after all.
+                if (held) MoveHeldToDownloads(d.Path);
                 Notify(Strings.FileDoneTitle, Strings.FileDoneText(FileDisplay.Shorten(d.Name, 60)));
                 break;
             }
@@ -674,14 +680,31 @@ internal sealed class MacController : IDisposable
         return errors.Count == 0 ? null : string.Join("\n", errors);
     }
 
+    /// <summary>Where received images wait for "保存到…" (ReceivedImages); emptied at every start.</summary>
+    public static string ImageHoldRoot => Path.Combine(MacPaths.DataDir, ReceivedImages.HoldDirName);
+
     public async Task<string?> AcceptTransferAsync(string transferId, string? saveDir)
     {
         var dir = string.IsNullOrWhiteSpace(saveDir) ? Settings.DownloadDir : saveDir;
+        // An image for the default folder is held privately: the preview decides whether and where it is saved.
+        if (Transfers.Find(transferId) is { } row && ReceivedImages.ShouldHold(row.Name, row.Size, saveDir, Settings.DownloadDir))
+            dir = ReceivedImages.HoldDirFor(ImageHoldRoot, transferId);
         try { Directory.CreateDirectory(dir); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { return Strings.ValidationDownloadDir; }
         var error = await CallAsync(a => a.FileAccept(transferId, dir));
         await _transfersReload.RunAsync();
         return error;
+    }
+
+    private void MoveHeldToDownloads(string path)
+    {
+        try
+        {
+            var dir = Settings.DownloadDir;
+            Directory.CreateDirectory(dir);
+            File.Move(path, Path.Combine(dir, ReceivedImages.UniqueName(Path.GetFileName(path), n => File.Exists(Path.Combine(dir, n)))));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { MacLog.Error("move held image", ex); }
     }
 
     public async Task<string?> RejectTransferAsync(string transferId)

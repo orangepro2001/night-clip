@@ -102,6 +102,9 @@ internal sealed partial class ShellController : IDisposable
     public async Task StartAsync()
     {
         AppLog.Init();
+        // Held images of an earlier run have no preview window any more: they were never saved, so they go.
+        try { if (Directory.Exists(ImageHoldRoot)) Directory.Delete(ImageHoldRoot, recursive: true); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { AppLog.Error("image hold cleanup", ex); }
         Directory.CreateDirectory(App.DataDir);
         var key = new DpapiKeyStore(new DpapiProtector()).LoadOrCreate(App.DataDir);
         AppLog.Write("key store: " + key.Source);
@@ -343,7 +346,10 @@ internal sealed partial class ShellController : IDisposable
             {
                 // Images open a preview (copy to clipboard / show in Explorer); other files, or too many previews, a balloon.
                 var from = Transfers.Find(d.TransferId)?.PeerName is { Length: > 0 } n ? n : Strings.Unknown;
-                if (FileDisplay.IsPreviewableImage(d.Name, d.Size) && ImagePreviewWindow.TryOpen(d.Path, d.Name, from)) break;
+                var held = ReceivedImages.IsHeld(d.Path, ImageHoldRoot);
+                if (FileDisplay.IsPreviewableImage(d.Name, d.Size) && ImagePreviewWindow.TryOpen(d.Path, d.Name, from, held)) break;
+                // No preview window free: a held image must not be lost, so it goes to the download folder after all.
+                if (held && MoveHeldToDownloads(d.Path) is { } moved) d = d with { Path = moved };
                 Balloon(Strings.FileDoneTitle, Strings.FileDoneText(FileDisplay.Shorten(d.Name, 60)),
                     () => OpenContainingFolder(d.Path));
                 break;

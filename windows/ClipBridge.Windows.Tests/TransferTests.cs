@@ -265,3 +265,44 @@ public class TransferTests
         Assert.True(t.HasActive);
     }
 }
+
+public class ReceivedImagesTests
+{
+    [Fact]
+    public void ShouldHold_DefaultFolderImagesOnly()
+    {
+        Assert.True(ReceivedImages.ShouldHold("a.jpg", 100, null, @"C:\D"));
+        Assert.True(ReceivedImages.ShouldHold("a.jpg", 100, @"C:\D\", @"C:\D"));
+        Assert.True(ReceivedImages.ShouldHold("a.jpg", 100, @"c:\d", @"C:\D"));
+        Assert.False(ReceivedImages.ShouldHold("a.jpg", 100, @"E:\Pictures", @"C:\D")); // the user picked a folder
+        Assert.False(ReceivedImages.ShouldHold("a.zip", 100, null, @"C:\D"));
+        Assert.False(ReceivedImages.ShouldHold("a.jpg", 0, null, @"C:\D"));
+    }
+
+    [Fact]
+    public void HoldDirFor_KeepsTheIdSafe()
+    {
+        Assert.Equal(Path.Combine("root", "tr_abc-1"), ReceivedImages.HoldDirFor("root", "tr_abc-1"));
+        Assert.Equal(Path.Combine("root", "x"), ReceivedImages.HoldDirFor("root", "../x"));
+        Assert.Equal(Path.Combine("root", "transfer"), ReceivedImages.HoldDirFor("root", "../.."));
+    }
+
+    [Fact]
+    public void IsHeld_OnlyInsideTheHoldRoot()
+    {
+        var root = Path.Combine("data", "received-images");
+        Assert.True(ReceivedImages.IsHeld(Path.Combine(root, "tr1", "a.png"), root));
+        Assert.False(ReceivedImages.IsHeld(Path.Combine("data", "received-images-other", "a.png"), root));
+        Assert.False(ReceivedImages.IsHeld(Path.Combine("Downloads", "a.png"), root));
+        Assert.False(ReceivedImages.IsHeld("", root));
+    }
+
+    [Fact]
+    public void UniqueName_AddsACounter()
+    {
+        var taken = new HashSet<string> { "a.png", "a (2).png" };
+        Assert.Equal("b.png", ReceivedImages.UniqueName("b.png", taken.Contains));
+        Assert.Equal("a (3).png", ReceivedImages.UniqueName("a.png", taken.Contains));
+        Assert.Equal("image", ReceivedImages.UniqueName("\u202E", _ => false));
+    }
+}

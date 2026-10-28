@@ -586,9 +586,15 @@ internal sealed partial class ShellController
         return errors.Count == 0 ? null : string.Join("\n", errors);
     }
 
+    /// <summary>Where received images wait for "保存到…" (ReceivedImages); emptied at every start.</summary>
+    public static string ImageHoldRoot => Path.Combine(App.DataDir, ReceivedImages.HoldDirName);
+
     public async Task<string?> AcceptTransferAsync(string transferId, string? saveDir)
     {
         var dir = string.IsNullOrWhiteSpace(saveDir) ? Settings.DownloadDir : saveDir;
+        // An image for the default folder is held privately: the preview decides whether and where it is saved.
+        if (Transfers.Find(transferId) is { } row && ReceivedImages.ShouldHold(row.Name, row.Size, saveDir, Settings.DownloadDir))
+            dir = ReceivedImages.HoldDirFor(ImageHoldRoot, transferId);
         try { Directory.CreateDirectory(dir); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
@@ -625,6 +631,24 @@ internal sealed partial class ShellController
             if (answer != MessageBoxResult.Yes) return null;
         }
         return Launch(new ProcessStartInfo(row.Path) { UseShellExecute = true });
+    }
+
+    /// <summary>Moves a held image into the download folder (unique name); returns the new path, or null.</summary>
+    private string? MoveHeldToDownloads(string path)
+    {
+        try
+        {
+            var dir = Settings.DownloadDir;
+            Directory.CreateDirectory(dir);
+            var target = Path.Combine(dir, ReceivedImages.UniqueName(Path.GetFileName(path), n => File.Exists(Path.Combine(dir, n))));
+            File.Move(path, target);
+            return target;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Error("move held image", ex);
+            return null;
+        }
     }
 
     public string? OpenContainingFolder(string path)
