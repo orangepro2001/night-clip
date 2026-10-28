@@ -6,6 +6,8 @@
 
 **0.1.83（versionCode 83）已在 2026-10-28 发布到 release-publish，并已桥接到旧源**：两边是同一份包（android sha256 `862c3418…`、windows `75c17380…`），release-publish 一侧用编译进 App 的公钥验过，旧源一侧用 `cbdist verify` 验过签名、并通过旧的公开地址下载比对了字节。已装的 ≤ 0.1.79 设备会从旧源收到它；装上之后它们只问 release-publish。**真机验证：** 用户在 2026-10-28 13:30 确认 Android 手机已经收到 0.1.83 的更新推送（经旧源，桥接起作用）；Windows 电脑还没确认。**还没验证的是新通道本身**：装了 0.1.83 的设备现在问的是 release-publish，要再发一个只发到 release-publish 的版本（不再推旧源），看设备能否秒级收到，才算证明（§3 第 3 条）。
 
+**0.1.87（versionCode 87）已在 2026-10-28 发布到 release-publish，只发到 release-publish、没有推旧源**（android sha256 见 `relhub list`，windows `a8020b62…`；脚本用编译进 App 的公钥对两个平台验证通过）。内容是 Android 发送图片/视频和拍照发送；Windows 包没有功能变化，一起发是为了让 Windows 也走一遍新通道。**待确认：** 装着 0.1.83 的手机和电脑能否收到 0.1.87——收到就证明新通道可用（`relhub stats -app clipbridge` 里会出现来自这些设备的检查和下载）。从 2026-10-28 起，用户授权发布新版本无需逐次询问（见全局规则），但轮换密钥、改分发地址、撤回版本、关闭旧源仍需用户点名。
+
 经过：用户批准后第一次构建（0.1.82）在 R8 阶段因系统内存不足被中止（当时有一台约 10 GB 的虚拟机在跑），没有发布任何东西；用户关掉虚拟机后重跑，因提交了文档所以号码是 0.1.83。
 
 ## 1. 做了什么
@@ -27,7 +29,7 @@
 | --- | --- | --- |
 | 仓库 `main` | 代码提交 `31bc6b1`（提交数 81）；本文随后一个提交 | `git log --oneline -3` |
 | 下一次发布的号码 | = 提交数（`git rev-list --count HEAD`）。0.1.83 是从第 83 个提交 `714dd83` 发布的；之后每多一个提交 +1（下一个提交之后就是 0.1.84）。发布脚本要求工作区干净 | `scripts/version.sh` |
-| 生产 release-publish | `clipbridge`：`android/stable=0.1.83`、`windows/stable=0.1.83`（2026-10-28 13:07 发布）；服务本身 2026-10-28 13:05 起由另一个会话改成 podman 容器运行（仍是 `127.0.0.1:18790` 和 tailnet `/release`，签名公钥不变），本项目只依赖 URL、公钥和 `relhub` 命令行；另有别的项目的应用 `go-nx`（**不是我们的，别动**） | `relhub list` |
+| 生产 release-publish | `clipbridge`：`android/stable=0.1.87`、`windows/stable=0.1.87`（2026-10-28 发布；之前是 0.1.83）；服务本身 2026-10-28 13:05 起由另一个会话改成 podman 容器运行（仍是 `127.0.0.1:18790` 和 tailnet `/release`，签名公钥不变），本项目只依赖 URL、公钥和 `relhub` 命令行；另有别的项目的应用 `go-nx`（**不是我们的，别动**） | `relhub list` |
 | 旧分发 `clipbridge-dist` | 仍在运行，`/clipbridge` 仍在 `tailscale serve` 上，最新是 **0.1.83（桥接版）**；不记访问日志 | `systemctl --user status clipbridge-dist`、`tailscale serve status` |
 | 设备 | ≤ 0.1.79 的编译着旧公钥和旧地址，**只会问旧源**，现在能从旧源收到 0.1.83；是否已更新**尚未确认** | 各设备「关于」里的版本号；`relhub stats -app clipbridge` 里出现来自 0.1.83 的检查 |
 | GitHub CI | 推送后再看 | `gh run list --limit 3`（`gh` 已登录 `orangepro2001`） |

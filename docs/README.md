@@ -114,6 +114,7 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | [vault-api.md](vault-api.md) | **密码库门面接口**：`vault.*` 方法、错误码、同步协议与壳层规则 |
 | [adr/007-password-vault.md](adr/007-password-vault.md) | **密码库决策**：KDBX 4、本机加密、经 tailnet 在已配对设备间自动同步；每台完整副本 |
 | [plan-auto-broadcast.md](plan-auto-broadcast.md) | **计划**：复制即自动广播到所有已配对设备（可行性、Android 限制、分阶段方案）与 Syncthing 评估 |
+| [plan-macos.md](plan-macos.md) | **计划（未开工）**：macOS 端——功能分级（完整/受限/难以做到）、UI 选型（SwiftUI 单独一份 vs Avalonia）、核心改动、签名与自更新、分阶段工期、待决策问题 |
 | [plan-android-background-read.md](plan-android-background-read.md) | **计划与实施记录**：Android 后台读取剪贴板（悬浮窗取焦 + `READ_LOGS`，ClipCascade 做法） |
 | [schemas/event.schema.json](schemas/event.schema.json) | 事件信封 JSON Schema |
 | [adr/005-go-core-and-tailnet-p2p.md](adr/005-go-core-and-tailnet-p2p.md) | **当前核心决策** |
