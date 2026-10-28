@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
-using Devolutions.AvaloniaTheme.MacOS;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -18,19 +17,16 @@ namespace ClipBridge.Mac;
 /// Menu-bar application: the status item's menu is the main entry, the window opens on demand and only
 /// hides when closed. `--minimized` (login item) starts without the window.
 /// </summary>
-public sealed class App : Application
+public sealed partial class App : Application
 {
     private MacController? _shell;
     private MainWindow? _window;
     private NativeMenuItem? _syncItem;
     private IClassicDesktopStyleApplicationLifetime? _desktop;
 
-    public override void Initialize()
-    {
-        Name = Strings.AppName;
-        RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Default;
-        Styles.Add(new DevolutionsMacOsTheme());
-    }
+    // The theme is declared in App.axaml: created with `new` in code it adds no control templates
+    // (buttons render as bare text), so it must go through the XAML loader.
+    public override void Initialize() => Avalonia.Markup.Xaml.AvaloniaXamlLoader.Load(this);
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -38,6 +34,13 @@ public sealed class App : Application
         {
             _desktop = desktop;
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            // ⌘Q, the Dock's Quit and logout ask the lifetime to shut down: let the main window really close
+            // (it otherwise only hides, which would cancel the quit) and stop the core first.
+            desktop.ShutdownRequested += (_, _) =>
+            {
+                _window?.AllowClose();
+                _shell?.Dispose();
+            };
             Dispatcher.UIThread.Post(async () => await StartAsync(desktop.Args ?? Array.Empty<string>()));
         }
         base.OnFrameworkInitializationCompleted();
@@ -89,6 +92,32 @@ public sealed class App : Application
         }
         if (!args.Contains("--minimized")) ShowMain(null);
         UpdateMenu();
+        if (args.Contains("--snapshot")) DispatcherTimer.RunOnce(() => _ = SnapshotPagesAsync(), TimeSpan.FromSeconds(3));
+    }
+
+    /// <summary>
+    /// Diagnostics (`open -a ClipBridge --args --snapshot`): renders every main-window page to
+    /// ~/Library/Logs/ClipBridge/page-*.png, so the look can be checked remotely without screen-recording rights.
+    /// </summary>
+    private async Task SnapshotPagesAsync()
+    {
+        if (_window is null) return;
+        foreach (var page in Enum.GetValues<MainPage>())
+        {
+            _window.Show(page);
+            await Task.Delay(500);
+            try
+            {
+                var scale = _window.RenderScaling;
+                var size = new PixelSize((int)(_window.Bounds.Width * scale), (int)(_window.Bounds.Height * scale));
+                using var bmp = new RenderTargetBitmap(size, new Vector(96 * scale, 96 * scale));
+                bmp.Render(_window);
+                bmp.Save(Path.Combine(MacPaths.LogDir, $"page-{page}.png"));
+            }
+            catch (Exception ex) { MacLog.Error("snapshot", ex); }
+        }
+        _window.Show(MainPage.Devices);
+        MacLog.Write("snapshot done");
     }
 
     private void ShowMain(MainPage? page)

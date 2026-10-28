@@ -125,13 +125,23 @@ internal sealed class MainWindow : Window
 
     private Control PeerCard(PeerItem peer)
     {
-        var mode = new ComboBox { ItemsSource = new[] { Strings.ModeNotify, Strings.ModeManual, Strings.ModeAuto }, IsEnabled = peer.CanChangeSettings };
-        mode.SelectedIndex = Math.Max(0, Array.IndexOf(SettingsModel.Modes, peer.ApplyMode));
-        mode.SelectionChanged += async (_, _) =>
+        // Radio buttons rather than a ComboBox: three choices, all visible at once.
+        var mode = Ui.Row();
+        var labels = new[] { Strings.ModeNotify, Strings.ModeManual, Strings.ModeAuto };
+        for (var i = 0; i < SettingsModel.Modes.Length; i++)
         {
-            var chosen = SettingsModel.Modes[Math.Max(0, mode.SelectedIndex)];
-            if (chosen != peer.ApplyMode) Report(await _shell.SetPeerModeAsync(peer, chosen));
-        };
+            var value = SettingsModel.Modes[i];
+            var radio = new RadioButton
+            {
+                Content = labels[i], GroupName = "mode-" + peer.DeviceId, IsChecked = value == peer.ApplyMode,
+                IsEnabled = peer.CanChangeSettings, VerticalAlignment = VerticalAlignment.Center,
+            };
+            radio.IsCheckedChanged += async (_, _) =>
+            {
+                if (radio.IsChecked == true && value != peer.ApplyMode) Report(await _shell.SetPeerModeAsync(peer, value));
+            };
+            mode.Children.Add(radio);
+        }
         var send = new CheckBox { Content = Strings.DeviceAutoSend, IsChecked = peer.SendEnabled, IsEnabled = peer.CanChangeSettings };
         send.IsCheckedChanged += async (_, _) =>
         {
@@ -160,7 +170,8 @@ internal sealed class MainWindow : Window
         var card = Ui.Card(Ui.Column(6,
             Ui.Text(peer.DisplayName, 15, FontWeight.SemiBold),
             Ui.Dim($"{peer.PlatformText} · {state}" + (peer.IsConnected ? "" : " · " + peer.LastSeenText)),
-            Ui.Row(Ui.Text(MacStrings.ModeLabel).With(t => t.VerticalAlignment = VerticalAlignment.Center), mode, send),
+            Ui.Row(Ui.Text(MacStrings.ModeLabel).With(t => t.VerticalAlignment = VerticalAlignment.Center), mode),
+            send,
             buttons));
 
         // Drop files on a device to send them.

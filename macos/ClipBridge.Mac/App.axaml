@@ -1,0 +1,9 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ClipBridge.Mac.App"
+             Name="ClipBridge"
+             RequestedThemeVariant="Default">
+  <Application.Styles>
+    <DevolutionsMacOsTheme />
+  </Application.Styles>
+</Application>

@@ -20,7 +20,7 @@ internal static class Ui
 
     public static Button Button(string text, Func<Task> onClick, bool enabled = true)
     {
-        var b = new Button { Content = text, IsEnabled = enabled, VerticalAlignment = VerticalAlignment.Center };
+        var b = new Button { Content = text, IsEnabled = enabled, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left };
         b.Click += async (_, _) =>
         {
             b.IsEnabled = false;
@@ -32,7 +32,7 @@ internal static class Ui
 
     public static Button Button(string text, Action onClick, bool enabled = true)
     {
-        var b = new Button { Content = text, IsEnabled = enabled, VerticalAlignment = VerticalAlignment.Center };
+        var b = new Button { Content = text, IsEnabled = enabled, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left };
         b.Click += (_, _) => onClick();
         return b;
     }
