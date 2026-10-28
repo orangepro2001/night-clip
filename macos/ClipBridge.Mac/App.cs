@@ -117,7 +117,7 @@ public sealed partial class App : Application
             var scale = w.RenderScaling;
             using var bmp = new RenderTargetBitmap(new PixelSize((int)(w.Bounds.Width * scale), (int)(w.Bounds.Height * scale)), new Vector(96 * scale, 96 * scale));
             bmp.Render(w);
-            bmp.Save(file);
+            bmp.Save(file, PngBitmapEncoderOptions.Default);
         }
         catch (Exception ex) { MacLog.Error("snapshot", ex); }
     }
@@ -139,7 +139,7 @@ public sealed partial class App : Application
                 var size = new PixelSize((int)(_window.Bounds.Width * scale), (int)(_window.Bounds.Height * scale));
                 using var bmp = new RenderTargetBitmap(size, new Vector(96 * scale, 96 * scale));
                 bmp.Render(_window);
-                bmp.Save(Path.Combine(MacPaths.LogDir, $"page-{page}.png"));
+                bmp.Save(Path.Combine(MacPaths.LogDir, $"page-{page}.png"), PngBitmapEncoderOptions.Default);
             }
             catch (Exception ex) { MacLog.Error("snapshot", ex); }
         }
@@ -182,6 +182,7 @@ public sealed partial class App : Application
             Item(MacStrings.MenuShow, () => ShowMain(null)),
             Item(MacStrings.MenuSendClipboard, () => _shell?.SendCurrentClipboard()),
             _syncItem,
+            Item(Strings.TrayLockVault, () => { if (_shell is { CoreRunning: true } s) _ = s.LockVaultAsync(); }),
             new NativeMenuItemSeparator(),
             Item(MacStrings.MenuPair, PairListenWindow.ShowOrActivate),
             Item(MacStrings.MenuJoin, PairJoinWindow.ShowOrActivate),

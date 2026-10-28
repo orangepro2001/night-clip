@@ -122,6 +122,23 @@ scripts/probe-update.sh -c <旧号> -p macos         # 像已安装的应用一�
   - 共用规则是 `ReceivedImages`（C# 和 Kotlin 各一份），都有单元测试。
   - **三端都没在真机上跑过这条完整流程。**
 
+- **macOS 密码库（2026-10-29）**：Windows 的密码库界面已移植到 Mac。
+  - 文件：`MacController.Vault.cs`；`Views/Vault*.cs`、`EntryDetailPane.cs`、`EntryEditorWindow.cs`（含密码生成器）；`Platform/MacSessionWatcher.cs`、`MacWindowPrivacy.cs`。
+  - 与 Windows 一致：
+    - 创建和解锁（输错有等待倒计时）、搜索、分组、回收站；
+    - 详情（显示后 15 秒重新遮住、复制、TOTP、附件、历史）、编辑器、生成器；
+    - 健康报告、备份和三种恢复方式、KDBX/CSV 导入导出、修改主密码、自动锁、剪贴板清空秒数、防截屏开关。
+  - 复制密码：剪贴板标记为 Concealed，只在本机，同时登记为本应用的写入，所以剪贴板同步不会发出去。到时间、锁库或退出时，只有剪贴板里仍是我们写的那条才清空。
+  - 自动锁的触发方式：
+    - 锁屏：每 2 秒查询一次 `CGSessionCopyCurrentDictionary`；快速切换用户也算。
+    - 睡眠：只能在醒来后通过时钟跳变发现，Windows 是睡前就锁。
+  - 防截屏：调用 `NSWindow setSharingType:`，尽力而为。
+  - 比 Windows 多的：
+    - 附件可以直接「打开」：写到一个只有本用户能读的临时目录，锁库、退出和启动时都会清掉。
+    - 设置里有「与其他设备同步」：直接调用 `vault.sync_*`。Windows 没有这个界面。
+  - 已验证：在 Mac 上启动，`--snapshot` 渲染出了锁定页。Mac 上已经通过同步收到了手机的库，显示为「已锁定」。
+  - **未验证**（要用户输入主密码）：解锁之后的全部流程，以及锁屏后是否真的自动锁。
+
 ## 5. 已知限制和待办
 
 - **托管 dll 没被封进签名**：`codesign --verify --deep --strict` 不通过，只影响 Gatekeeper 评估，不影响运行和自更新。正式修法是调整包的结构（plan §2.4）。

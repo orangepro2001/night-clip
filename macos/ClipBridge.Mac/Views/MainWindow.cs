@@ -13,7 +13,7 @@ using ClipBridge.Windows.Update;
 namespace ClipBridge.Mac.Views;
 
 /// <summary>
-/// Sidebar (devices, inbox, transfers, settings) and the selected page. Closing hides the window; the app
+/// Sidebar (devices, inbox, transfers, vault, settings) and the selected page. Closing hides the window; the app
 /// stays in the menu bar. Pages are rebuilt from the controller's snapshots when they change.
 /// </summary>
 internal sealed class MainWindow : Window
@@ -21,6 +21,10 @@ internal sealed class MainWindow : Window
     private readonly MacController _shell = MacController.Current;
     private readonly ListBox _nav = new() { Width = 170 };
     private readonly ContentControl _page = new();
+    private readonly ContentControl _host = new();
+    private readonly ScrollViewer _scroll;
+    private readonly VaultPage _vaultPage = new() { Margin = new Thickness(16) };
+    private bool _vaultShown;
     private readonly TextBlock _status = Ui.Dim("");
     private readonly DispatcherTimer _statusClear = new() { Interval = TimeSpan.FromSeconds(6) };
     private readonly DispatcherTimer _transfersTick = new() { Interval = TimeSpan.FromMilliseconds(300) };
@@ -31,17 +35,22 @@ internal sealed class MainWindow : Window
     public MainWindow()
     {
         Title = MacStrings.WindowTitle;
-        Width = 820;
+        Width = 960;
         Height = 580;
         MinWidth = 640;
         MinHeight = 440;
-        _nav.ItemsSource = new[] { Strings.NavDevices, Strings.NavInbox, Strings.NavTransfers, Strings.NavSettings };
+        // Same order as MainPage.
+        _nav.ItemsSource = new[] { Strings.NavDevices, Strings.NavInbox, Strings.NavTransfers, Strings.NavVault, Strings.NavSettings };
         _nav.SelectedIndex = 0;
         _nav.SelectionChanged += (_, _) => { if (_nav.SelectedIndex >= 0) Show((MainPage)_nav.SelectedIndex); };
 
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), RowDefinitions = new RowDefinitions("*,Auto") };
         grid.Children.Add(new Border { Child = _nav, Padding = new Thickness(8), [Grid.RowSpanProperty] = 2 });
-        grid.Children.Add(new ScrollViewer { Content = _page, Padding = new Thickness(16), [Grid.ColumnProperty] = 1 });
+        // Ordinary pages scroll; the vault page fills the height (its lists scroll by themselves).
+        _scroll = new ScrollViewer { Content = _page, Padding = new Thickness(16) };
+        _host.Content = _scroll;
+        _host[Grid.ColumnProperty] = 1;
+        grid.Children.Add(_host);
         grid.Children.Add(new Border { Child = _status, Padding = new Thickness(16, 6), [Grid.ColumnProperty] = 1, [Grid.RowProperty] = 1 });
         Content = grid;
 
@@ -63,6 +72,9 @@ internal sealed class MainWindow : Window
             e.Cancel = true; // hide only: the menu bar item keeps running
             Hide();
         };
+        // Shown / hidden / minimised: the vault page masks its secrets and drops the capture exclusion when not on screen.
+        PropertyChanged += (_, e) => { if (e.Property == IsVisibleProperty || e.Property == WindowStateProperty) UpdateVaultShown(); };
+        _shell.Main = this;
         Render();
     }
 
@@ -73,6 +85,17 @@ internal sealed class MainWindow : Window
         _current = page;
         if (_nav.SelectedIndex != (int)page) _nav.SelectedIndex = (int)page;
         Render();
+        UpdateVaultShown();
+    }
+
+    /// <summary>Tells the vault page when it comes on screen or goes away (page switch, window hidden or minimised).</summary>
+    private void UpdateVaultShown()
+    {
+        var shown = IsVisible && WindowState != WindowState.Minimized && _current == MainPage.Vault;
+        if (shown == _vaultShown) return;
+        _vaultShown = shown;
+        if (shown) _ = _vaultPage.OnShownAsync();
+        else _vaultPage.OnHidden();
     }
 
     public void ShowStatus(string text)
@@ -89,6 +112,12 @@ internal sealed class MainWindow : Window
 
     private void Render()
     {
+        if (_current == MainPage.Vault)
+        {
+            _host.Content = _vaultPage; // one instance: it keeps its own state and is never rebuilt
+            return;
+        }
+        _host.Content = _scroll;
         _page.Content = _current switch
         {
             MainPage.Inbox => InboxPage(),

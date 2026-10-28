@@ -9,7 +9,7 @@ using ClipBridge.Windows.Update;
 
 namespace ClipBridge.Mac;
 
-public enum MainPage { Devices, Inbox, Transfers, Settings }
+public enum MainPage { Devices, Inbox, Transfers, Vault, Settings }
 
 internal enum ApplyOutcome { Written, Downgraded, Failed }
 
@@ -22,9 +22,9 @@ internal enum ApplyOutcome { Written, Downgraded, Failed }
 /// <item>every clipboard read and write runs on one serial worker, so "write + clip.mark_applied" finishes
 /// before the next read.</item>
 /// </list>
-/// Notes and the password vault are not part of the macOS shell yet (docs/plan-macos.md §7).
+/// The password vault lives in MacController.Vault.cs; notes are not part of the macOS shell yet (docs/plan-macos.md §7).
 /// </summary>
-internal sealed class MacController : IDisposable
+internal sealed partial class MacController : IDisposable
 {
     public static MacController Current { get; private set; } = null!;
 
@@ -113,6 +113,7 @@ internal sealed class MacController : IDisposable
         CoreRunning = true;
         _lastSeenChange = MacPasteboard.ChangeCount(); // what is on the clipboard at start is not "copied now"
         _clipPoll.Start();
+        InitVault();
         await ReloadAllAsync();
     }
 
@@ -121,6 +122,7 @@ internal sealed class MacController : IDisposable
         if (_disposed) return;
         _disposed = true;
         _clipPoll.Stop();
+        DisposeVault();       // session watcher off, our secret off the pasteboard
         _clipQueue.Dispose();
         _core.Dispose();
     }
@@ -205,6 +207,12 @@ internal sealed class MacController : IDisposable
                     break;
                 case UpdateEvent u:
                     HandleUpdateEvent(u);
+                    break;
+                case VaultLockedEvent v:
+                    OnVaultLockedEvent(v);
+                    break;
+                case VaultChangedEvent:
+                    VaultChanged?.Invoke();
                     break;
             }
         }

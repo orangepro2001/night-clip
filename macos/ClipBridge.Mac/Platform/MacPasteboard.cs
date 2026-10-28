@@ -56,6 +56,9 @@ public static class MacPasteboard
         finally { ObjC.Send(image, ObjC.Sel("release")); }
     });
 
+    /// <summary>Empties the clipboard (a vault secret's timer ran out); returns the new change count.</summary>
+    public static uint Clear() => ObjC.Pool(() => unchecked((uint)ObjC.SendLong(General(), ObjC.Sel("clearContents"))));
+
     /// <summary>Replaces the clipboard with <paramref name="text"/>; returns the new change count, or null on failure.</summary>
     public static uint? WriteText(string text, bool sensitive) => ObjC.Pool<uint?>(() =>
     {
