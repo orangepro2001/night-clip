@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -148,7 +149,7 @@ func (e *Engine) reconcileListeners() {
 	for _, a := range add {
 		l, err := e.listenOn(a)
 		if err != nil {
-			bindErr = err
+			bindErr = errors.Join(bindErr, err) // every address's reason, not just the last
 			e.emit(map[string]any{"type": "core.warning", "code": string(proto.CodeListenFailed), "addr": a.String(),
 				"port": e.cfg.Port, "error": err.Error()})
 			continue
