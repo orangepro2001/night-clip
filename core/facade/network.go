@@ -617,6 +617,17 @@ func (c *Core) diagnostics(n *netState) any {
 	if err := n.eng.ListenError(); err != nil {
 		d["listen_error"] = err.Error()
 	}
+	if c.cfg.Listen {
+		local := []string{}
+		all, err := peer.LocalAddrs()
+		for _, a := range all {
+			local = append(local, a.String())
+		}
+		if err != nil {
+			local = append(local, "error: "+err.Error())
+		}
+		d["local_addrs"] = local
+	}
 	return d
 }
 

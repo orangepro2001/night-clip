@@ -25,9 +25,28 @@ func InTailnet(a netip.Addr) bool {
 // (Windows) core calls it: enumerating interfaces is restricted on Android,
 // where the core only dials out.
 func TailnetAddrs() []netip.Addr {
+	out, _ := tailnetAddrs()
+	return out
+}
+
+func tailnetAddrs() ([]netip.Addr, error) {
+	all, err := LocalAddrs()
+	var out []netip.Addr
+	for _, a := range all {
+		if InTailnet(a) {
+			out = append(out, a)
+		}
+	}
+	return out, err
+}
+
+// LocalAddrs lists every address on this machine's interfaces, sorted
+// (diagnostics show it, so a missing tailnet address can be told apart from
+// one that is there but not recognised).
+func LocalAddrs() ([]netip.Addr, error) {
 	ifaces, err := net.InterfaceAddrs()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var out []netip.Addr
 	for _, ia := range ifaces {
@@ -35,12 +54,12 @@ func TailnetAddrs() []netip.Addr {
 		if !ok {
 			continue
 		}
-		if a, ok := netip.AddrFromSlice(ipn.IP); ok && InTailnet(a) {
+		if a, ok := netip.AddrFromSlice(ipn.IP); ok {
 			out = append(out, a.Unmap())
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Less(out[j]) })
-	return out
+	return out, nil
 }
 
 // tailnetStrings returns the tailnet addresses among in, as strings, dropping

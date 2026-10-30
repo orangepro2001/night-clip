@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -90,11 +91,15 @@ func (e *Engine) ListenAddrs() []netip.Addr {
 	return out
 }
 
-func (e *Engine) wantedAddrs() []netip.Addr {
+func (e *Engine) wantedAddrs() ([]netip.Addr, error) {
 	if e.hooks.ListenAddrs != nil {
-		return e.hooks.ListenAddrs()
+		return e.hooks.ListenAddrs(), nil
 	}
-	return TailnetAddrs()
+	addrs, err := tailnetAddrs()
+	if err != nil {
+		err = fmt.Errorf("list network addresses: %w", err)
+	}
+	return addrs, err
 }
 
 // listenLoop keeps one TLS listener per tailnet address, rebinding when
@@ -114,8 +119,9 @@ func (e *Engine) listenLoop() {
 }
 
 func (e *Engine) reconcileListeners() {
+	wanted, enumErr := e.wantedAddrs()
 	want := map[netip.Addr]bool{}
-	for _, a := range e.wantedAddrs() {
+	for _, a := range wanted {
 		want[a.Unmap()] = true
 	}
 
@@ -138,7 +144,7 @@ func (e *Engine) reconcileListeners() {
 	for _, l := range drop {
 		l.close()
 	}
-	var bindErr error
+	bindErr := enumErr
 	for _, a := range add {
 		l, err := e.listenOn(a)
 		if err != nil {

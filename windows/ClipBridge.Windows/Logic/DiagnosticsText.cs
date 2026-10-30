@@ -24,6 +24,8 @@ public static class DiagnosticsText
         sb.AppendLine($"监听地址: {(addrs.Count == 0 ? "（无）" : string.Join(", ", addrs))}  端口: {JsonRead.Long(diag, "port")}");
         var listenError = JsonRead.Str(diag, "listen_error");
         if (listenError.Length > 0) sb.AppendLine($"监听失败: {listenError}");
+        var local = JsonRead.StrArr(diag, "local_addrs");
+        if (local.Count > 0) sb.AppendLine($"本机网卡地址: {string.Join(", ", local)}");
         sb.AppendLine($"丢弃的事件数: {JsonRead.Long(diag, "events_dropped")}");
         if (warnings is { Count: > 0 }) sb.AppendLine($"警告: {string.Join(", ", warnings)}");
 
