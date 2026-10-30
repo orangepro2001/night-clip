@@ -286,8 +286,8 @@ func (e *Engine) Endpoint(p store.Peer) (PeerEndpoint, error) {
 		return PeerEndpoint{}, proto.Errorf(proto.CodePeerOffline, "no address known for %s", p.Name)
 	}
 	ep := PeerEndpoint{Client: HTTPClient(ClientTLS(e.id, p.CertFP), e.timing.DialTimeout)}
-	for _, a := range addrs {
-		ep.Bases = append(ep.Bases, "https://"+net.JoinHostPort(a, strconv.Itoa(p.Port)))
+	for _, t := range dialTargets(addrs, e.peerPorts(p.Port)) {
+		ep.Bases = append(ep.Bases, "https://"+net.JoinHostPort(t.addr, strconv.Itoa(t.port)))
 	}
 	return ep, nil
 }

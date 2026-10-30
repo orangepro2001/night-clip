@@ -126,6 +126,47 @@ func (l *link) dialLoop(ctx context.Context, gen uint64) {
 	}
 }
 
+// peerPorts lists the ports to try for a peer whose stored port is stored: the
+// stored one first, then the other of the default/fallback pair when stored is
+// one of them (the peer may have moved between the two since we last spoke).
+func (e *Engine) peerPorts(stored int) []int {
+	primary, fallback := e.cfg.Port, e.cfg.FallbackPort
+	if primary == 0 {
+		primary = DefaultPort
+	}
+	if stored == 0 {
+		stored = primary
+	}
+	if fallback == 0 {
+		return []int{stored}
+	}
+	switch stored {
+	case primary:
+		return []int{primary, fallback}
+	case fallback:
+		return []int{fallback, primary}
+	}
+	return []int{stored}
+}
+
+type dialTarget struct {
+	addr string
+	port int
+}
+
+// dialTargets orders address/port pairs: every address on the first port, then
+// every address on the next, so a moved port costs one extra round, not a
+// timeout per address.
+func dialTargets(addrs []string, ports []int) []dialTarget {
+	out := make([]dialTarget, 0, len(addrs)*len(ports))
+	for _, port := range ports {
+		for _, a := range addrs {
+			out = append(out, dialTarget{a, port})
+		}
+	}
+	return out
+}
+
 // jitter spreads d by up to ±20% so that devices do not reconnect in lockstep.
 func jitter(d time.Duration) time.Duration {
 	return d - d/5 + time.Duration(randInt63n(int64(d)*2/5+1))
@@ -137,13 +178,9 @@ func (e *Engine) dialOnce(ctx context.Context, l *link, p store.Peer) (*session,
 	if len(addrs) == 0 {
 		return nil, proto.Errorf(proto.CodeNoTailnet, "no tailnet address known for %s", p.Name)
 	}
-	port := p.Port
-	if port == 0 {
-		port = DefaultPort
-	}
-
 	var lastErr error
-	for _, a := range addrs {
+	for _, t := range dialTargets(addrs, e.peerPorts(p.Port)) {
+		a, port := t.addr, t.port
 		var local string
 		client := &http.Client{Transport: &http.Transport{
 			TLSClientConfig: ClientTLS(e.id, p.CertFP),
@@ -185,6 +222,9 @@ func (e *Engine) dialOnce(ctx context.Context, l *link, p store.Peer) (*session,
 			conn.CloseNow()
 			lastErr = err
 			continue
+		}
+		if port != p.Port {
+			_ = e.db.SetPeerPort(p.DeviceID, port)
 		}
 		// The address that worked goes first next time.
 		rest := make([]string, 0, len(addrs))

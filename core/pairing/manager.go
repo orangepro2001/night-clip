@@ -143,6 +143,9 @@ func (m *Manager) Begin() (BeginResult, error) {
 			break
 		}
 	}
+	if p := m.e.ListenPortOf(host); p != 0 {
+		port = p
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.purgeLocked()

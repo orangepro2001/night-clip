@@ -60,15 +60,37 @@ type listener struct {
 
 func (l *listener) close() { _ = l.srv.Close() }
 
-// ListenPort returns the port of the first active listener (0 if none). Tests
-// that bind port 0 use it to learn where to dial.
+func (l *listener) port() int {
+	if ta, ok := l.ln.Addr().(*net.TCPAddr); ok {
+		return ta.Port
+	}
+	return 0
+}
+
+// ListenPort returns the port of the listener on the lowest address (0 if
+// none). Tests that bind port 0 use it to learn where to dial.
 func (e *Engine) ListenPort() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	for _, l := range e.listeners {
-		if ta, ok := l.ln.Addr().(*net.TCPAddr); ok {
-			return ta.Port
+	var first *listener
+	for a, l := range e.listeners {
+		if first == nil || a.Less(first.addr) {
+			first = l
 		}
+	}
+	if first == nil {
+		return 0
+	}
+	return first.port()
+}
+
+// ListenPortOf returns the port listened on at a (0 if none): with the
+// fallback port, addresses can differ.
+func (e *Engine) ListenPortOf(a netip.Addr) int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if l, ok := e.listeners[a.Unmap()]; ok {
+		return l.port()
 	}
 	return 0
 }
@@ -186,8 +208,18 @@ func (e *Engine) reconcileListeners() {
 	}
 }
 
+// listenOn binds a on the configured port, or on the fallback port when the
+// configured one is unavailable.
 func (e *Engine) listenOn(a netip.Addr) (*listener, error) {
 	ln, err := net.Listen("tcp", net.JoinHostPort(a.String(), strconv.Itoa(e.cfg.Port)))
+	if err != nil && e.cfg.FallbackPort != 0 {
+		var err2 error
+		if ln, err2 = net.Listen("tcp", net.JoinHostPort(a.String(), strconv.Itoa(e.cfg.FallbackPort))); err2 != nil {
+			err = errors.Join(err, err2)
+		} else {
+			err = nil
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

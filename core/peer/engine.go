@@ -17,6 +17,11 @@ const (
 	Subprotocol = "clipbridge.v1"
 	// DefaultPort is the default listening port (docs/api-spec.md §1.1).
 	DefaultPort = 47821
+	// FallbackPort is listened on when DefaultPort cannot be bound, and tried by
+	// dialers when DefaultPort does not answer. Windows hands whole port blocks
+	// to other components (WSL mirrored networking takes a 4096-port range that
+	// can include 47821); two ports 5000 apart cannot both fall in one block.
+	FallbackPort = 42821
 	// MaxFrameBytes is the largest WebSocket message either side accepts. The
 	// spec's 64 KiB is for clipboard *text*; a worst-case JSON escaping of 64 KiB
 	// of control characters is ~6x that, so frames get generous headroom.
@@ -91,10 +96,13 @@ func (t Timing) withDefaults() Timing {
 type Config struct {
 	Identity *identity.Identity
 	Store    *store.DB
-	Listen   bool   // Windows: accept connections on tailnet addresses; Android: dial only
-	Port     int    // 0 = DefaultPort (tests pass a port and read it back with ListenPort)
-	Platform string // "windows" | "android" | "macos"
-	Handler  Handler
+	Listen   bool // Windows: accept connections on tailnet addresses; Android: dial only
+	Port     int  // 0 = DefaultPort (tests pass a port and read it back with ListenPort)
+	// FallbackPort is the second port (see the constant); 0 = FallbackPort when
+	// Port is DefaultPort, otherwise none.
+	FallbackPort int
+	Platform     string // "windows" | "android" | "macos"
+	Handler      Handler
 	// Emit receives engine events as JSON-ready maps (core.warning, ...).
 	Emit   func(map[string]any)
 	Now    func() time.Time
@@ -129,6 +137,9 @@ type Engine struct {
 func New(cfg Config) *Engine {
 	if cfg.Port == 0 && !cfg.Hooks.RandomPort {
 		cfg.Port = DefaultPort
+	}
+	if cfg.FallbackPort == 0 && cfg.Port == DefaultPort {
+		cfg.FallbackPort = FallbackPort
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now

@@ -603,6 +603,44 @@ func TestBindFailureIsListenFailedNotNoTailnet(t *testing.T) {
 	}
 }
 
+// When the usual port is taken (WSL mirrored networking reserves a block that
+// can hold it), the listener moves to the fallback port and a dialer that only
+// knows the usual port still connects, then remembers where it found the peer.
+func TestBlockedPortFallsBackAndDialersFollow(t *testing.T) {
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	spare, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary, fallback := busy.Addr().(*net.TCPAddr).Port, spare.Addr().(*net.TCPAddr).Port
+	spare.Close()
+	ports := func(c *Config) { c.Hooks.RandomPort, c.Port, c.FallbackPort = false, primary, fallback }
+
+	win := newNode(t, "win", "windows", true, nil, ports)
+	pix := newNode(t, "pixel", "android", false, nil, ports)
+	win.know(pix, 0, "")
+	win.start()
+	waitUntil(t, "listening on the fallback port", func() bool { return win.e.ListenPort() == fallback })
+	if err := win.e.ListenError(); err != nil {
+		t.Fatalf("ListenError = %v although the fallback port is bound", err)
+	}
+
+	pix.know(win, primary, "")
+	pix.start()
+	pix.waitState(win.id.DeviceID, StateConnected)
+	waitUntil(t, "the new port to be stored", func() bool {
+		p, _, _ := pix.db.GetPeer(win.id.DeviceID)
+		return p.Port == fallback
+	})
+	if got := pix.e.peerPorts(fallback); len(got) != 2 || got[0] != fallback || got[1] != primary {
+		t.Fatalf("ports to try after the move = %v", got)
+	}
+}
+
 func TestProductionAddressDiscoveryOnlyReturnsTailnetAddresses(t *testing.T) {
 	for _, a := range TailnetAddrs() {
 		if !InTailnet(a) {

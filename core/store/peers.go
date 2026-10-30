@@ -157,6 +157,15 @@ func scanPeer(row rowScanner) (Peer, error) {
 	return p, nil
 }
 
+// SetPeerPort records the port the peer was last reached on (it moves between
+// the default and the fallback port when the default cannot be bound there).
+func (db *DB) SetPeerPort(deviceID string, port int) error {
+	if _, err := db.sql.Exec(`UPDATE peers SET port = ? WHERE device_id = ?`, port, deviceID); err != nil {
+		return dbErr("set peer port", err)
+	}
+	return nil
+}
+
 // TouchPeer records that the peer was just seen at addrs. An empty addrs keeps
 // the stored addresses.
 func (db *DB) TouchPeer(deviceID string, addrs []string, seenAt int64) error {

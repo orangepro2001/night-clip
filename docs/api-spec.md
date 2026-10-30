@@ -8,7 +8,7 @@
 
 ### 1.1 传输
 
-- 设备间：HTTPS（TLS 1.3，双向证书，指纹固定），端口默认 `47821`，仅在 tailnet 地址上监听。
+- 设备间：HTTPS（TLS 1.3，双向证书，指纹固定），端口默认 `47821`，仅在 tailnet 地址上监听。`47821` 绑不上时（例如 WSL 镜像网络把含它的 4096 个端口整段留给 Linux）改监听备用端口 `42821`；拨号方先试记录的端口，不通再试另一个，连上后记下新端口。
 - 实时通道：WebSocket，`Sec-WebSocket-Protocol: clipbridge.v1`，文本帧 JSON。
 - 文件：同一 HTTPS 服务上的 `GET`/`PUT /v1/files/{id}`，`application/octet-stream`。
 - 时间：RFC 3339 UTC。ID：事件为 UUIDv4；设备为 `dev_` + base32(sha256(SPKI))[:26]。
