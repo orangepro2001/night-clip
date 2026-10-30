@@ -13,6 +13,7 @@ const (
 	CodePairingExpired Code = "PAIRING_EXPIRED"
 	CodePairingFailed  Code = "PAIRING_FAILED"
 	CodeNoTailnet      Code = "NO_TAILNET"
+	CodeListenFailed   Code = "LISTEN_FAILED" // a tailnet address exists but its port cannot be bound
 	CodePeerOffline    Code = "PEER_OFFLINE"
 	CodeTargetMismatch Code = "TARGET_MISMATCH"
 	CodeSourceMismatch Code = "SOURCE_MISMATCH"

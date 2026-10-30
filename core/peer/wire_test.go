@@ -574,6 +574,35 @@ func TestListenerFollowsTheTailnetAddresses(t *testing.T) {
 	}
 }
 
+// An address that exists but whose port cannot be bound (taken, or reserved
+// by Windows) is LISTEN_FAILED with the reason, never NO_TAILNET.
+func TestBindFailureIsListenFailedNotNoTailnet(t *testing.T) {
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	win := newNode(t, "win", "windows", true, nil, func(c *Config) {
+		c.Hooks.RandomPort = false
+		c.Port = busy.Addr().(*net.TCPAddr).Port
+	})
+	win.start()
+
+	waitUntil(t, "LISTEN_FAILED warning", func() bool { return win.emitted("core.warning", "LISTEN_FAILED") > 0 })
+	if win.e.ListenError() == nil {
+		t.Fatal("ListenError is nil while the bind fails")
+	}
+	if n := win.emitted("core.warning", "NO_TAILNET"); n != 0 {
+		t.Fatalf("NO_TAILNET emitted %d times although a tailnet address exists", n)
+	}
+
+	busy.Close()
+	waitUntil(t, "listener appears", func() bool { return win.e.ListenPort() != 0 })
+	if err := win.e.ListenError(); err != nil {
+		t.Fatalf("ListenError still %v after the bind succeeded", err)
+	}
+}
+
 func TestProductionAddressDiscoveryOnlyReturnsTailnetAddresses(t *testing.T) {
 	for _, a := range TailnetAddrs() {
 		if !InTailnet(a) {

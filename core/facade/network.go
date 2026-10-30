@@ -607,13 +607,17 @@ func (c *Core) diagnostics(n *netState) any {
 		addrs = append(addrs, a.String())
 	}
 	fp := c.id.Fingerprint()
-	return map[string]any{
+	d := map[string]any{
 		"core": Version, "protocol": "clipbridge/v1", "device_id": c.id.DeviceID,
 		"fingerprint_prefix": fp[:8], "platform": c.cfg.Platform, "listen": c.cfg.Listen,
 		"listening_addrs": addrs, "port": n.eng.ListenPort(),
 		"peers": n.eng.PeerStatuses(), "events_dropped": c.dropped.Load(),
 		"update": c.upd.Status(),
 	}
+	if err := n.eng.ListenError(); err != nil {
+		d["listen_error"] = err.Error()
+	}
+	return d
 }
 
 func randomHex() string {

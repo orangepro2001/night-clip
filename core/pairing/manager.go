@@ -125,11 +125,15 @@ type BeginResult struct {
 }
 
 // Begin opens a pairing session: a fresh psk valid for SessionTTL. It fails with
-// NO_TAILNET when this device is not listening anywhere (nothing to connect to).
+// NO_TAILNET when this device has no tailnet address, LISTEN_FAILED when it has
+// one but cannot bind the port (nothing to connect to either way).
 func (m *Manager) Begin() (BeginResult, error) {
 	addrs := m.e.ListenAddrs()
 	port := m.e.ListenPort()
 	if len(addrs) == 0 || port == 0 {
+		if err := m.e.ListenError(); err != nil {
+			return BeginResult{}, proto.Errorf(proto.CodeListenFailed, "cannot listen on the tailnet address: %v", err)
+		}
 		return BeginResult{}, proto.Errorf(proto.CodeNoTailnet, "this device has no tailnet address to pair on")
 	}
 	host := addrs[0]

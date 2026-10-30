@@ -71,6 +71,14 @@ func (e *Engine) ListenPort() int {
 	return 0
 }
 
+// ListenError returns why binding a tailnet address last failed, or nil when
+// every wanted address is being listened on.
+func (e *Engine) ListenError() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.listenErr
+}
+
 // ListenAddrs returns the addresses currently being listened on.
 func (e *Engine) ListenAddrs() []netip.Addr {
 	e.mu.Lock()
@@ -130,10 +138,13 @@ func (e *Engine) reconcileListeners() {
 	for _, l := range drop {
 		l.close()
 	}
+	var bindErr error
 	for _, a := range add {
 		l, err := e.listenOn(a)
 		if err != nil {
-			e.emit(map[string]any{"type": "core.warning", "code": "LISTEN_FAILED", "addr": a.String()})
+			bindErr = err
+			e.emit(map[string]any{"type": "core.warning", "code": string(proto.CodeListenFailed), "addr": a.String(),
+				"port": e.cfg.Port, "error": err.Error()})
 			continue
 		}
 		e.mu.Lock()
@@ -147,9 +158,14 @@ func (e *Engine) reconcileListeners() {
 	}
 
 	e.mu.Lock()
-	none := len(e.listeners) == 0
+	// NO_TAILNET only when there is no tailnet address at all; an address we
+	// cannot bind is LISTEN_FAILED (port taken, or reserved by Windows).
+	none := len(e.listeners) == 0 && len(want) == 0
 	changed := none != e.noTailnet
 	e.noTailnet = none
+	if bindErr != nil || len(e.listeners) == len(want) {
+		e.listenErr = bindErr
+	}
 	e.mu.Unlock()
 	if changed && none {
 		e.emit(map[string]any{"type": "core.warning", "code": string(proto.CodeNoTailnet)})

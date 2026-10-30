@@ -131,6 +131,7 @@ public class ErrorMessageTests
 {
     [Theory]
     [InlineData("NO_TAILNET", "Tailscale")]
+    [InlineData("LISTEN_FAILED", "47821")]
     [InlineData("PEER_OFFLINE", "不在线")]
     [InlineData("PAIRING_EXPIRED", "过期")]
     [InlineData("NO_SPACE", "空间")]

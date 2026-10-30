@@ -24,6 +24,16 @@ public class TrayModelTests
     }
 
     [Fact]
+    public void WarningTracker_ListenFailedReplacesNoTailnet()
+    {
+        var w = new WarningTracker();
+        w.Apply(Ev("{\"type\":\"core.warning\",\"code\":\"NO_TAILNET\"}"));
+        Assert.True(w.Apply(Ev("{\"type\":\"core.warning\",\"code\":\"LISTEN_FAILED\",\"addr\":\"100.64.0.1\",\"error\":\"forbidden\"}")));
+        Assert.False(w.Has("NO_TAILNET"));
+        Assert.Equal(Strings.ListenFailedBanner, w.Banner);
+    }
+
+    [Fact]
     public void WarningTracker_FingerprintMismatchSticks()
     {
         var w = new WarningTracker();

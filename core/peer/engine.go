@@ -121,7 +121,8 @@ type Engine struct {
 	routes    []route
 	started   bool
 	closed    bool
-	noTailnet bool // a NO_TAILNET warning is currently active
+	noTailnet bool  // a NO_TAILNET warning is currently active
+	listenErr error // why the last bind failed; nil once nothing is failing
 }
 
 // New builds an engine; call Handle for extra routes, then Start.

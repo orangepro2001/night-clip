@@ -323,6 +323,9 @@ func (c *Core) status() (any, error) {
 		}
 		st["listening_addrs"] = addrs
 		st["listening_port"] = c.n.eng.ListenPort()
+		if err := c.n.eng.ListenError(); err != nil {
+			st["listen_error"] = err.Error()
+		}
 	}
 	return st, nil
 }

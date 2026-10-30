@@ -6,6 +6,7 @@ public static class ErrorMessages
     public static string ForCode(string? code) => code switch
     {
         "NO_TAILNET" => Strings.ErrNoTailnet,
+        "LISTEN_FAILED" => Strings.ErrListenFailed,
         "NOT_PAIRED" => Strings.ErrNotPaired,
         "PAIRING_EXPIRED" => Strings.ErrPairingExpired,
         "PAIRING_FAILED" => Strings.ErrPairingFailed,

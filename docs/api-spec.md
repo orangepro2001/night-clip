@@ -41,6 +41,7 @@
 | `NOT_PAIRED` | 指纹未配对 |
 | `PAIRING_EXPIRED` / `PAIRING_FAILED` | 配对会话过期/校验失败 |
 | `NO_TAILNET` | 本机没有 tailnet 地址 |
+| `LISTEN_FAILED` | 有 tailnet 地址，但端口绑不上（被占用，或被 Windows 保留端口范围占掉）；`status`/`diagnostics` 的 `listen_error` 给出原因 |
 | `PEER_OFFLINE` | 对端未连接 |
 | `TARGET_MISMATCH` / `SOURCE_MISMATCH` | 目标/来源不符 |
 | `EXPIRED` | 事件或传输已过期 |
@@ -340,7 +341,7 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 | `diagnostics.get` | — | 版本、监听地址、各对端状态与游标、更新状态；**不含**密钥、psk、数据库密钥 |
 | `settings.get` | `key?` | 有 `key`：`{key, value}`；否则 `{settings:{…}}`（见下表） |
 | `settings.set` | `key`, `value` | 校验后保存；未知键或非法值 → `INVALID` |
-| `pair.begin` | — | 监听方：`{session_id, link, host, port, expires_at, qr:{size, rows[]}}`。`link` 即二维码内容；`qr.rows` 是 `size`×`size` 的 `"0"/"1"` 字符串（含静区），壳自己画，不需要 QR 库。本机没有 tailnet 监听地址 → `NO_TAILNET` |
+| `pair.begin` | — | 监听方：`{session_id, link, host, port, expires_at, qr:{size, rows[]}}`。`link` 即二维码内容；`qr.rows` 是 `size`×`size` 的 `"0"/"1"` 字符串（含静区），壳自己画，不需要 QR 库。本机没有 tailnet 地址 → `NO_TAILNET`；有地址但绑不上端口 → `LISTEN_FAILED` |
 | `pair.cancel` | `session_id` | 作废配对码 |
 | `pair.pending` | — | `{pending:[{pair_id, name, platform, device_id, sas, expires_at}]}` |
 | `pair.confirm` | `pair_id`, `accept` | 监听方：接受（保存对端并开始连接）或拒绝；已过期 → `PAIRING_EXPIRED` |
@@ -385,7 +386,8 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 ```json
 {"type":"core.started","device_id":"dev_…"}
 {"type":"core.listening","addrs":["100.101.146.117"],"port":47821}
-{"type":"core.warning","code":"NO_TAILNET"}            // 另有 LISTEN_FAILED、FINGERPRINT_MISMATCH
+{"type":"core.warning","code":"NO_TAILNET"}            // 另有 FINGERPRINT_MISMATCH
+{"type":"core.warning","code":"LISTEN_FAILED","addr":"100.101.146.117","port":47821,"error":"…"}   // 有地址但绑不上；不会同时报 NO_TAILNET
 {"type":"peer.state","device_id":"dev_…","state":"connected"}
 {"type":"peer.revoked","device_id":"dev_…","name":"Pixel"}   // 对端撤销了与我们的配对
 {"type":"clip.received","event_id":"…","from":"dev_…","from_name":"Tony-PC","text":"…","sensitive":false,"decision":"notify|manual|auto","live":true,"received_at":1790000000}

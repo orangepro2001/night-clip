@@ -297,7 +297,7 @@ public static partial class Strings
     public const string DiagOpenData = "打开数据文件夹";
     public const string DiagUnavailable = "暂时无法读取诊断信息";
     public const string NoTailnetBanner = "未找到 Tailscale 地址：请确认 Tailscale 已登录并连接，然后重启 ClipBridge。";
-    public const string ListenFailedBanner = "无法在 Tailscale 地址上监听：端口可能被占用，或被防火墙拦截。";
+    public const string ListenFailedBanner = "Tailscale 已连接，但无法监听端口 47821：端口被其他程序占用，或被 Windows 保留（Hyper-V/WSL/Docker）。诊断页“监听失败”一行有具体原因。";
     public const string FingerprintMismatchBanner = "检测到与已配对设备的指纹不一致，已拒绝连接。";
 
     // ---- errors ---------------------------------------------------------------------
@@ -305,6 +305,7 @@ public static partial class Strings
     public static string ErrorUnknown(string code) => $"发生未知错误（{code}）";
     public static string ErrorWithDetail(string message, string detail) => string.IsNullOrWhiteSpace(detail) ? message : $"{message}\n{detail}";
     public const string ErrNoTailnet = "没有检测到 Tailscale 网络，请确认 Tailscale 已登录并连接";
+    public const string ErrListenFailed = "Tailscale 已连接，但本机无法监听端口 47821（被占用或被 Windows 保留），其他设备连不进来。诊断页有具体原因。";
     public const string ErrNotPaired = "这台设备没有与对方配对";
     public const string ErrPairingExpired = "配对码已过期，请重新生成";
     public const string ErrPairingFailed = "配对失败，请核对链接和数字后重试";

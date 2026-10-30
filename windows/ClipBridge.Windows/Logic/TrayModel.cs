@@ -16,6 +16,10 @@ public sealed class WarningTracker
     {
         switch (ev)
         {
+            case CoreWarningEvent { Code: "LISTEN_FAILED" }:
+                // An address exists after all; only the bind fails.
+                var gone = _active.Remove("NO_TAILNET");
+                return _active.Add("LISTEN_FAILED") || gone;
             case CoreWarningEvent w when w.Code.Length > 0:
                 return _active.Add(w.Code);
             case CoreListeningEvent:
@@ -30,8 +34,8 @@ public sealed class WarningTracker
 
     /// <summary>Banner text for the most important active warning, or null.</summary>
     public string? Banner =>
-        Has("NO_TAILNET") ? Strings.NoTailnetBanner
-        : Has("LISTEN_FAILED") ? Strings.ListenFailedBanner
+        Has("LISTEN_FAILED") ? Strings.ListenFailedBanner
+        : Has("NO_TAILNET") ? Strings.NoTailnetBanner
         : Has("FINGERPRINT_MISMATCH") ? Strings.FingerprintMismatchBanner
         : null;
 }

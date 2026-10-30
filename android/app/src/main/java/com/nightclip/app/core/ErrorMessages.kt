@@ -6,6 +6,7 @@ import com.nightclip.app.logic.Strings
 object ErrorMessages {
     private val messages = mapOf(
         "NO_TAILNET" to "没有检测到 Tailscale 网络，请确认 Tailscale 已登录并连接",
+        "LISTEN_FAILED" to "Tailscale 已连接，但无法监听端口（被占用或被系统保留）",
         "NOT_PAIRED" to "该设备尚未配对，或已被对方解除配对",
         "PAIRING_EXPIRED" to "配对已过期，请在电脑上重新生成配对码",
         "PAIRING_FAILED" to "配对失败，请确认配对码、地址和密钥无误后重试",
