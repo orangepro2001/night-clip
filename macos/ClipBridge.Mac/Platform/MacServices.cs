@@ -11,7 +11,6 @@ public static class MacPaths
     public static string DataDir => Path.Combine(Home, "Library", "Application Support", "ClipBridge");
     public static string LogDir => Path.Combine(Home, "Library", "Logs", "ClipBridge");
     public static string StagingDir => Path.Combine(Home, "Library", "Caches", "ClipBridge", "staging");
-    public static string DefaultReceiveDir => Path.Combine(Home, "Downloads", "ClipBridge");
 
     /// <summary>The running .app bundle, or null when started outside one (a dev build).</summary>
     public static string? BundlePath
@@ -30,7 +29,7 @@ public static class MacLog
 {
     private static LogFile? _file;
 
-    public static void Init() => _file ??= new LogFile(Path.Combine(MacPaths.LogDir, "clipbridge.log"));
+    public static void Init() => _file ??= new LogFile(Path.Combine(MacPaths.LogDir, "moonpassword.log"));
 
     public static void Write(string line) => _file?.Write(line);
 
@@ -38,7 +37,7 @@ public static class MacLog
 
     public static void Event(CoreEvent ev)
     {
-        if (ev is FileProgressEvent) return;
+        if (ev.Type == "update.progress") return;
         Write("event " + ev.LogLine);
     }
 }

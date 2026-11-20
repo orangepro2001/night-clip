@@ -12,9 +12,6 @@ import (
 	"unsafe"
 )
 
-// DefaultAddress is the well-known pipe name (docs/api-spec.md §8).
-func DefaultAddress() string { return `\\.\pipe\clipbridge.v1` }
-
 const (
 	pipeAccessDuplex        = 0x00000003
 	fileFlagFirstInstance   = 0x00080000

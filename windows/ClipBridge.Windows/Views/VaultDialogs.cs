@@ -126,7 +126,7 @@ internal static class VaultSettingsWindow
             {
                 Ui.Text(Strings.VaultSettingsTitle, "title"),
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 20, Children = { autolockField, clipField } },
-                DevicesPage.SettingRow(Strings.VaultPreventCapture, Strings.VaultPreventCaptureNote, capture),
+                SettingRows.SettingRow(Strings.VaultPreventCapture, Strings.VaultPreventCaptureNote, capture),
                 kdf, result,
                 DialogKit.ButtonRow(close, save),
             },

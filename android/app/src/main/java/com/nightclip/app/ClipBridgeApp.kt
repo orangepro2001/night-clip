@@ -3,10 +3,8 @@ package com.nightclip.app
 import android.app.Application
 import android.content.Context
 import com.nightclip.app.core.CoreHost
-import com.nightclip.app.platform.BackgroundReadController
 import com.nightclip.app.platform.ForegroundTracker
 import com.nightclip.app.platform.Notifications
-import com.nightclip.app.platform.NotesSession
 import com.nightclip.app.platform.ShellPrefs
 import com.nightclip.app.platform.VaultSession
 import kotlinx.coroutines.CoroutineScope
@@ -31,10 +29,8 @@ class ClipBridgeApp : Application() {
         Notifications.userEnabled = prefs.notifications.value
         registerActivityLifecycleCallbacks(ForegroundTracker)
         VaultSession.install(this)
-        NotesSession.install(this)
         CoreHost.start(this)
         EventRouter(this).start()
-        BackgroundReadController.init(this)
     }
 }
 

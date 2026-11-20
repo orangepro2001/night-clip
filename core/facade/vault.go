@@ -16,9 +16,8 @@ import (
 	"nightclip/core/vault"
 )
 
-// The password vault methods (docs/plan-vault.md §11). They live behind the same Call() as the rest,
-// but never on the local named pipe: another process of the same user must not be able to talk to the
-// vault (core/pipe has a test that fixes this).
+// The password vault methods (docs/plan-vault.md §11). They are reachable only through Call() from the
+// app's own shell: no other process of the user can talk to the vault.
 
 // Vault settings, kept in the main settings table (not secret).
 const (
@@ -41,35 +40,11 @@ type vaultState struct {
 
 func (c *Core) vaultDir() string { return filepath.Join(c.cfg.DataDir, "vault") }
 
-// vaultProvider gives the sync service the open vault without arming the idle timer (a background
-// sync must not keep the vault unlocked).
-type vaultProvider struct{ c *Core }
-
-func (p vaultProvider) Current() *vault.Vault {
-	p.c.vs.mu.Lock()
-	defer p.c.vs.mu.Unlock()
-	return p.c.vs.v
-}
-func (p vaultProvider) Dir() string { return p.c.vaultDir() }
-
-// afterOpen wires a freshly opened vault to the sync service and the SSH agent (every save may change
-// which keys the agent offers). Called without vs.mu held.
+// afterOpen wires a freshly opened vault to the SSH agent (every save may change which keys the agent
+// offers). Called without vs.mu held.
 func (c *Core) vaultAfterOpen(v *vault.Vault) {
-	n := c.net()
-	var kick func()
-	if n != nil && n.sync != nil {
-		kick = n.sync.Kick
-	}
-	v.SetOnSaved(func() {
-		if kick != nil {
-			kick()
-		}
-		c.sshScheduleLoad()
-	})
+	v.SetOnSaved(c.sshScheduleLoad)
 	go c.sshLoad()
-	if kick != nil {
-		go n.sync.OnUnlocked()
-	}
 }
 
 func (c *Core) vaultIntSetting(key string, def int) int {
@@ -391,8 +366,6 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 		return map[string]any{"backups": nonNil(vault.ListBackups(c.vaultDir()))}, nil
 	case "vault.backup_verify":
 		return c.vaultBackupVerify(params)
-	case "vault.sync_status", "vault.sync_enable", "vault.sync_resolve", "vault.sync_now":
-		return c.vaultSyncCall(method, params)
 	}
 	v, err := c.vaultOpenFor(method)
 	if err != nil {
@@ -423,9 +396,6 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if len(e.Notes) <= 8192 { // notes often hold secrets and are shown on screen
-			c.markSecret(e.Notes)
-		}
 		view := entryView(e)
 		if e.Kind == vault.KindSSH {
 			if cands, err := v.SSHCandidates(e.ID); err == nil && len(cands) == 1 {
@@ -453,9 +423,6 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 			return nil, err
 		}
 		code, left, err := v.TOTP(p.ID)
-		if err == nil {
-			c.markSecret(code)
-		}
 		return map[string]any{"code": code, "seconds_left": left}, err
 	case "vault.add":
 		var p struct {
@@ -1057,24 +1024,13 @@ func (c *Core) vaultGenerate(params string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.markSecret(s) // a generated password the user copies by hand is not broadcast either
 	return map[string]any{"value": s, "strength": vault.Strength(s)}, nil
 }
 
 // ---- reveal / copy / export -----------------------------------------------------------------------------
 
-// vaultReveal hands one secret to the shell. With copy set the text is also registered with the
-// clipboard service, so the clipboard change it is about to cause is never broadcast, and the answer
-// says when to clear it again.
-func (c *Core) markSecret(value string) {
-	if value == "" {
-		return
-	}
-	if n := c.net(); n != nil {
-		n.clip.MarkSecret(value)
-	}
-}
-
+// vaultReveal hands one secret to the shell. With copy set the answer also says when the shell must
+// clear the clipboard again.
 func (c *Core) vaultReveal(v *vault.Vault, copyIt bool, params string) (any, error) {
 	var p struct {
 		ID    string `json:"id"`
@@ -1120,8 +1076,6 @@ func (c *Core) vaultReveal(v *vault.Vault, copyIt bool, params string) (any, err
 		return nil, proto.Errorf(proto.CodeInvalid, "unknown field %q", p.Field)
 	}
 	out := map[string]any{"value": value}
-	// Whatever leaves the vault may land on the clipboard by hand (select, Ctrl+C): never broadcast it.
-	c.markSecret(value)
 	if copyIt {
 		out["clear_after_s"] = c.vaultIntSetting(settingVaultClipClear, defaultVaultClipClear)
 	}
@@ -1167,61 +1121,4 @@ func (c *Core) vaultExport(v *vault.Vault, method, params string) (any, error) {
 		}
 	}
 	return map[string]any{}, v.ExportFile(p.Path, cr, kdf)
-}
-
-// ---- device sync -----------------------------------------------------------------------------------------
-
-func (c *Core) vaultSyncCall(method, params string) (any, error) {
-	n := c.net()
-	if n == nil || n.sync == nil {
-		return nil, proto.Errorf(proto.CodeNotInitialized, "the network is not running")
-	}
-	switch method {
-	case "vault.sync_status":
-		return map[string]any{"peers": n.sync.Status(), "vault_exists": vault.Exists(c.vaultDir())}, nil
-	case "vault.sync_now":
-		n.sync.Kick()
-		return map[string]any{}, nil
-	case "vault.sync_enable":
-		var p struct {
-			DeviceID string `json:"device_id"`
-			Enabled  bool   `json:"enabled"`
-		}
-		if err := parseParams(params, &p); err != nil {
-			return nil, err
-		}
-		if err := c.db.SetPeerVaultSync(p.DeviceID, p.Enabled); err != nil {
-			return nil, err
-		}
-		if p.Enabled {
-			n.sync.Kick()
-		} else {
-			n.sync.Forget(p.DeviceID)
-		}
-		return map[string]any{}, nil
-	default: // vault.sync_resolve
-		var p struct {
-			DeviceID string `json:"device_id"`
-			Approve  bool   `json:"approve"`
-			SHA256   string `json:"sha256"` // required with approve: the file the user reviewed (vault.sync_status incoming_sha256)
-			credParams
-		}
-		if err := parseParams(params, &p); err != nil {
-			return nil, err
-		}
-		var cr vault.Creds
-		if p.Password != "" {
-			var err error
-			if cr, err = p.creds(); err != nil {
-				return nil, err
-			}
-		}
-		var rerr error
-		if len(cr.Password) > 0 {
-			rerr = c.credAttempt(false, func() error { return n.sync.Resolve(p.DeviceID, cr, p.Approve, p.SHA256) })
-		} else {
-			rerr = n.sync.Resolve(p.DeviceID, cr, p.Approve, p.SHA256)
-		}
-		return map[string]any{}, rerr
-	}
 }

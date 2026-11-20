@@ -1,4 +1,3 @@
-using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
@@ -15,8 +14,8 @@ using Lumen.UI.Services;
 namespace ClipBridge.Windows.Views;
 
 /// <summary>
-/// Settings, saved as they change (no separate save button): appearance, sync, notifications and start-up,
-/// received files, updates, and the about block. Text fields save when they lose focus or on Enter.
+/// Settings, saved as they change (no separate save button): appearance, notifications and start-up, the SSH
+/// agent, updates, and the about block.
 /// </summary>
 internal sealed class SettingsPage : UserControl
 {
@@ -27,24 +26,9 @@ internal sealed class SettingsPage : UserControl
     private readonly SegmentedControl _theme = new();
     private readonly WrapPanel _accents = new() { Orientation = Orientation.Horizontal };
 
-    // sync
-    private readonly ToggleSwitch _capture = new();
-    private readonly SegmentedControl _mode = new();
-    private readonly TextBlock _modeHint = Ui.Text("", "caption", "tertiary");
-    private readonly ToggleSwitch _sensitiveDetection = new();
-    private readonly ToggleSwitch _sendSensitive = new();
-    private readonly TextBox _ttl = new() { Width = 120 };
-    private readonly FormField _ttlField;
-    private readonly TextBox _history = new() { Width = 120 };
-    private readonly FormField _historyField;
-
     // notifications / start-up
     private readonly ToggleSwitch _notifications = new();
     private readonly ToggleSwitch _autoStart = new();
-
-    // files
-    private readonly TextBox _dir = new() { IsReadOnly = true };
-    private readonly FormField _dirField;
 
     // updates
     private readonly TextBlock _updateText = Ui.Text("", "body");
@@ -54,8 +38,7 @@ internal sealed class SettingsPage : UserControl
 
     // about
     private readonly TextBlock _aboutVersion = Ui.Text("", "body");
-    private readonly TextBlock _aboutDevice = Ui.Text("", "body", "mono");
-    private readonly TextBlock _aboutFingerprint = Ui.Text("", "body", "mono");
+    private readonly TextBlock _aboutDevice = Ui.Text("", "body");
 
     public SettingsPage(ShellController shell)
     {
@@ -66,43 +49,9 @@ internal sealed class SettingsPage : UserControl
             _theme.Items.Add(new SegmentedItem { Content = label });
         _theme.SelectionChanged += (_, _) => OnThemeChanged();
         var appearance = Section(Strings.SettingsAppearanceTitle, null,
-            DevicesPage.SettingRow(Strings.SettingsTheme, Strings.SettingsThemeHint, _theme),
+            SettingRows.SettingRow(Strings.SettingsTheme, Strings.SettingsThemeHint, _theme),
             new Separator(),
             new StackPanel { Spacing = 8, Children = { Ui.Text(Strings.SettingsAccent, "medium"), _accents } });
-
-        // ---- sync --------------------------------------------------------------------------
-        foreach (var label in new[] { Strings.ModeNotify, Strings.ModeManual, Strings.ModeAuto })
-            _mode.Items.Add(new SegmentedItem { Content = label });
-        _mode.SelectionChanged += (_, _) =>
-        {
-            UpdateModeHint();
-            if (!_loading) _ = SaveAsync();
-        };
-        _capture.IsCheckedChanged += async (_, _) =>
-        {
-            if (_loading) return;
-            if (await _shell.SetCaptureAsync(_capture.IsChecked == true) is { } error) Fail(error);
-        };
-        _sensitiveDetection.IsCheckedChanged += (_, _) => { if (!_loading) _ = SaveAsync(); };
-        _sendSensitive.IsCheckedChanged += (_, _) => { if (!_loading) _ = SaveAsync(); };
-
-        _ttlField = new FormField { Label = Strings.SettingsTtlLabel, Content = _ttl };
-        _historyField = new FormField { Label = Strings.SettingsHistoryLabel, Hint = Strings.SettingsHistoryHint, Content = _history };
-        _ttl.TextChanged += (_, _) => { _ttlField.Error = null; UpdateTtlHint(); };
-        _history.TextChanged += (_, _) => _historyField.Error = null;
-        CommitOnBlurOrEnter(_ttl);
-        CommitOnBlurOrEnter(_history);
-
-        var numbers = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 24, Children = { _ttlField, _historyField } };
-        var sync = Section(Strings.SettingsSyncTitle, null,
-            DevicesPage.SettingRow(Strings.SettingsSync, Strings.SettingsSyncHint, _capture),
-            new Separator(),
-            new StackPanel { Spacing = 8, Children = { Ui.Text(Strings.SettingsDefaultMode, "medium"), _mode, _modeHint } },
-            new Separator(),
-            DevicesPage.SettingRow(Strings.SettingsSensitiveDetection, Strings.SettingsSensitiveDetectionHint, _sensitiveDetection),
-            DevicesPage.SettingRow(Strings.SettingsSendSensitive, Strings.SettingsSendSensitiveHint, _sendSensitive),
-            new Separator(),
-            numbers);
 
         // ---- notifications / start-up -----------------------------------------------------
         _notifications.IsCheckedChanged += (_, _) =>
@@ -116,26 +65,8 @@ internal sealed class SettingsPage : UserControl
             Load(() => _autoStart.IsChecked = _shell.AutoStartEnabled);
         };
         var general = Section(Strings.SettingsGeneralTitle, null,
-            DevicesPage.SettingRow(Strings.SettingsNotifications, Strings.SettingsNotificationsHint, _notifications),
-            DevicesPage.SettingRow(Strings.SettingsAutoStart, Strings.SettingsAutoStartHint, _autoStart));
-
-        // ---- files ---------------------------------------------------------------------------
-        var dirRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
-        dirRow.Children.Add(_dir);
-        var change = Ui.Button(AppIcons.Of(IconKind.Folder), Strings.BtnChangeFolder, () => _ = BrowseAsync());
-        change.Margin = new Thickness(8, 0, 0, 0);
-        Grid.SetColumn(change, 1);
-        dirRow.Children.Add(change);
-        var open = Ui.IconButton(AppIcons.FolderOpen, Strings.BtnOpenFolder, () =>
-        {
-            if (_shell.OpenFolder(_shell.Settings.DownloadDir) is { } error) Fail(error);
-        });
-        open.Margin = new Thickness(4, 0, 0, 0);
-        Grid.SetColumn(open, 2);
-        dirRow.Children.Add(open);
-        _dirField = new FormField { Label = Strings.SettingsDownloadDir, Hint = Strings.SettingsDownloadDirHint, Content = dirRow };
-        var files = Section(Strings.SettingsFilesTitle, null, _dirField,
-            new InfoBar { Severity = Severity.Neutral, Title = Strings.SettingsFirewallTitle, Message = Strings.SettingsFirewallText });
+            SettingRows.SettingRow(Strings.SettingsNotifications, Strings.SettingsNotificationsHint, _notifications),
+            SettingRows.SettingRow(Strings.SettingsAutoStart, Strings.SettingsAutoStartHint, _autoStart));
 
         // ---- updates -------------------------------------------------------------------------
         _updateButton.Classes.Add("primary");
@@ -151,14 +82,12 @@ internal sealed class SettingsPage : UserControl
         Grid.SetColumn(_updateButton, 1);
         updateRow.Children.Add(_updateButton);
         var updates = Section(Strings.SettingsUpdateTitle, null, updateRow, new Separator(),
-            DevicesPage.SettingRow(Strings.UpdateAuto, Strings.UpdateAutoHint, _autoUpdate));
+            SettingRows.SettingRow(Strings.UpdateAuto, Strings.UpdateAutoHint, _autoUpdate));
 
         // ---- about ----------------------------------------------------------------------------
-        var copyId = Ui.IconButton(AppIcons.Of(IconKind.Copy), Strings.BtnCopyDeviceId, () => _ = CopyAsync(_shell.DeviceId), "sm");
         var about = Section(Strings.SettingsAboutTitle, null,
             AboutRow(Strings.AboutVersionLabel, _aboutVersion, null),
-            AboutRow(Strings.AboutDeviceIdLabel, _aboutDevice, copyId),
-            AboutRow(Strings.AboutFingerprintLabel, _aboutFingerprint, null));
+            AboutRow(Strings.AboutDeviceLabel, _aboutDevice, null));
 
         var intro = new StackPanel
         {
@@ -174,7 +103,7 @@ internal sealed class SettingsPage : UserControl
                 Classes = { "page" },
                 MaxWidth = 820,
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Children = { intro, appearance, sync, general, files, new SshSettingsCard(shell), updates, about },
+                Children = { intro, appearance, general, new SshSettingsCard(shell), updates, about },
             },
         };
 
@@ -209,17 +138,6 @@ internal sealed class SettingsPage : UserControl
         return grid;
     }
 
-    private void CommitOnBlurOrEnter(TextBox box)
-    {
-        box.LostFocus += (_, _) => { if (!_loading) _ = SaveAsync(); };
-        box.KeyDown += (_, e) =>
-        {
-            if (e.Key != Key.Enter) return;
-            e.Handled = true;
-            _ = SaveAsync();
-        };
-    }
-
     private void Load(Action set)
     {
         _loading = true;
@@ -231,40 +149,24 @@ internal sealed class SettingsPage : UserControl
 
     // ---- loading ----------------------------------------------------------------------------
 
-    /// <summary>Re-reads the stored values (discarding unsaved typing in the number fields).</summary>
-    public async void OnShown()
+    /// <summary>Re-reads the stored values.</summary>
+    public void OnShown()
     {
-        await _shell.ReloadSettingsAsync();
         LoadFields();
         RefreshLive();
     }
 
     private void LoadFields() => Load(() =>
     {
-        var s = _shell.Settings;
         _theme.SelectedIndex = _shell.Prefs.Theme switch { "light" => 1, "dark" => 2, _ => 0 };
-        _mode.SelectedIndex = Math.Max(0, Array.IndexOf(SettingsModel.Modes, s.DefaultApplyMode));
-        // A save finishing while the user already types in the other number box must not overwrite that box.
-        if (!_ttl.IsKeyboardFocusWithin) _ttl.Text = s.ClipTtlSeconds.ToString(CultureInfo.InvariantCulture);
-        if (!_history.IsKeyboardFocusWithin) _history.Text = s.HistoryLimit.ToString(CultureInfo.InvariantCulture);
-        _sensitiveDetection.IsChecked = s.SensitiveDetection;
-        _sendSensitive.IsChecked = s.SendSensitive;
-        _dir.Text = s.DownloadDir;
         _autoStart.IsChecked = _shell.AutoStartEnabled; // registry read: only when the fields are (re)loaded
         _notifications.IsChecked = _shell.Prefs.Notifications;
-        _ttlField.Error = null;
-        _historyField.Error = null;
-        _dirField.Error = null;
-        UpdateModeHint();
-        UpdateTtlHint();
         RebuildAccents();
     });
 
-    /// <summary>Parts that follow live state: the sync switch, the update section and the about block.</summary>
+    /// <summary>Parts that follow live state: the update section and the about block.</summary>
     private void RefreshLive() => Load(() =>
     {
-        _capture.IsChecked = _shell.Settings.Capture;
-
         var u = _shell.Update;
         _updateText.Text = UpdateView.Text(u);
         _updateText.Classes.Set("danger", u.Mandatory && u.State is "available" or "ready");
@@ -277,15 +179,8 @@ internal sealed class SettingsPage : UserControl
         _autoUpdate.IsChecked = u.Auto;
 
         _aboutVersion.Text = BuildInfo.VersionName;
-        _aboutDevice.Text = _shell.DeviceId.Length > 0 ? _shell.DeviceId : "—";
-        _aboutFingerprint.Text = _shell.FingerprintPrefix.Length > 0 ? _shell.FingerprintPrefix : "—";
+        _aboutDevice.Text = _shell.DeviceName;
     });
-
-    private void UpdateModeHint() => _modeHint.Text = Strings.ModeHint(SettingsModel.Modes[Math.Max(0, _mode.SelectedIndex)]);
-
-    private void UpdateTtlHint() =>
-        _ttlField.Hint = int.TryParse(_ttl.Text, out var secs) && secs >= SettingsModel.TtlMin && secs <= SettingsModel.TtlMax
-            ? Strings.SettingsTtlHint + "（" + Formatting.SecondsHint(secs) + "）" : Strings.SettingsTtlHint;
 
     // ---- appearance ---------------------------------------------------------------------------
 
@@ -327,54 +222,6 @@ internal sealed class SettingsPage : UserControl
             };
             _accents.Children.Add(button);
         }
-    }
-
-    // ---- saving ---------------------------------------------------------------------------------
-
-    /// <summary>Validates every core-side field and saves what changed. Field errors stay next to the field.</summary>
-    private async Task SaveAsync()
-    {
-        var ttlOk = int.TryParse(_ttl.Text, out var ttl) && ttl >= SettingsModel.TtlMin && ttl <= SettingsModel.TtlMax;
-        var historyOk = int.TryParse(_history.Text, out var history) && history >= SettingsModel.HistoryMin && history <= SettingsModel.HistoryMax;
-        _ttlField.Error = ttlOk ? null : Strings.ValidationTtlShort;
-        _historyField.Error = historyOk ? null : Strings.ValidationHistoryShort;
-        if (!ttlOk || !historyOk) return;
-
-        var input = new SettingsInput(
-            Capture: _shell.Settings.Capture,
-            DefaultApplyMode: SettingsModel.Modes[Math.Max(0, _mode.SelectedIndex)],
-            TtlText: _ttl.Text ?? "", HistoryText: _history.Text ?? "",
-            SendSensitive: _sendSensitive.IsChecked == true, DownloadDir: _dir.Text ?? "",
-            SensitiveDetection: _sensitiveDetection.IsChecked == true);
-        var validation = SettingsModel.Validate(input);
-        if (!validation.Ok)
-        {
-            Fail(string.Join("\n", validation.Errors));
-            return;
-        }
-        if (SettingsModel.Diff(_shell.Settings, validation.Values!).Count == 0) return;
-        if (await _shell.SaveSettingsAsync(validation.Values!) is { } error) Fail(error);
-        LoadFields();
-    }
-
-    private async Task BrowseAsync()
-    {
-        var folder = await Ui.PickFolderAsync(this, Strings.SettingsDownloadDir, _dir.Text);
-        if (folder is null) return;
-        if (!SettingsModel.IsAbsoluteWindowsPath(folder))
-        {
-            _dirField.Error = Strings.ValidationDownloadDir;
-            return;
-        }
-        _dir.Text = folder;
-        await SaveAsync();
-    }
-
-    private async Task CopyAsync(string text)
-    {
-        if (text.Length == 0) return;
-        var ok = await _shell.CopyTextAsync(text);
-        _shell.ShowStatus(ok ? Strings.CopiedPlain : Strings.ApplyFailed, ok ? StatusKind.Success : StatusKind.Error);
     }
 
     private async Task UpdateActionAsync()

@@ -1,6 +1,7 @@
 # ADR-004：使用 Gateway 长连接替代 Bark/APNs
 
 - 状态：Superseded by [ADR-005](005-go-core-and-tailnet-p2p.md)（Gateway 降级为 Phase 4 之后的可选中继）
+- MoonPassword（2026-11）：剪贴板同步、文件传输、tailnet 配对和设备引荐已整体移除，信任改由 sso.moonl.cloud 提供（见 ADR-010）。本 ADR 只保留用于追溯。
 - 日期：2026-10-26
 - 决策者：项目组
 - 相关文档：[architecture.md](../architecture.md)、[api-spec.md](../api-spec.md)

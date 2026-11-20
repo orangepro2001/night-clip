@@ -10,15 +10,13 @@ using Lumen.UI.Icons;
 
 namespace ClipBridge.Windows.Views;
 
-/// <summary>Connection and runtime facts: a summary on top, the full report (copyable) below, links to the log and data folders.</summary>
+/// <summary>Runtime facts: a summary on top, the full report (copyable) below, links to the log and data folders.</summary>
 internal sealed class DiagnosticsPage : UserControl
 {
     private readonly ShellController _shell;
     private readonly TextBox _report;
-    private readonly InfoBar _noTailnet;
     private readonly StatCard _core;
-    private readonly StatCard _peers;
-    private readonly StatCard _warnings;
+    private readonly StatCard _vault;
     private readonly Button _copy;
     private string _text = "";
 
@@ -44,17 +42,12 @@ internal sealed class DiagnosticsPage : UserControl
         Grid.SetColumn(actions, 1);
         toolbar.Children.Add(actions);
 
-        _noTailnet = new InfoBar { Severity = Severity.Warning, Title = Strings.NoTailnetTitle, Message = Strings.NoTailnetBanner, IsOpen = false };
-
         _core = new StatCard { Label = Strings.DiagCoreLabel, Icon = IconKind.Zap };
-        _peers = new StatCard { Label = Strings.DiagPeersLabel, Icon = IconKind.Users };
-        _warnings = new StatCard { Label = Strings.DiagWarningsLabel, Icon = IconKind.AlertTriangle };
-        var stats = new Grid { ColumnDefinitions = new ColumnDefinitions("*,16,*,16,*") };
+        _vault = new StatCard { Label = Strings.DiagVaultLabel, Icon = IconKind.Lock };
+        var stats = new Grid { ColumnDefinitions = new ColumnDefinitions("*,16,*") };
         stats.Children.Add(_core);
-        Grid.SetColumn(_peers, 2);
-        stats.Children.Add(_peers);
-        Grid.SetColumn(_warnings, 4);
-        stats.Children.Add(_warnings);
+        Grid.SetColumn(_vault, 2);
+        stats.Children.Add(_vault);
 
         _report = new TextBox
         {
@@ -71,7 +64,7 @@ internal sealed class DiagnosticsPage : UserControl
 
         Content = new ScrollViewer
         {
-            Content = new StackPanel { Classes = { "page" }, Children = { toolbar, _noTailnet, stats, reportCard } },
+            Content = new StackPanel { Classes = { "page" }, Children = { toolbar, stats, reportCard } },
         };
         shell.StateChanged += UpdateSummary;
         UpdateSummary();
@@ -86,14 +79,10 @@ internal sealed class DiagnosticsPage : UserControl
 
     private void UpdateSummary()
     {
-        _noTailnet.IsOpen = _shell.Warnings.Has("NO_TAILNET");
         _core.Value = _shell.CoreRunning ? Strings.DiagCoreRunning : Strings.DiagCoreStopped;
         _core.Caption = Strings.AboutVersion(BuildInfo.VersionName);
-        var live = _shell.Peers.Count(p => !p.IsRevoked);
-        _peers.Value = $"{_shell.Peers.Count(p => p.IsConnected)} / {live}";
-        _peers.Caption = Strings.DiagPeersCaption;
-        _warnings.Value = _shell.Warnings.Active.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        _warnings.Caption = _shell.Warnings.Any ? string.Join(", ", _shell.Warnings.Active) : Strings.DiagNoWarnings;
+        _vault.Value = _shell.VaultUnlocked ? Strings.DiagVaultUnlocked : Strings.DiagVaultLocked;
+        _vault.Caption = _shell.DeviceName;
     }
 
     private async Task ReloadAsync()
@@ -102,7 +91,7 @@ internal sealed class DiagnosticsPage : UserControl
         var (json, error) = await _shell.CallAsync(a => a.Diagnostics());
         _text = error is not null
             ? Strings.DiagUnavailable + "\n" + error
-            : DiagnosticsText.Build(json, BuildInfo.VersionName, DateTimeOffset.Now, _shell.Warnings.Active.ToList());
+            : DiagnosticsText.Build(json, BuildInfo.VersionName, DateTimeOffset.Now);
         _report.Text = _text;
     }
 
@@ -110,7 +99,7 @@ internal sealed class DiagnosticsPage : UserControl
     {
         if (_text.Length == 0) await ReloadAsync();
         if (_text.Length == 0) return;
-        var ok = await _shell.CopyTextAsync(_text); // through the clipboard worker: never synced to other devices
+        var ok = await _shell.CopyTextAsync(_text);
         _shell.ShowStatus(ok ? Strings.DiagCopied : Strings.ApplyFailed, ok ? StatusKind.Success : StatusKind.Error);
     }
 }

@@ -47,8 +47,7 @@ func TestOpenCreatesSchemaAndIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	db := openAt(t, dir, testKey(1))
 	for _, table := range []string{
-		"settings", "identity", "peers", "links", "outbox", "inbox",
-		"transfers", "clip_state", "revoked_fps", "schema_version",
+		"settings", "secrets", "schema_version",
 	} {
 		var n int
 		if err := db.sql.QueryRow(
@@ -111,7 +110,7 @@ func TestOpenRejectsNewerSchema(t *testing.T) {
 
 func TestSealRoundTripAndTamper(t *testing.T) {
 	db := openTestDB(t)
-	aad := rowAAD("outbox", "envelope_enc", "evt_1")
+	aad := rowAAD("secrets", "value_enc", "token")
 
 	blob, err := db.seal([]byte("top secret"), aad)
 	if err != nil {
@@ -140,7 +139,7 @@ func TestSealRoundTripAndTamper(t *testing.T) {
 		aad  []byte
 	}{
 		{"flipped byte", flipLast(blob), aad},
-		{"other aad", blob, rowAAD("inbox", "payload_enc", "evt_1")},
+		{"other aad", blob, rowAAD("secrets", "value_enc", "other")},
 		{"truncated", blob[:len(blob)-1], aad},
 		{"too short", blob[:5], aad},
 	} {

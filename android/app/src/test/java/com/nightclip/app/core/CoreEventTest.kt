@@ -1,7 +1,6 @@
 package com.nightclip.app.core
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -11,57 +10,6 @@ class CoreEventTest {
         val ev = CoreEvent.parse(json)
         assertTrue("parsed: $ev", ev is T)
         return ev as T
-    }
-
-    @Test
-    fun clipReceivedKeepsTextButNeverPrintsIt() {
-        val e = parse<CoreEvent.ClipReceived>(
-            """{"type":"clip.received","event_id":"e1","from":"dev_a","from_name":"PC","text":"top secret","sensitive":true,"decision":"auto","received_at":1790000000}""",
-        )
-        assertEquals("top secret", e.text)
-        assertTrue(e.sensitive)
-        assertEquals("auto", e.decision)
-        assertEquals("e1", e.logId)
-        assertFalse(e.toString().contains("top secret"))
-    }
-
-    @Test
-    fun pairEvents() {
-        val sas = parse<CoreEvent.PairSas>("""{"type":"pair.sas","join_id":"j1","sas":"482913"}""")
-        assertEquals("j1", sas.joinId)
-        assertEquals("482913", sas.sas)
-        assertFalse(sas.toString().contains("482913"))
-        val ok = parse<CoreEvent.PairResult>("""{"type":"pair.result","join_id":"j1","state":"accepted","role":"joiner","device_id":"dev_pc","name":"Tony-PC"}""")
-        assertEquals("accepted", ok.state)
-        assertEquals("Tony-PC", ok.name)
-        val bad = parse<CoreEvent.PairResult>("""{"type":"pair.result","state":"failed","role":"joiner","code":"PAIRING_FAILED","message":"x"}""")
-        assertEquals("PAIRING_FAILED", bad.code)
-    }
-
-    @Test
-    fun peerEvents() {
-        assertEquals(CoreEvent.PeerState("dev_a", "connected"), parse<CoreEvent.PeerState>("""{"type":"peer.state","device_id":"dev_a","state":"connected"}"""))
-        assertEquals(CoreEvent.PeerRevoked("dev_a", "PC"), parse<CoreEvent.PeerRevoked>("""{"type":"peer.revoked","device_id":"dev_a","name":"PC"}"""))
-        assertEquals(
-            CoreEvent.PeerIntroduced("dev_c", "Mac", "PC"),
-            parse<CoreEvent.PeerIntroduced>("""{"type":"peer.introduced","device_id":"dev_c","name":"Mac","via_name":"PC","via_device_id":"dev_a"}"""),
-        )
-    }
-
-    @Test
-    fun fileEvents() {
-        val o = parse<CoreEvent.FileOffered>("""{"type":"file.offered","transfer_id":"tr_1","from":"dev_a","from_name":"PC","name":"a.pdf","size":123456,"sha256":"ab","mime_type":"application/pdf"}""")
-        assertEquals("a.pdf", o.name)
-        assertEquals(123456L, o.size)
-        assertEquals("application/pdf", o.mimeType)
-        val p = parse<CoreEvent.FileProgress>("""{"type":"file.progress","transfer_id":"tr_1","offset":1048576,"size":123456789,"rate_bps":52428800}""")
-        assertEquals(1048576L, p.offset)
-        assertEquals(52428800L, p.rateBps)
-        val d = parse<CoreEvent.FileDone>("""{"type":"file.done","transfer_id":"tr_1","direction":"in","path":"/data/x/a.pdf","name":"a.pdf","size":1,"sha256":"ab"}""")
-        assertEquals("in", d.direction)
-        assertEquals("/data/x/a.pdf", d.path)
-        assertEquals("HASH_MISMATCH", parse<CoreEvent.FileFailed>("""{"type":"file.failed","transfer_id":"tr_1","code":"HASH_MISMATCH","message":"m"}""").code)
-        assertEquals("transferring", parse<CoreEvent.FileState>("""{"type":"file.state","transfer_id":"tr_1","state":"transferring"}""").state)
     }
 
     @Test
@@ -75,16 +23,22 @@ class CoreEventTest {
     }
 
     @Test
-    fun coreLifecycleEvents() {
-        assertEquals("dev_me", parse<CoreEvent.CoreStarted>("""{"type":"core.started","device_id":"dev_me"}""").deviceId)
-        assertEquals("NO_TAILNET", parse<CoreEvent.CoreWarning>("""{"type":"core.warning","code":"NO_TAILNET"}""").code)
-        val l = parse<CoreEvent.CoreListening>("""{"type":"core.listening","addrs":["100.1.1.1"],"port":47821}""")
-        assertEquals(listOf("100.1.1.1"), l.addrs)
+    fun vaultEvents() {
+        assertEquals("idle", parse<CoreEvent.VaultLocked>("""{"type":"vault.locked","reason":"idle"}""").reason)
+        assertEquals("sync", parse<CoreEvent.VaultChanged>("""{"type":"vault.changed","reason":"sync"}""").reason)
     }
 
     @Test
-    fun unknownAndMalformedEvents() {
+    fun coreStarted() {
+        assertEquals(CoreEvent.CoreStarted, CoreEvent.parse("""{"type":"core.started"}"""))
+    }
+
+    @Test
+    fun retiredUnknownAndMalformedEvents() {
         assertEquals("future.thing", parse<CoreEvent.Unknown>("""{"type":"future.thing","x":1}""").type)
+        // events of the removed clipboard / pairing features are no longer typed
+        assertEquals("clip.received", parse<CoreEvent.Unknown>("""{"type":"clip.received","event_id":"e1","text":"x"}""").type)
+        assertEquals("pair.sas", parse<CoreEvent.Unknown>("""{"type":"pair.sas","join_id":"j1","sas":"1"}""").type)
         assertNull(CoreEvent.parse("not json"))
         assertNull(CoreEvent.parse("""{"no":"type"}"""))
         assertNull(CoreEvent.parse(""))

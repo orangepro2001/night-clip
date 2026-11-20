@@ -2,7 +2,7 @@ namespace ClipBridge.Windows.Logic;
 
 /// <summary>
 /// Runs an async reload so that requests arriving while it is running are merged into exactly one
-/// more run afterwards (a burst of peer.state events causes one extra reload, not one per event).
+/// more run afterwards (a burst of update.progress events causes one extra reload, not one per event).
 /// Single-threaded: call from the UI thread and let the awaits resume there.
 /// </summary>
 public sealed class Coalescer

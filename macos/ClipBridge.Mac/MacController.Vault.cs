@@ -8,16 +8,6 @@ using ClipBridge.Windows.Logic;
 
 namespace ClipBridge.Mac;
 
-/// <summary>One paired device in <c>vault.sync_status</c>.</summary>
-internal sealed record VaultSyncPeer(
-    string DeviceId, string Name, bool Enabled, bool Connected, string State, string Detail, long LastOkAt, string IncomingSha256)
-{
-    public static IReadOnlyList<VaultSyncPeer> ListFromJson(JsonElement r) =>
-        JsonRead.Arr(r, "peers").Select(p => new VaultSyncPeer(
-            JsonRead.Str(p, "device_id"), JsonRead.Str(p, "name"), JsonRead.Bool(p, "enabled"), JsonRead.Bool(p, "connected"),
-            JsonRead.Str(p, "state", "idle"), JsonRead.Str(p, "detail"), JsonRead.Long(p, "last_ok_at"), JsonRead.Str(p, "incoming_sha256"))).ToList();
-}
-
 /// <summary>
 /// The macOS side of the password vault (port of the Windows ShellController.Vault): calling the core, writing secrets
 /// to the pasteboard the safe way and clearing them again, locking on session events (<see cref="MacSessionWatcher"/>),
@@ -188,7 +178,6 @@ internal sealed partial class MacController
             return false;
         }
         if (change is not { } c) return false;
-        _ownWriteChange = c; // the poller must not mistake this for something the user copied
         lock (_vaultClipGate) _vaultClip.Arm(c, clearAfterSeconds);
         UiPost(() => ScheduleVaultClipClear(clearAfterSeconds));
         return true;
@@ -237,7 +226,7 @@ internal sealed partial class MacController
         if (decision != ClearDecision.Clear) return;
         try
         {
-            _ownWriteChange = MacPasteboard.Clear();
+            MacPasteboard.Clear();
             if (!onLock) UiPost(() => ShowStatus(Strings.ClipboardClearedByTimer));
         }
         catch (Exception ex) { MacLog.Error("vault clipboard clear", ex); }
@@ -290,29 +279,6 @@ internal sealed partial class MacController
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { MacLog.Error("attachment temp cleanup", ex); }
     }
-
-    // ---- device sync (vault.sync_*) ----------------------------------------------------------------
-
-    public Task<VaultResult<IReadOnlyList<VaultSyncPeer>>> VaultSyncStatusAsync() =>
-        VaultCallAsync(_ => VaultSyncPeer.ListFromJson(_core.Call("vault.sync_status")));
-
-    public Task<VaultResult<bool>> VaultSyncEnableAsync(string deviceId, bool enabled) =>
-        VaultCallAsync(_ => { _core.Call("vault.sync_enable", new { device_id = deviceId, enabled }); });
-
-    public Task<VaultResult<bool>> VaultSyncNowAsync() => VaultCallAsync(_ => { _core.Call("vault.sync_now"); });
-
-    /// <summary><c>needs_password</c>: the other vault's current master password.</summary>
-    public Task<VaultResult<bool>> VaultSyncResolvePasswordAsync(string deviceId, VaultCreds creds) =>
-        VaultCallAsync(_ =>
-        {
-            var p = new Dictionary<string, object?> { ["device_id"] = deviceId };
-            creds.AddTo(p);
-            _core.Call("vault.sync_resolve", p);
-        });
-
-    /// <summary><c>review</c>: approve exactly the file the user saw (its sha256 from vault.sync_status).</summary>
-    public Task<VaultResult<bool>> VaultSyncApproveAsync(string deviceId, string sha256) =>
-        VaultCallAsync(_ => { _core.Call("vault.sync_resolve", new { device_id = deviceId, approve = true, sha256 }); });
 
     // ---- window capture exclusion -----------------------------------------------------------
 

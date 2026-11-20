@@ -131,92 +131,6 @@ internal static class Ui
         return result;
     }
 
-    /// <summary>Chooses one device from <paramref name="peers"/>; null when cancelled.</summary>
-    public static async Task<PeerItem?> PickPeerAsync(Visual anchor, IReadOnlyList<PeerItem> peers)
-    {
-        var list = new ListBox
-        {
-            ItemsSource = peers,
-            SelectedIndex = 0,
-            MaxHeight = 300,
-            ItemTemplate = Ui.Template<PeerItem>(peer =>
-            {
-                var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
-                var tile = DeviceTile(peer);
-                var name = new StackPanel { Margin = new Thickness(12, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, Spacing = 1 };
-                name.Children.Add(Text(peer.DisplayName, "medium"));
-                name.Children.Add(Text(peer.PlatformText, "caption", "tertiary"));
-                Grid.SetColumn(name, 1);
-                var badge = StateBadge(peer);
-                Grid.SetColumn(badge, 2);
-                row.Children.Add(tile);
-                row.Children.Add(name);
-                row.Children.Add(badge);
-                return row;
-            }),
-        };
-        var ok = new Button { Content = Strings.BtnNext, IsDefault = true, MinWidth = 88 };
-        ok.Classes.Add("primary");
-        var cancel = new Button { Content = Strings.BtnCancel, IsCancel = true, MinWidth = 88 };
-        var panel = new StackPanel
-        {
-            Spacing = 12,
-            Width = 400,
-            Children =
-            {
-                Text(Strings.FilePickPeerTitle, "title"),
-                Text(Strings.FilePickPeerPrompt, "secondary"),
-                list,
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, ok } },
-            },
-        };
-        ok.Click += (_, _) => { if (list.SelectedItem is PeerItem p) Dialog.Close(panel, p); };
-        cancel.Click += (_, _) => Dialog.Close(panel);
-        list.DoubleTapped += (_, _) => { if (list.SelectedItem is PeerItem p) Dialog.Close(panel, p); };
-        panel.AttachedToVisualTree += (_, _) => list.Focus();
-        return await Dialog.ShowAsync(panel, anchor) as PeerItem;
-    }
-
-    // ---- device visuals ---------------------------------------------------------------------
-
-    public static string PlatformIcon(string platform) => platform switch
-    {
-        "android" => AppIcons.Smartphone,
-        "macos" => AppIcons.Laptop,
-        _ => AppIcons.Monitor,
-    };
-
-    /// <summary>36×36 tile with the platform icon, tinted by the connection state.</summary>
-    public static Border DeviceTile(PeerItem peer)
-    {
-        var tile = new Border { Child = new Icon { NameKey = PlatformIcon(peer.Platform), Size = 18, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center } };
-        tile.Classes.Add("tile");
-        tile.Classes.Add(peer.State switch
-        {
-            "connected" => "success",
-            "connecting" => "accent",
-            "unpaired" or "revoked" => "danger",
-            _ => "plain",
-        });
-        return tile;
-    }
-
-    /// <summary>A coloured status pill for a device's connection state.</summary>
-    public static Badge StateBadge(PeerItem peer)
-    {
-        var badge = new Badge { Content = peer.StateText, VerticalAlignment = VerticalAlignment.Center };
-        badge.Classes.Add("dot");
-        var tone = peer.State switch
-        {
-            "connected" => "success",
-            "connecting" => "info",
-            "unpaired" or "revoked" => "danger",
-            _ => null,
-        };
-        if (tone is not null) badge.Classes.Add(tone);
-        return badge;
-    }
-
     // ---- pickers ------------------------------------------------------------------------------
 
     /// <summary>Local paths of the files the user picks; empty when cancelled.</summary>
@@ -259,5 +173,32 @@ internal static class Ui
         }
         var file = await sp.SaveFilePickerAsync(options);
         return file?.TryGetLocalPath();
+    }
+}
+
+internal static class SettingRows
+{
+    /// <summary>A settings row: title and optional description on the left, the control on the right.</summary>
+    internal static Grid SettingRow(string title, string? description, Control control)
+    {
+        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Classes = { "setting" } };
+        var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 0) };
+        text.Children.Add(Ui.Text(title, "medium"));
+        if (!string.IsNullOrEmpty(description)) text.Children.Add(Ui.Text(description, "caption", "tertiary"));
+        grid.Children.Add(text);
+        control.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(control, 1);
+        grid.Children.Add(control);
+        return grid;
+    }
+}
+
+internal static class ControlExtensions
+{
+    /// <summary>Inline configuration for object initialisers: <c>new X().With(x =&gt; ...)</c>.</summary>
+    public static T With<T>(this T control, Action<T> set)
+    {
+        set(control);
+        return control;
     }
 }

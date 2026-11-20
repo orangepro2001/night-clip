@@ -91,7 +91,7 @@ internal static class HealthWindow
     }
 }
 
-/// <summary>Auto-lock time, clipboard clearing, the screen-capture switch and device sync.</summary>
+/// <summary>Auto-lock time, clipboard clearing and the screen-capture switch.</summary>
 internal static class VaultSettingsWindow
 {
     public static async Task ShowAsync(Window? owner, MacController shell)
@@ -102,9 +102,6 @@ internal static class VaultSettingsWindow
         var capture = new CheckBox { Content = Strings.VaultPreventCapture, IsChecked = shell.PreventCapture, Margin = new Thickness(0, 14, 0, 0) };
         var result = DialogKit.Text("", top: 8);
         var kdf = DialogKit.Text("", VaultUi.MutedBrush, 12, top: 10);
-        var syncList = new StackPanel { Spacing = 6 };
-        var syncStatus = DialogKit.Text("", VaultUi.MutedBrush, 12, top: 4);
-        var syncNow = DialogKit.Btn(MacStrings.VaultSyncNow);
 
         var save = DialogKit.Btn(Strings.BtnSave, 90);
         save.IsDefault = true;
@@ -115,79 +112,8 @@ internal static class VaultSettingsWindow
             capture,
             DialogKit.Text(MacStrings.VaultPreventCaptureNote, VaultUi.MutedBrush, 12, top: 2),
             kdf, result,
-            DialogKit.ButtonRow(close, save),
-            new Border { Height = 1, Background = VaultUi.Brush(0x40808080), Margin = new Thickness(0, 16, 0, 8) },
-            DialogKit.Text(MacStrings.VaultSyncTitle, bold: true, size: 14),
-            DialogKit.Text(MacStrings.VaultSyncIntro, VaultUi.MutedBrush, 12, top: 2, bottom: 8),
-            syncList, syncStatus,
-            syncNow.With(b => b.Margin = new Thickness(0, 8, 0, 0)));
-        var w = DialogKit.Create(shell, Strings.VaultSettingsTitle, 500, panel, height: 640, scroll: true);
-
-        async Task LoadSyncAsync()
-        {
-            var r = await shell.VaultSyncStatusAsync();
-            syncList.Children.Clear();
-            if (!r.Ok) { syncStatus.Text = r.Error ?? ""; syncStatus.Foreground = VaultUi.ErrorBrush; return; }
-            if (r.Value!.Count == 0) syncList.Children.Add(DialogKit.Text(MacStrings.VaultSyncNone, VaultUi.MutedBrush));
-            foreach (var p in r.Value!) syncList.Children.Add(SyncRow(p));
-        }
-
-        Control SyncRow(VaultSyncPeer p)
-        {
-            var enabled = new CheckBox { Content = MacStrings.VaultSyncEnabled, IsChecked = p.Enabled, VerticalAlignment = VerticalAlignment.Top };
-            enabled.IsCheckedChanged += async (_, _) =>
-            {
-                var on = enabled.IsChecked == true;
-                if (on == p.Enabled) return;
-                var r = await shell.VaultSyncEnableAsync(p.DeviceId, on);
-                if (!r.Ok) { syncStatus.Text = r.Error ?? ""; syncStatus.Foreground = VaultUi.ErrorBrush; }
-                await LoadSyncAsync();
-            };
-            var state = MacStrings.VaultSyncState(p.State, p.Connected) + (p.LastOkAt > 0 ? "  ·  " + MacStrings.VaultSyncLastOk(StampText.Local(p.LastOkAt)) : "");
-            var text = Ui.Column(2,
-                new TextBlock { Text = p.Name.Length > 0 ? p.Name : p.DeviceId, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis },
-                DialogKit.Text(state, p.State is "error" or "needs_password" or "review" ? VaultUi.WarnBrush : VaultUi.MutedBrush, 12));
-            if (p.Detail.Length > 0 && p.State == "error") text.Children.Add(DialogKit.Text(p.Detail, VaultUi.MutedBrush, 11));
-            if (p.State == "needs_password")
-            {
-                var enter = DialogKit.Btn(MacStrings.VaultSyncEnterPassword);
-                enter.Click += async (_, _) =>
-                {
-                    var creds = await AskCredsDialog.AskAsync(w, shell, MacStrings.VaultSyncTitle, MacStrings.VaultSyncPasswordPrompt, Strings.LabelMasterPassword, allowEmpty: false);
-                    if (creds is null) return;
-                    var r = await shell.VaultSyncResolvePasswordAsync(p.DeviceId, creds);
-                    syncStatus.Text = r.Ok ? MacStrings.VaultSyncResolved : r.Error ?? "";
-                    syncStatus.Foreground = r.Ok ? VaultUi.OkBrush : VaultUi.ErrorBrush;
-                    await LoadSyncAsync();
-                };
-                text.Children.Add(enter);
-            }
-            else if (p.State == "review" && p.IncomingSha256.Length > 0)
-            {
-                var approve = DialogKit.Btn(MacStrings.VaultSyncApprove);
-                approve.Click += async (_, _) =>
-                {
-                    if (!await VaultUi.ConfirmAsync(w, MacStrings.VaultSyncApproveConfirm, MacStrings.VaultSyncTitle, MacStrings.VaultSyncApprove, warning: true)) return;
-                    var r = await shell.VaultSyncApproveAsync(p.DeviceId, p.IncomingSha256);
-                    syncStatus.Text = r.Ok ? MacStrings.VaultSyncResolved : r.Error ?? "";
-                    syncStatus.Foreground = r.Ok ? VaultUi.OkBrush : VaultUi.ErrorBrush;
-                    await LoadSyncAsync();
-                };
-                text.Children.Add(approve);
-            }
-            var line = new DockPanel();
-            DockPanel.SetDock(enabled, Dock.Right);
-            line.Children.Add(enabled);
-            line.Children.Add(text);
-            return line;
-        }
-
-        void OnEvent(CoreEvent ev)
-        {
-            if (ev.Type is "vault.sync" or "vault.changed" or "vault.joined") _ = LoadSyncAsync();
-        }
-        shell.EventReceived += OnEvent;
-        w.Closed += (_, _) => shell.EventReceived -= OnEvent;
+            DialogKit.ButtonRow(close, save));
+        var w = DialogKit.Create(shell, Strings.VaultSettingsTitle, 500, panel, height: 440, scroll: true);
 
         w.Opened += async (_, _) =>
         {
@@ -199,7 +125,6 @@ internal static class VaultSettingsWindow
                 clip.Text = st.Value.ClipClearS.ToString(inv);
                 if (st.Value.Kdf.Length > 0) kdf.Text = Strings.VaultKdfInfo(st.Value.Kdf);
             }
-            await LoadSyncAsync();
         };
         save.Click += async (_, _) =>
         {
@@ -219,12 +144,6 @@ internal static class VaultSettingsWindow
             result.Text = e2 ?? Strings.VaultSettingsSaved;
         };
         close.Click += (_, _) => w.Close();
-        syncNow.Click += async (_, _) =>
-        {
-            var r = await shell.VaultSyncNowAsync();
-            syncStatus.Text = r.Ok ? MacStrings.VaultSyncStarted : r.Error ?? "";
-            syncStatus.Foreground = r.Ok ? VaultUi.OkBrush : VaultUi.ErrorBrush;
-        };
         await VaultUi.ShowModalAsync(w, owner);
     }
 

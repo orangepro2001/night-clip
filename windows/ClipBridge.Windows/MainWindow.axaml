@@ -2,28 +2,21 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:l="https://github.com/HinaKalo/lumen"
         x:Class="ClipBridge.Windows.MainWindow"
-        Title="ClipBridge"
+        Title="MoonPassword"
         Width="1100" Height="740" MinWidth="900" MinHeight="580"
         WindowStartupLocation="CenterScreen">
 
-  <l:AppShell x:Name="Shell" Title="ClipBridge" PaneWidth="232">
+  <l:AppShell x:Name="Shell" Title="MoonPassword" PaneWidth="232">
     <l:AppShell.Logo>
-      <l:Icon NameKey="clipboard" Size="16" StrokeThickness="2.25" />
+      <l:Icon NameKey="lock" Size="16" StrokeThickness="2.25" />
     </l:AppShell.Logo>
 
     <l:AppShell.HeaderActions>
       <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-        <!-- Sync state at a glance; click to pause / resume (same as the tray menu). -->
-        <Button x:Name="SyncChip" Classes="ghost sm" Click="SyncChip_Click">
-          <StackPanel Orientation="Horizontal" Spacing="7">
-            <Ellipse x:Name="SyncDot" Width="8" Height="8" VerticalAlignment="Center" />
-            <TextBlock x:Name="SyncText" VerticalAlignment="Center" />
-          </StackPanel>
-        </Button>
-        <Button x:Name="PairButton" Classes="primary sm" Click="PairButton_Click">
+        <Button x:Name="LockButton" Classes="ghost sm" Click="LockButton_Click">
           <StackPanel Orientation="Horizontal" Spacing="6">
-            <l:Icon NameKey="qr-code" Size="14" />
-            <TextBlock x:Name="PairButtonText" />
+            <l:Icon NameKey="lock" Size="14" />
+            <TextBlock x:Name="LockButtonText" />
           </StackPanel>
         </Button>
         <l:ThemeToggleButton x:Name="ThemeButton" />

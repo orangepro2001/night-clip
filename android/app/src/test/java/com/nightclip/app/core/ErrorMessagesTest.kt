@@ -7,9 +7,10 @@ import org.junit.Test
 
 class ErrorMessagesTest {
     private val documented = listOf(
-        "NOT_PAIRED", "PAIRING_EXPIRED", "PAIRING_FAILED", "NO_TAILNET", "PEER_OFFLINE", "TARGET_MISMATCH", "SOURCE_MISMATCH",
-        "EXPIRED", "HASH_MISMATCH", "SEQUENCE_GAP", "TOO_LARGE", "NO_SPACE", "RATE_LIMITED", "INVALID", "DB_UNAVAILABLE",
-        "KEY_INVALID", "NOT_INITIALIZED", "METHOD_NOT_FOUND", "UPDATE_DISABLED", "UPDATE_FAILED", "UPDATE_REJECTED", "INTERNAL", "LISTEN_FAILED",
+        "EXPIRED", "HASH_MISMATCH", "TOO_LARGE", "NO_SPACE", "RATE_LIMITED", "INVALID", "DB_UNAVAILABLE",
+        "KEY_INVALID", "NOT_INITIALIZED", "METHOD_NOT_FOUND", "NOT_FOUND", "UPDATE_DISABLED", "UPDATE_FAILED", "UPDATE_REJECTED", "INTERNAL",
+        "VAULT_LOCKED", "VAULT_WRONG_CREDENTIALS", "VAULT_NOT_FOUND", "VAULT_EXISTS", "VAULT_UNSUPPORTED", "VAULT_NOT_EMPTY",
+        "VAULT_REVIEW", "VAULT_BROKEN",
     )
 
     @Test
@@ -25,8 +26,10 @@ class ErrorMessagesTest {
     }
 
     @Test
-    fun noTailnetMatchesTheGuide() {
-        assertEquals("没有检测到 Tailscale 网络，请确认 Tailscale 已登录并连接", ErrorMessages.forCode("NO_TAILNET"))
+    fun retiredNetworkCodesAreUnknownNow() {
+        for (code in listOf("NO_TAILNET", "NOT_PAIRED", "PEER_OFFLINE")) {
+            assertTrue(ErrorMessages.forCode(code).contains(code))
+        }
     }
 
     @Test
@@ -42,13 +45,8 @@ class ErrorMessagesTest {
     }
 
     @Test
-    fun hashMismatchTellsThePersonToAskForResend() {
-        assertEquals("文件校验失败，请让对方重发", ErrorMessages.forCode("HASH_MISMATCH"))
-    }
-
-    @Test
     fun initFailureCodesAreExtractedFromTheGoErrorText() {
-        assertEquals("KEY_INVALID", ErrorMessages.codeFromInitFailure("KEY_INVALID: cannot decrypt identity"))
+        assertEquals("KEY_INVALID", ErrorMessages.codeFromInitFailure("KEY_INVALID: the database key check does not match"))
         assertEquals("DB_UNAVAILABLE", ErrorMessages.codeFromInitFailure("DB_UNAVAILABLE: open: disk I/O error"))
         assertEquals("INTERNAL", ErrorMessages.codeFromInitFailure("something odd"))
         assertEquals("INTERNAL", ErrorMessages.codeFromInitFailure(null))
@@ -68,10 +66,10 @@ class ErrorMessagesTest {
         val ok = Reply.parse("""{"ok":true,"result":{"a":1}}""")
         assertTrue(ok.ok)
         assertEquals(1, ok.result.getInt("a"))
-        val bad = Reply.parse("""{"ok":false,"error":{"code":"PEER_OFFLINE","message":"x"}}""")
+        val bad = Reply.parse("""{"ok":false,"error":{"code":"VAULT_LOCKED","message":"x"}}""")
         assertFalse(bad.ok)
-        assertEquals("PEER_OFFLINE", bad.errorCode)
-        assertEquals(ErrorMessages.forCode("PEER_OFFLINE"), bad.userMessage)
+        assertEquals("VAULT_LOCKED", bad.errorCode)
+        assertEquals(ErrorMessages.forCode("VAULT_LOCKED"), bad.userMessage)
         val garbage = Reply.parse("<<")
         assertFalse(garbage.ok)
         assertEquals("INTERNAL", garbage.errorCode)

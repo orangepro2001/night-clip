@@ -1,6 +1,7 @@
 # ADR-006：Android 后台剪贴板读取采用“READ_LOGS + 悬浮窗取焦”（可选进阶）
 
-- 状态：**Accepted（2026-10-26，壳层已实现；真机验证待完成）**
+- 状态：**Superseded**（2026-11，MoonPassword 移除剪贴板同步与后台读取）
+- MoonPassword（2026-11）：剪贴板同步、文件传输、tailnet 配对和设备引荐已整体移除，信任改由 sso.moonl.cloud 提供（见 ADR-010）。本 ADR 只保留用于追溯。
 - 日期：2026-10-26
 - 决策者：项目组（用户明确要求按 ClipCascade 的做法实现）
 - 相关文档：[plan-android-background-read.md](../plan-android-background-read.md)、[plan-auto-broadcast.md](../plan-auto-broadcast.md)、[user-guide.md](../user-guide.md)、[shell-guide.md](../shell-guide.md)

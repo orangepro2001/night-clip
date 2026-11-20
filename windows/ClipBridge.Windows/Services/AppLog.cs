@@ -3,8 +3,8 @@ using ClipBridge.Windows.Logic;
 namespace ClipBridge.Windows.Services;
 
 /// <summary>
-/// Process-wide log file under %LOCALAPPDATA%\ClipBridge\logs. By policy it only ever receives event
-/// types, ids and exception types/messages produced by this app, never clipboard text or secrets.
+/// Process-wide log file under the data folder's logs\ directory. By policy it only ever receives event
+/// types, ids and exception types/messages produced by this app, never vault contents or secrets.
 /// </summary>
 internal static class AppLog
 {
@@ -23,7 +23,7 @@ internal static class AppLog
     public static void Event(CoreEvent ev)
     {
         // Progress events fire several times a second and carry nothing worth keeping.
-        if (ev is FileProgressEvent) return;
+        if (ev.Type == "update.progress") return;
         Write("event " + ev.LogLine);
     }
 }

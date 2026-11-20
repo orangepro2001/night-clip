@@ -88,13 +88,13 @@ internal sealed class SshSettingsCard : Card
             Margin = new Thickness(0, 6, 0, 0),
             Children =
             {
-                DevicesPage.SettingRow(Strings.SshSettingEnable, Strings.SshSettingEnableHint, _enable),
+                SettingRows.SettingRow(Strings.SshSettingEnable, Strings.SshSettingEnableHint, _enable),
                 state,
                 _issues,
                 new Separator(),
-                DevicesPage.SettingRow(Strings.SshSettingTtl, Strings.SshSettingTtlHint, _ttl),
-                DevicesPage.SettingRow(Strings.SshSettingForwarding, Strings.SshSettingForwardingHint, _forwarding),
-                DevicesPage.SettingRow(Strings.SshSettingNotify, null, _notify),
+                SettingRows.SettingRow(Strings.SshSettingTtl, Strings.SshSettingTtlHint, _ttl),
+                SettingRows.SettingRow(Strings.SshSettingForwarding, Strings.SshSettingForwardingHint, _forwarding),
+                SettingRows.SettingRow(Strings.SshSettingNotify, null, _notify),
                 _recentBox,
             },
         };

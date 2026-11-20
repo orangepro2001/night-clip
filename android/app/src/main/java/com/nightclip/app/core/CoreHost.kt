@@ -83,7 +83,6 @@ object CoreHost {
                 .put("db_key_b64", loaded.keyB64)
                 .put("device_name", deviceName(app))
                 .put("platform", "android")
-                .put("listen", false) // Android only dials out (docs/architecture.md §4.1)
                 .put("app_version_code", BuildConfig.CB_VERSION_CODE) // 0 in dev builds: updates off
                 .put("app_version_name", BuildConfig.CB_VERSION_NAME)
                 .put("update_url", BuildConfig.CB_UPDATE_URL)

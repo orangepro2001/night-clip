@@ -79,7 +79,7 @@ func listFPs(t *testing.T, name string) []string {
 }
 
 func TestSSHInspectImportAndViews(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	enc := fixtureB64(t, "openssh_ed25519_aes256-ctr")
 
 	// inspect works without a vault and says what it needs
@@ -164,7 +164,7 @@ func TestSSHInspectImportAndViews(t *testing.T) {
 }
 
 func TestSSHExportNeedsTheMasterPassword(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	gen := n.call("ssh.generate", map[string]any{"type": "ed25519", "title": "k"})
 	dir := t.TempDir()
@@ -192,7 +192,7 @@ func TestSSHExportNeedsTheMasterPassword(t *testing.T) {
 }
 
 func TestSSHWritePubAndScan(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "cloud.pem")
@@ -235,7 +235,7 @@ func TestSSHWritePubAndScan(t *testing.T) {
 }
 
 func TestSSHKeePassXCStyleEntry(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	// KeePassXC: a normal entry, the key passphrase in Password, the encrypted key and KeeAgent.settings attached.
 	add := n.call("vault.add", map[string]any{"entry": map[string]any{"title": "From KeePassXC", "password": fixturePass}})
@@ -272,7 +272,7 @@ func TestSSHKeePassXCStyleEntry(t *testing.T) {
 }
 
 func TestSSHAgentServesVaultKeys(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	if st := n.call("ssh.status", nil); st["state"] != "stopped" || st["enabled"] != false {
 		t.Fatalf("status before: %v", st)
 	}
@@ -341,7 +341,7 @@ func TestSSHAgentServesVaultKeys(t *testing.T) {
 }
 
 func TestSSHKeysOutliveAnIdleLock(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	name := enableAgent(t, n)
 	n.call("settings.set", map[string]any{"key": "ssh_key_ttl_s", "value": "3600"})
 	vcreate(t, n)
@@ -390,7 +390,7 @@ func TestSSHKeysOutliveAnIdleLock(t *testing.T) {
 }
 
 func TestSSHTTLZeroLocksWithTheVault(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	name := enableAgent(t, n)
 	n.call("settings.set", map[string]any{"key": "ssh_key_ttl_s", "value": "0"})
 	vcreate(t, n)
@@ -406,7 +406,7 @@ func TestSSHTTLZeroLocksWithTheVault(t *testing.T) {
 }
 
 func TestSSHAgentSettings(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	for _, bad := range []map[string]any{
 		{"key": "ssh_agent", "value": "yes"},
 		{"key": "ssh_key_ttl_s", "value": "10"},
@@ -447,7 +447,7 @@ func TestSSHAgentSettings(t *testing.T) {
 }
 
 func TestSSHAgentUnsupportedOnAndroid(t *testing.T) {
-	n := startNode(t, "Pixel", "android", false)
+	n := startNode(t, "Pixel", "android")
 	n.call("settings.set", map[string]any{"key": "ssh_agent", "value": "on"})
 	if st := n.call("ssh.status", nil); st["supported"] != false || st["state"] != "unsupported" {
 		t.Fatalf("android: %v", st)
@@ -455,7 +455,7 @@ func TestSSHAgentUnsupportedOnAndroid(t *testing.T) {
 }
 
 func TestSSHShutdownWithConnectedClient(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	name := enableAgent(t, n)
 	a := agentClient(t, name)
 	if _, err := a.List(); err != nil {
@@ -491,7 +491,7 @@ func TestSSHAgentWithOpenSSH(t *testing.T) {
 		return p
 	}
 	sshAdd, keygen := tool("ssh-add"), tool("ssh-keygen")
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	name := enableAgent(t, n)
 	vcreate(t, n)
 	gen := n.call("ssh.generate", map[string]any{"type": "ed25519", "title": "e2e"})
@@ -626,7 +626,7 @@ func startTestSSHServer(t *testing.T, allowed ssh.PublicKey) (ssh.PublicKey, hos
 }
 
 func TestSSHHostBindingThroughTheFacade(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	name := enableAgent(t, n)
 	vcreate(t, n)
 	bound := n.call("ssh.generate", map[string]any{"title": "Bound"})

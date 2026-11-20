@@ -1,6 +1,7 @@
 # ADR-001：采用推送控制面 + croc store 数据面
 
 - 状态：**Superseded**（2026-10-26 被 ADR-004 取代）
+- MoonPassword（2026-11）：剪贴板同步、文件传输、tailnet 配对和设备引荐已整体移除，信任改由 sso.moonl.cloud 提供（见 ADR-010）。本 ADR 只保留用于追溯。
 - 历史说明：本 ADR 描述 Bark/APNs 控制面，已不适用于当前 Windows + Android 范围。保留仅用于追溯。
 - 日期：2026-10-26
 - 决策者：项目组

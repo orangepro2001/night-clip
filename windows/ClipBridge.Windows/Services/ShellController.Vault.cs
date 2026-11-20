@@ -194,9 +194,8 @@ internal sealed partial class ShellController
 
         void Write()
         {
-            if (!_clip.WriteText(_monitor.Handle, text, sensitive: true)) return;
+            if (!_clip.WriteText(_clipOwner.Handle, text, sensitive: true)) return;
             var seq = ClipboardAccess.SequenceNumber();
-            _ownWriteSeq = seq; // the monitor must not mistake this for something the user copied
             lock (_vaultClipGate) _vaultClip.Arm(seq, clearAfterSeconds);
             written = true;
         }
@@ -258,12 +257,11 @@ internal sealed partial class ShellController
         var cleared = false;
         for (var attempt = 0; attempt < 5 && !cleared; attempt++)
         {
-            cleared = _clip.Clear(_monitor.Handle);
+            cleared = _clip.Clear(_clipOwner.Handle);
             if (!cleared) Thread.Sleep(100);
         }
         if (cleared)
         {
-            _ownWriteSeq = ClipboardAccess.SequenceNumber();
             if (!onLock) ShowStatus(Strings.ClipboardClearedByTimer, StatusKind.Info);
         }
         else AppLog.Write("vault clipboard clear failed");

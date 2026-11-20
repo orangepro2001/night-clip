@@ -44,7 +44,7 @@ public sealed class NativeCoreFixture : IDisposable
         Core.Start(new
         {
             data_dir = DataDir, db_key_b64 = Key,
-            device_name = DeviceName, platform = "windows", listen = false, port = 47821,
+            device_name = DeviceName, platform = "windows",
         });
     }
 
@@ -82,19 +82,15 @@ public class CoreInteropTests
     [Fact]
     public void Start_CreatesTheDatabase_AndStatusRoundTripsUtf8()
     {
-        Assert.True(File.Exists(Path.Combine(_fx.DataDir, "clipbridge.db")), "the core did not create its database");
+        Assert.True(File.Exists(Path.Combine(_fx.DataDir, "moonpassword.db")), "the core did not create its database");
 
-        // status round-trips the UTF-8 device name and returns a protocol-valid id.
+        // status round-trips the UTF-8 device name.
         var st = _fx.Core.Call("status");
         Assert.Equal(NativeCoreFixture.DeviceName, st.GetProperty("device_name").GetString());
-        var deviceId = st.GetProperty("device_id").GetString()!;
-        Assert.Matches("^dev_[a-z2-7]{26}$", deviceId);
+        Assert.Equal("windows", st.GetProperty("platform").GetString());
 
-        // The pump thread delivers core.started, and its device_id matches status.
+        // The pump thread delivers core.started.
         Assert.True(_fx.GotStarted.Wait(TimeSpan.FromSeconds(5)), "core.started was not delivered by the event pump");
-        lock (_fx.RawEvents)
-            Assert.Equal(deviceId, _fx.RawEvents.First(e => e.GetProperty("type").GetString() == "core.started")
-                .GetProperty("device_id").GetString());
     }
 
     [Fact]

@@ -103,6 +103,7 @@ internal sealed class VaultPage : UserControl, ISearchablePage
         _loading.IsVisible = screen == VaultScreen.Loading;
         _lockPanel.IsVisible = screen is VaultScreen.Create or VaultScreen.Locked;
         _mainPanel.IsVisible = screen == VaultScreen.Unlocked;
+        _shell.SetVaultUnlocked(screen == VaultScreen.Unlocked);
     }
 
     private async Task OnSucceededAsync(bool created)

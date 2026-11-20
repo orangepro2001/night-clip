@@ -1,15 +1,11 @@
 package com.nightclip.app.ui
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Create
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -19,9 +15,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,43 +29,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nightclip.app.R
-import com.nightclip.app.app
 import com.nightclip.app.core.CoreHost
 import com.nightclip.app.core.CoreState
 import com.nightclip.app.platform.Actions
-import com.nightclip.app.ui.notes.NOTES_TAB_ID
-import com.nightclip.app.ui.notes.NotesRoot
-import com.nightclip.app.ui.vault.VAULT_TAB_ID
 import com.nightclip.app.ui.vault.VaultRoot
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
-/** Requests from outside the composition (notification taps, clipbridge:// links). */
+/** Requests from outside the composition (notification taps). */
 class LaunchRequests {
     val tab = MutableStateFlow<String?>(null)
-    val pairLink = MutableStateFlow<String?>(null)
 }
 
 @Composable
 fun AppRoot(requests: LaunchRequests) {
-    val context = LocalContext.current
     val coreState by CoreHost.state.collectAsStateWithLifecycle()
-    val onboarded by context.app.prefs.onboarded.collectAsStateWithLifecycle()
     Surface(Modifier.fillMaxSize()) {
         when (val s = coreState) {
             is CoreState.Starting -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             is CoreState.Failed -> ErrorScreen(s)
-            is CoreState.Ready -> if (!onboarded) {
-                OnboardingScreen(onDone = { context.app.prefs.setOnboarded(true) })
-            } else {
-                MainScaffold(requests)
-            }
+            is CoreState.Ready -> MainScaffold(requests)
         }
     }
 }
@@ -80,49 +62,23 @@ private data class TabSpec(val id: String, val label: Int, val icon: ImageVector
 
 @Composable
 private fun MainScaffold(requests: LaunchRequests) {
-    val appVm: AppViewModel = viewModel()
-    val inboxVm: InboxViewModel = viewModel()
     val settingsVm: SettingsViewModel = viewModel()
-    val pairVm: PairViewModel = viewModel()
 
-    var tab by rememberSaveable { mutableStateOf(Actions.TAB_DEVICES) }
-    var showPair by rememberSaveable { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableStateOf(Actions.TAB_VAULT) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val show: (String) -> Unit = { msg -> scope.launch { snackbar.showSnackbar(msg) } }
-    val showWithAction: (String, String, () -> Unit) -> Unit = { msg, label, action ->
-        scope.launch {
-            if (snackbar.showSnackbar(msg, actionLabel = label, duration = SnackbarDuration.Long) == SnackbarResult.ActionPerformed) action()
-        }
-    }
-    // The notes editor and its sub screens take the whole screen: no bottom navigation between the toolbar and the keyboard.
-    var notesFullScreen by rememberSaveable { mutableStateOf(false) }
 
     val requestedTab by requests.tab.collectAsStateWithLifecycle()
-    val requestedLink by requests.pairLink.collectAsStateWithLifecycle()
     LaunchedEffect(requestedTab) {
         requestedTab?.let {
-            if (it in setOf(Actions.TAB_DEVICES, Actions.TAB_INBOX, Actions.TAB_SETTINGS)) {
-                tab = it
-                showPair = false
-            }
+            if (it in setOf(Actions.TAB_VAULT, Actions.TAB_SETTINGS)) tab = it
             requests.tab.value = null
         }
     }
-    LaunchedEffect(requestedLink) {
-        requestedLink?.let {
-            pairVm.setPrefill(it) // shown for the user to confirm; never joined automatically
-            showPair = true
-            requests.pairLink.value = null
-        }
-    }
-    CollectWhileStarted(appVm.messages) { show(it) }
 
     val tabs = listOf(
-        TabSpec(Actions.TAB_DEVICES, R.string.nav_devices, Icons.Filled.Phone),
-        TabSpec(Actions.TAB_INBOX, R.string.nav_inbox, Icons.Filled.Email),
-        TabSpec(NOTES_TAB_ID, R.string.nav_notes, Icons.Filled.Create),
-        TabSpec(VAULT_TAB_ID, R.string.nav_vault, Icons.Filled.Lock),
+        TabSpec(Actions.TAB_VAULT, R.string.nav_vault, Icons.Filled.Lock),
         TabSpec(Actions.TAB_SETTINGS, R.string.nav_settings, Icons.Filled.Settings),
     )
 
@@ -130,48 +86,32 @@ private fun MainScaffold(requests: LaunchRequests) {
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (!showPair && !(tab == NOTES_TAB_ID && notesFullScreen)) {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 0.dp,
-                ) {
-                    tabs.forEach { t ->
-                        NavigationBarItem(
-                            selected = tab == t.id,
-                            onClick = { tab = t.id },
-                            icon = { Icon(t.icon, contentDescription = null, modifier = Modifier.size(21.dp)) },
-                            label = { Text(stringResource(t.label)) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MaterialTheme.colorScheme.primary,
-                                selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f),
-                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            ),
-                        )
-                    }
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+            ) {
+                tabs.forEach { t ->
+                    NavigationBarItem(
+                        selected = tab == t.id,
+                        onClick = { tab = t.id },
+                        icon = { Icon(t.icon, contentDescription = null, modifier = Modifier.size(21.dp)) },
+                        label = { Text(stringResource(t.label)) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f),
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    )
                 }
             }
         },
     ) { padding ->
         val mod = Modifier.padding(padding)
-        when {
-            showPair -> PairScreen(pairVm, onClose = {
-                showPair = false
-                appVm.refreshPeers()
-            }, modifier = mod)
-            tab == Actions.TAB_INBOX -> InboxScreen(inboxVm, onMessage = show, modifier = mod)
-            tab == NOTES_TAB_ID -> NotesRoot(
-                onMessage = show,
-                onUndo = showWithAction,
-                onFullScreen = { notesFullScreen = it },
-                undoLabel = stringResource(R.string.notes_undo),
-                // The keyboard inset is applied inside the editor; the bars the scaffold already made room for must not count twice.
-                modifier = mod.consumeWindowInsets(padding),
-            )
-            tab == VAULT_TAB_ID -> VaultRoot(onMessage = show, modifier = mod)
-            tab == Actions.TAB_SETTINGS -> SettingsScreen(settingsVm, onMessage = show, modifier = mod)
-            else -> DevicesScreen(appVm, onPair = { showPair = true }, modifier = mod)
+        when (tab) {
+            Actions.TAB_SETTINGS -> SettingsScreen(settingsVm, onMessage = show, modifier = mod)
+            else -> VaultRoot(onMessage = show, modifier = mod)
         }
     }
 }

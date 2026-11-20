@@ -7,60 +7,21 @@ namespace ClipBridge.Windows.Tests;
 
 public class TrayModelTests
 {
-    private static CoreEvent Ev(string json) => CoreEventParser.Parse(json);
-
-    [Fact]
-    public void WarningTracker_TracksAndClears()
-    {
-        var w = new WarningTracker();
-        Assert.True(w.Apply(Ev("{\"type\":\"core.warning\",\"code\":\"NO_TAILNET\"}")));
-        Assert.False(w.Apply(Ev("{\"type\":\"core.warning\",\"code\":\"NO_TAILNET\"}")));   // no change
-        Assert.True(w.Any);
-        Assert.Equal(Strings.NoTailnetBanner, w.Banner);
-        Assert.True(w.Apply(Ev("{\"type\":\"core.listening\",\"addrs\":[\"100.64.0.1\"],\"port\":47821}")));
-        Assert.False(w.Any);
-        Assert.Null(w.Banner);
-        Assert.False(w.Apply(Ev("{\"type\":\"peer.state\",\"device_id\":\"d\",\"state\":\"connected\"}")));
-    }
-
-    [Fact]
-    public void WarningTracker_ListenFailedReplacesNoTailnet()
-    {
-        var w = new WarningTracker();
-        w.Apply(Ev("{\"type\":\"core.warning\",\"code\":\"NO_TAILNET\"}"));
-        Assert.True(w.Apply(Ev("{\"type\":\"core.warning\",\"code\":\"LISTEN_FAILED\",\"addr\":\"100.64.0.1\",\"error\":\"forbidden\"}")));
-        Assert.False(w.Has("NO_TAILNET"));
-        Assert.Equal(Strings.ListenFailedBanner, w.Banner);
-    }
-
-    [Fact]
-    public void WarningTracker_FingerprintMismatchSticks()
-    {
-        var w = new WarningTracker();
-        w.Apply(Ev("{\"type\":\"core.warning\",\"code\":\"FINGERPRINT_MISMATCH\"}"));
-        w.Apply(Ev("{\"type\":\"core.listening\",\"addrs\":[],\"port\":1}"));
-        Assert.True(w.Has("FINGERPRINT_MISMATCH"));
-        Assert.Equal(Strings.FingerprintMismatchBanner, w.Banner);
-    }
-
     [Theory]
-    [InlineData(false, false, new string[0], TrayState.Warning)]
-    [InlineData(true, true, new[] { "connected" }, TrayState.Warning)]
-    [InlineData(true, false, new string[0], TrayState.Normal)]
-    [InlineData(true, false, new[] { "connected", "offline" }, TrayState.Normal)]
-    [InlineData(true, false, new[] { "offline", "connecting" }, TrayState.NoConnection)]
-    [InlineData(true, false, new[] { "revoked" }, TrayState.Normal)]
-    [InlineData(true, false, new[] { "unpaired" }, TrayState.NoConnection)]
-    public void TrayState_Compute(bool running, bool warn, string[] peers, TrayState expected) =>
-        Assert.Equal(expected, TrayModel.Compute(running, warn, peers));
+    [InlineData(false, TrayState.Warning)]
+    [InlineData(true, TrayState.Normal)]
+    public void TrayState_Compute(bool running, TrayState expected) =>
+        Assert.Equal(expected, TrayModel.Compute(running));
 
     [Fact]
-    public void Tooltip_FitsNotifyIconLimit()
+    public void Tooltip_FitsNotifyIconLimit_AndSaysWhetherTheVaultIsOpen()
     {
         foreach (var st in Enum.GetValues<TrayState>())
-            foreach (var peers in new[] { new string[0], new[] { "connected" }, new[] { "offline" } })
-                Assert.True(TrayModel.Tooltip(st, peers).Length <= 63);
-        Assert.Equal(Strings.TrayTipConnected(1, 2), TrayModel.Tooltip(TrayState.Normal, new[] { "connected", "offline" }));
+            foreach (var unlocked in new[] { false, true })
+                Assert.True(TrayModel.Tooltip(st, unlocked).Length <= 63);
+        Assert.Equal(Strings.TrayTipUnlocked, TrayModel.Tooltip(TrayState.Normal, true));
+        Assert.Equal(Strings.TrayTipLocked, TrayModel.Tooltip(TrayState.Normal, false));
+        Assert.Equal(Strings.TrayTipWarning, TrayModel.Tooltip(TrayState.Warning, true));
     }
 }
 
@@ -103,7 +64,6 @@ public sealed class ShellPrefsTests : IDisposable
     {
         var p = ShellPrefs.Load(_dir);
         Assert.False(p.FirstRunDone);
-        Assert.Null(p.DownloadDir);
         Assert.True(p.Notifications);
     }
 
@@ -119,10 +79,10 @@ public sealed class ShellPrefsTests : IDisposable
     [Fact]
     public void SaveAndLoad_RoundTrip()
     {
-        new ShellPrefs { FirstRunDone = true, DownloadDir = @"D:\In" }.Save(_dir);
+        new ShellPrefs { FirstRunDone = true, Theme = "dark" }.Save(_dir);
         var p = ShellPrefs.Load(_dir);
         Assert.True(p.FirstRunDone);
-        Assert.Equal(@"D:\In", p.DownloadDir);
+        Assert.Equal("dark", p.Theme);
         Assert.False(File.Exists(Path.Combine(_dir, ShellPrefs.FileName + ".tmp")));
     }
 
@@ -132,15 +92,6 @@ public sealed class ShellPrefsTests : IDisposable
         Directory.CreateDirectory(_dir);
         File.WriteAllText(Path.Combine(_dir, ShellPrefs.FileName), "{{{{ not json");
         Assert.False(ShellPrefs.Load(_dir).FirstRunDone);
-    }
-
-    [Fact]
-    public void ResolveDownloadDir_Order()
-    {
-        Assert.Equal(@"C:\core", ShellPrefs.ResolveDownloadDir(@"C:\core", @"D:\prefs", @"E:\sys"));
-        Assert.Equal(@"D:\prefs", ShellPrefs.ResolveDownloadDir("", @"D:\prefs", @"E:\sys"));
-        Assert.Equal(@"D:\prefs", ShellPrefs.ResolveDownloadDir("relative", @"D:\prefs", @"E:\sys"));
-        Assert.Equal(@"E:\sys", ShellPrefs.ResolveDownloadDir(null, null, @"E:\sys"));
     }
 }
 
@@ -178,23 +129,18 @@ public class DiagnosticsTextTests
     public void ListsWhitelistedFields_AndNothingElse()
     {
         using var d = JsonDocument.Parse(@"{
-          ""core"":""0.1.0"",""protocol"":""clipbridge/v1"",""device_id"":""dev_abc"",""fingerprint_prefix"":""ABCD1234"",
-          ""platform"":""windows"",""listen"":true,""listening_addrs"":[""100.64.0.1""],""port"":47821,""events_dropped"":2,
-          ""psk"":""LEAKED-PSK"",""db_key"":""LEAKED-KEY"",
-          ""peers"":[{""device_id"":""dev_p"",""name"":""Pixel"",""platform"":""android"",""state"":""connected"",""outbox_pending"":1,
-                      ""recv_cursor"":7,""next_seq_out"":9,""apply_mode"":""manual"",""tailnet_addrs"":[""100.64.0.2""],""private_key"":""LEAKED-PRIV""}],
+          ""core"":""0.1.0"",""platform"":""windows"",""events_dropped"":2,
+          ""db_key"":""LEAKED-KEY"",""master_password"":""LEAKED-PW"",
+          ""ssh"":{""enabled"":true,""state"":""listening"",""pipe"":""\\\\.\\pipe\\openssh-ssh-agent"",""keys_loaded"":2,""keys_state"":""loaded"",""private_key"":""LEAKED-PRIV""},
           ""update"":{""state"":""up_to_date"",""enabled"":true,""current_name"":""0.1.5"",""current_code"":5}}");
-        var text = DiagnosticsText.Build(d.RootElement, "0.1.5", DateTimeOffset.Parse("2026-10-26T10:00:00+00:00"), new[] { "NO_TAILNET" });
+        var text = DiagnosticsText.Build(d.RootElement, "0.1.5", DateTimeOffset.Parse("2026-10-26T10:00:00+00:00"));
         Assert.DoesNotContain("LEAKED", text);
-        Assert.Contains("dev_abc", text);
-        Assert.Contains("ABCD1234", text);
-        Assert.Contains("100.64.0.1", text);
-        Assert.Contains("47821", text);
-        Assert.Contains("Pixel", text);
-        Assert.Contains("接收游标: 7", text);
-        Assert.Contains("发送序号: 9", text);
-        Assert.Contains("NO_TAILNET", text);
+        Assert.Contains("0.1.0", text);
+        Assert.Contains("windows", text);
+        Assert.Contains("listening", text);
+        Assert.Contains("已加载 2 把", text);
         Assert.Contains("up_to_date", text);
+        Assert.StartsWith(Strings.AppName, text);
     }
 
     [Fact]
@@ -202,7 +148,7 @@ public class DiagnosticsTextTests
     {
         using var d = JsonDocument.Parse("{}");
         var text = DiagnosticsText.Build(d.RootElement, "dev", DateTimeOffset.UnixEpoch);
-        Assert.Contains("（无）", text);
+        Assert.Contains("应用版本: dev", text);
     }
 }
 
@@ -251,89 +197,22 @@ public class CoreApiTests
     {
         var f = new Fake();
         var api = new CoreApi(f);
-        api.SettingsSet("capture", "on");
-        api.PairCancel("s1");
-        api.PairConfirm("p1", true);
-        api.PeerRename("dev_a", "新名字");
-        api.PeerSetMode("dev_a", "auto");
-        api.PeerRemove("dev_a");
-        api.PeerRemove("dev_a", forget: true);
-        api.MarkApplied("e1");
-        api.Dismiss("e2");
-        api.InboxClear();
-        api.FileAccept("tr_1");
-        api.FileAccept("tr_2", @"D:\In");
-        api.FileReject("tr_3");
-        api.FileCancel("tr_4");
+        api.SettingsSet("vault_autolock_s", "300");
+        api.SettingsGet();
+        api.Status();
+        api.Diagnostics();
         api.UpdateConfigAuto(true);
+        api.UpdateCheck();
 
         Assert.Equal(new[]
         {
-            ("settings.set", "{\"key\":\"capture\",\"value\":\"on\"}"),
-            ("pair.cancel", "{\"session_id\":\"s1\"}"),
-            ("pair.confirm", "{\"pair_id\":\"p1\",\"accept\":true}"),
-            ("peers.update", "{\"device_id\":\"dev_a\",\"name\":\"\\u65B0\\u540D\\u5B57\"}"),
-            ("peers.update", "{\"device_id\":\"dev_a\",\"apply_mode\":\"auto\"}"),
-            ("peers.remove", "{\"device_id\":\"dev_a\",\"forget\":false}"),
-            ("peers.remove", "{\"device_id\":\"dev_a\",\"forget\":true}"),
-            ("clip.mark_applied", "{\"event_id\":\"e1\"}"),
-            ("clip.dismiss", "{\"event_id\":\"e2\"}"),
-            ("inbox.clear", "{}"),
-            ("file.accept", "{\"transfer_id\":\"tr_1\"}"),
-            ("file.accept", "{\"transfer_id\":\"tr_2\",\"save_dir\":\"D:\\\\In\"}"),
-            ("file.reject", "{\"transfer_id\":\"tr_3\"}"),
-            ("file.cancel", "{\"transfer_id\":\"tr_4\"}"),
+            ("settings.set", "{\"key\":\"vault_autolock_s\",\"value\":\"300\"}"),
+            ("settings.get", "{}"),
+            ("status", "{}"),
+            ("diagnostics.get", "{}"),
             ("update.config", "{\"auto\":true}"),
+            ("update.check", "{}"),
         }, f.Calls.Select(c => (c.Method, c.Params)).ToArray());
-    }
-
-    [Fact]
-    public void FileOffer_SendsThePath_AndReturnsTheTransferId()
-    {
-        var f = new Fake { Reply = _ => "{\"transfer_id\":\"tr_77\"}" };
-        Assert.Equal("tr_77", new CoreApi(f).FileOffer("dev_a", @"C:\a.txt"));
-        Assert.Equal(("file.offer", "{\"to\":\"dev_a\",\"path\":\"C:\\\\a.txt\"}"), f.Calls[0]);
-    }
-
-    [Fact]
-    public void PairBegin_ParsesTheQrMatrix()
-    {
-        var f = new Fake { Reply = _ => "{\"session_id\":\"s\",\"link\":\"clipbridge://pair?x\",\"host\":\"100.64.0.1\",\"port\":47821,\"expires_at\":\"2026-10-26T10:00:00Z\",\"qr\":{\"size\":2,\"rows\":[\"01\",\"10\"]}}" };
-        var b = new CoreApi(f).PairBegin();
-        Assert.Equal(("s", "clipbridge://pair?x", 47821, 2), (b.SessionId, b.Link, b.Port, b.QrSize));
-        Assert.Equal(new[] { "01", "10" }, b.QrRows);
-        Assert.NotNull(b.Expires);
-    }
-
-    [Fact]
-    public void PairBegin_WithoutQr_HasNoRows()
-    {
-        var f = new Fake { Reply = _ => "{\"session_id\":\"s\",\"link\":\"l\",\"host\":\"h\",\"port\":1,\"expires_at\":\"x\"}" };
-        var b = new CoreApi(f).PairBegin();
-        Assert.Empty(b.QrRows);
-        Assert.Null(b.Expires);
-    }
-
-    [Fact]
-    public void ClipLocalChanged_ParsesSentAndSuppressed()
-    {
-        var f = new Fake { Reply = _ => "{\"sent\":[{\"device_id\":\"d\",\"name\":\"Pixel\",\"event_id\":\"e\"}],\"suppressed\":\"\"}" };
-        var r = new CoreApi(f).ClipLocalChanged("hi");
-        Assert.Equal("Pixel", Assert.Single(r.Sent).Name);
-        Assert.Equal("{\"text\":\"hi\"}", f.Calls[0].Params);
-        var g = new Fake { Reply = _ => "{\"sent\":[],\"suppressed\":\"too_large\"}" };
-        Assert.Equal("too_large", new CoreApi(g).ClipLocalChanged("x").Suppressed);
-    }
-
-    [Fact]
-    public void PairJoin_Params()
-    {
-        var f = new Fake { Reply = _ => "{\"join_id\":\"j9\"}" };
-        var api = new CoreApi(f);
-        Assert.Equal("j9", api.PairJoin(new PairJoinRequest("clipbridge://pair?a", null, 0, null, null)));
-        Assert.Equal("{\"link\":\"clipbridge://pair?a\"}", f.Calls[0].Params);
-        api.PairJoin(new PairJoinRequest(null, "100.64.0.1", 47821, "psk", "fp"));
-        Assert.Equal("{\"host\":\"100.64.0.1\",\"port\":47821,\"psk\":\"psk\",\"fp\":\"fp\"}", f.Calls[1].Params);
     }
 }
 

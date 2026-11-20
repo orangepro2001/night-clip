@@ -14,7 +14,7 @@ type unixListener struct {
 	path string
 }
 
-// Listen creates the control socket at path (mode 0600). A stale socket file from
+// Listen creates a socket at path (mode 0600). A stale socket file from
 // a crashed run is replaced; a live one makes Listen fail.
 func Listen(path string) (Listener, error) {
 	if c, err := net.DialTimeout("unix", path, 200*time.Millisecond); err == nil {
@@ -44,15 +44,7 @@ func (u *unixListener) Close() error {
 // LOCAL_PEERPID, Linux SO_PEERCRED).
 func ClientPID(c io.ReadWriteCloser) (uint32, bool) { return 0, false }
 
-// Dial connects to a control socket.
+// Dial connects to a socket.
 func Dial(path string) (io.ReadWriteCloser, error) {
 	return net.DialTimeout("unix", path, 2*time.Second)
-}
-
-// DefaultAddress is where the CLI looks when nothing else is given.
-func DefaultAddress() string {
-	if d := os.Getenv("XDG_RUNTIME_DIR"); d != "" {
-		return d + "/clipbridge.v1.sock"
-	}
-	return os.TempDir() + "/clipbridge.v1.sock"
 }

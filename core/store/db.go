@@ -1,11 +1,8 @@
-// Package store owns the SQLite database behind the core: device identity,
-// peers, links, outbox, inbox, settings and clipboard state.
-// See docs/architecture.md §5.
+// Package store owns the SQLite database behind the core: settings, and secrets
+// sealed with AES-256-GCM under the caller-supplied 32-byte database key (the
+// shell keeps that key in DPAPI, the Keychain or the Android Keystore).
 //
-// The package is policy-free. Sequence allocation, retries, TTL sweeps and
-// "should this event be applied" decisions belong to peer and clip; store only
-// persists rows and seals the sensitive columns with AES-256-GCM under the
-// caller-supplied 32-byte database key.
+// The vault itself is not in this database: it is a KDBX file next to it.
 package store
 
 import (
@@ -28,7 +25,7 @@ import (
 const (
 	// FileName is the database file created inside the configured data
 	// directory.
-	FileName = "clipbridge.db"
+	FileName = "moonpassword.db"
 
 	keySize = 32
 )
@@ -45,7 +42,7 @@ type DB struct {
 	closeErr  error
 }
 
-// Open creates (or opens) <dir>/clipbridge.db. The key must be exactly 32
+// Open creates (or opens) <dir>/moonpassword.db. The key must be exactly 32
 // bytes and is used for AES-256-GCM; it is never written to disk by this
 // package.
 func Open(dir string, key []byte) (*DB, error) {
@@ -97,7 +94,27 @@ func (db *DB) init() error {
 	if !strings.EqualFold(mode, "wal") {
 		return proto.Errorf(proto.CodeDBUnavailable, "journal_mode is %q, want wal", mode)
 	}
-	return migrate(db.sql)
+	if err := migrate(db.sql); err != nil {
+		return err
+	}
+	return db.checkKey()
+}
+
+// keyCheckName is a sealed marker written when the database is created. Opening it proves the key is
+// the one the database was made with, before anything else is read or written.
+const keyCheckName = "store.key_check"
+
+func (db *DB) checkKey() error {
+	v, found, err := db.GetSecret(keyCheckName)
+	switch {
+	case err != nil:
+		return err // KEY_INVALID: wrong key, or a damaged marker
+	case !found:
+		return db.SetSecret(keyCheckName, []byte("moonpassword"))
+	case string(v) != "moonpassword":
+		return proto.Errorf(proto.CodeKeyInvalid, "the database key check does not match")
+	}
+	return nil
 }
 
 // Close releases the database. It is idempotent.

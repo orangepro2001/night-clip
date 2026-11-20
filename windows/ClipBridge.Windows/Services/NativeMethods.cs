@@ -2,11 +2,10 @@ using System.Runtime.InteropServices;
 
 namespace ClipBridge.Windows.Services;
 
-/// <summary>Win32 declarations used by the shell (clipboard, DPAPI, known folders).</summary>
+/// <summary>Win32 declarations used by the shell (clipboard, DPAPI, window capture).</summary>
 internal static class NativeMethods
 {
     public const uint CF_UNICODETEXT = 13;
-    public const int WM_CLIPBOARDUPDATE = 0x031D;
     public const uint GMEM_MOVEABLE = 0x0002;
     public const uint CRYPTPROTECT_UI_FORBIDDEN = 0x1;
 
@@ -41,14 +40,6 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern uint RegisterClipboardFormat(string lpszFormat);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool AddClipboardFormatListener(IntPtr hwnd);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -110,9 +101,4 @@ internal static class NativeMethods
     public static extern bool CryptUnprotectData(
         ref DATA_BLOB pDataIn, IntPtr ppszDataDescr, ref DATA_BLOB pOptionalEntropy,
         IntPtr pvReserved, IntPtr pPromptStruct, uint dwFlags, out DATA_BLOB pDataOut);
-
-    // ---- known folders (shell32) -----------------------------------------------------
-    [DllImport("shell32.dll")]
-    public static extern int SHGetKnownFolderPath(
-        [MarshalAs(UnmanagedType.LPStruct)] Guid rfid, uint dwFlags, IntPtr hToken, out IntPtr ppszPath);
 }

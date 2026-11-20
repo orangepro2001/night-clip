@@ -48,7 +48,6 @@ func configFor(t *testing.T, dir string, mutate func(map[string]any)) string {
 		"db_key_b64":  testKeyB64(1),
 		"device_name": "Tony-PC",
 		"platform":    "windows",
-		"listen":      true,
 	}
 	if mutate != nil {
 		mutate(m)
@@ -72,19 +71,20 @@ func newCore(t *testing.T) (*Core, string) {
 	return c, dir
 }
 
-func deviceID(t *testing.T, c *Core) string {
+// deviceName reads status and returns the device name the core was started with.
+func deviceName(t *testing.T, c *Core) string {
 	t.Helper()
 	r := decode(t, c.Call("status", "{}"))
 	if !r.OK {
 		t.Fatalf("status failed: %+v", r)
 	}
 	var st struct {
-		DeviceID string `json:"device_id"`
+		DeviceName string `json:"device_name"`
 	}
-	if err := json.Unmarshal(r.Result, &st); err != nil || st.DeviceID == "" {
+	if err := json.Unmarshal(r.Result, &st); err != nil || st.DeviceName == "" {
 		t.Fatalf("bad status %s (%v)", r.Result, err)
 	}
-	return st.DeviceID
+	return st.DeviceName
 }
 
 func errorCode(err error) string {
@@ -109,13 +109,13 @@ func TestInitStatusAndStartedEvent(t *testing.T) {
 		t.Fatalf("status failed: %+v", r)
 	}
 	var st struct {
-		DeviceID string `json:"device_id"`
-		Port     int    `json:"port"`
+		DeviceName string `json:"device_name"`
+		Platform   string `json:"platform"`
 	}
-	if err := json.Unmarshal(r.Result, &st); err != nil || st.Port != 47821 || st.DeviceID == "" {
+	if err := json.Unmarshal(r.Result, &st); err != nil || st.DeviceName != "Tony-PC" || st.Platform != "windows" {
 		t.Fatalf("bad status %s (%v)", r.Result, err)
 	}
-	var ev struct{ Type, DeviceID string }
+	var ev struct{ Type string }
 	raw := c.NextEvent(100)
 	if err := json.Unmarshal([]byte(raw), &ev); err != nil || ev.Type != "core.started" {
 		t.Fatalf("expected core.started, got %q", raw)
@@ -193,8 +193,8 @@ func TestDoubleInitFails(t *testing.T) {
 	if err := c.Init(configFor(t, dir, nil)); errorCode(err) != "INVALID" {
 		t.Fatalf("second Init = %v, want INVALID", err)
 	}
-	// The first Init's identity must be untouched.
-	_ = deviceID(t, c)
+	// The first Init must be untouched.
+	_ = deviceName(t, c)
 }
 
 func TestFailedInitCanBeRetried(t *testing.T) {
@@ -207,41 +207,7 @@ func TestFailedInitCanBeRetried(t *testing.T) {
 	if err := c.Init(configFor(t, dir, nil)); err != nil {
 		t.Fatalf("retry after failed Init: %v", err)
 	}
-	_ = deviceID(t, c)
-}
-
-// The point of the store: restarting with the same data dir and key yields the
-// same device identity.
-func TestDeviceIDIsStableAcrossRestarts(t *testing.T) {
-	dir := t.TempDir()
-	first := New()
-	if err := first.Init(configFor(t, dir, nil)); err != nil {
-		t.Fatal(err)
-	}
-	id1 := deviceID(t, first)
-	ident1 := decode(t, first.Call("identity.get", "{}"))
-	first.Shutdown()
-
-	second := New()
-	defer second.Shutdown()
-	if err := second.Init(configFor(t, dir, nil)); err != nil {
-		t.Fatal(err)
-	}
-	if id2 := deviceID(t, second); id2 != id1 {
-		t.Fatalf("device_id changed across restart: %s -> %s", id1, id2)
-	}
-	ident2 := decode(t, second.Call("identity.get", "{}"))
-	if string(ident1.Result) != string(ident2.Result) {
-		t.Fatalf("identity.get changed across restart:\n%s\n%s", ident1.Result, ident2.Result)
-	}
-}
-
-func TestDifferentDataDirsGetDifferentIdentities(t *testing.T) {
-	a, _ := newCore(t)
-	b, _ := newCore(t)
-	if deviceID(t, a) == deviceID(t, b) {
-		t.Fatal("two data dirs share a device_id")
-	}
+	_ = deviceName(t, c)
 }
 
 func TestWrongKeyIsKeyInvalidAndEmitsNothing(t *testing.T) {
@@ -268,33 +234,18 @@ func TestWrongKeyIsKeyInvalidAndEmitsNothing(t *testing.T) {
 	}
 }
 
-func TestPlatformMismatchAgainstStoredIdentity(t *testing.T) {
-	dir := t.TempDir()
-	first := New()
-	if err := first.Init(configFor(t, dir, nil)); err != nil {
-		t.Fatal(err)
-	}
-	first.Shutdown()
-
-	c := New()
-	err := c.Init(configFor(t, dir, func(m map[string]any) { m["platform"] = "android" }))
-	if errorCode(err) != "INVALID" {
-		t.Fatalf("Init with another platform = %v, want INVALID", err)
-	}
-}
-
 func TestShutdownClosesStoreAndRejectsFurtherUse(t *testing.T) {
 	dir := t.TempDir()
 	c := New()
 	if err := c.Init(configFor(t, dir, nil)); err != nil {
 		t.Fatal(err)
 	}
-	_ = deviceID(t, c)
+	_ = deviceName(t, c)
 
 	c.Shutdown()
 	c.Shutdown() // idempotent
 
-	for _, m := range []string{"status", "identity.get", "version"} {
+	for _, m := range []string{"status", "settings.get", "version"} {
 		if r := decode(t, c.Call(m, "{}")); r.OK || r.Error.Code != "NOT_INITIALIZED" {
 			t.Fatalf("%s after Shutdown = %+v, want NOT_INITIALIZED", m, r)
 		}
@@ -303,15 +254,12 @@ func TestShutdownClosesStoreAndRejectsFurtherUse(t *testing.T) {
 		t.Fatalf("Init after Shutdown = %v, want INVALID", err)
 	}
 
-	// The database is closed: a fresh handle can open it and sees the identity.
+	// The database is closed: a fresh handle can open it with the same key.
 	db, err := store.Open(dir, mustKey(t))
 	if err != nil {
 		t.Fatalf("reopening after Shutdown: %v", err)
 	}
 	defer db.Close()
-	if _, err := db.LoadOrCreateIdentity("Tony-PC", "windows"); err != nil {
-		t.Fatalf("identity not persisted: %v", err)
-	}
 }
 
 func mustKey(t *testing.T) []byte {

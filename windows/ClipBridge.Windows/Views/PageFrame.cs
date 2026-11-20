@@ -16,7 +16,7 @@ internal interface ISearchablePage
 }
 
 /// <summary>
-/// The state behind the banners every page shows on top: core warnings (no Tailscale, port not bound…) and
+/// The state behind the banners every page shows on top: a problem the shell wants the user to see and
 /// an available / downloaded update. One instance; each <see cref="PageFrame"/> listens to it.
 /// </summary>
 internal sealed class BannerModel : INotifyPropertyChanged
@@ -44,7 +44,7 @@ internal sealed class BannerModel : INotifyPropertyChanged
 
     public void Refresh()
     {
-        Warning = _shell.Warnings.Banner;
+        Warning = _shell.BannerWarning;
         var u = _shell.Update;
         ShowUpdate = UpdateView.IsActionable(u) && (u.Mandatory || UpdateKey != _dismissedUpdate);
         UpdateMandatory = u.Mandatory;

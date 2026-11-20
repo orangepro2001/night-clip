@@ -1,44 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    >
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!-- Real-time mode comes back after a reboot or an app update. -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Scanning the pairing QR code; the app works without it (paste / manual input). -->
+    <!-- Scanning a QR code to trust a new device or to read an Emergency Kit; the app works without it. -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- Optional battery-optimisation exemption dialog (onboarding / settings), never forced. -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Lets the app hand its own downloaded update to the system package installer. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <!-- Saving received files to the public Downloads folder before Android 10 (MediaStore needs nothing on 10+). -->
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
-    <!-- Opt-in "background auto send" (docs/adr/006-android-background-read.md). READ_LOGS is a
-         development permission: it can only be granted once from a computer with
-         `adb shell pm grant com.nightclip.app android.permission.READ_LOGS`. It is used to watch
-         ClipboardService denial lines, never to collect logs. Not allowed on Google Play. -->
-    <uses-permission
-        android:name="android.permission.READ_LOGS"
-        tools:ignore="ProtectedPermissions" />
-    <!-- Opt-in background read briefly takes window focus through a 1x1 overlay. -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
-
-    <queries>
-        <!-- Only to offer an "open Tailscale" button during onboarding. -->
-        <package android:name="com.tailscale.ipn" />
-        <!-- Only to tell the user whether Shizuku is installed (silent background clipboard read). -->
-        <package android:name="moe.shizuku.privileged.api" />
-    </queries>
 
     <application
         android:name=".ClipBridgeApp"
@@ -57,79 +29,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- clipbridge://pair?… opened from a QR scanner or a chat: prefilled in the app, never joined automatically. -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="clipbridge" android:host="pair" />
-            </intent-filter>
         </activity>
-
-        <!-- Share target: text goes to the clipboard channel, files go out as transfers. -->
-        <activity
-            android:name=".ShareActivity"
-            android:exported="true"
-            android:theme="@style/Theme.ClipBridge.Share">
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <action android:name="android.intent.action.SEND_MULTIPLE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="*/*" />
-            </intent-filter>
-        </activity>
-
-        <!-- Share target "save as note": shared text becomes a new note, shared files (photos, documents) become a new note
-             that holds them as attachments. No screen of its own; the send-to-device target above is unchanged. -->
-        <activity
-            android:name=".NoteShareActivity"
-            android:exported="true"
-            android:excludeFromRecents="true"
-            android:label="@string/note_share_label"
-            android:taskAffinity=""
-            android:theme="@style/Theme.ClipBridge.Transparent">
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="image/*" />
-                <data android:mimeType="*/*" />
-            </intent-filter>
-        </activity>
-
-        <!-- Invisible: reads the clipboard once it has focus (tile / notification action). Started only by our own PendingIntents. -->
-        <activity
-            android:name=".SendClipboardActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:launchMode="singleInstance"
-            android:taskAffinity=""
-            android:theme="@style/Theme.ClipBridge.Transparent" />
-
-        <!-- Invisible: writes a received text to the clipboard while it has focus (notification "复制"). -->
-        <activity
-            android:name=".CopyActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:launchMode="singleInstance"
-            android:taskAffinity=""
-            android:theme="@style/Theme.ClipBridge.Transparent" />
-
-        <!-- A received image: preview, copy to the clipboard, save where the user picks (EventRouter / notification). -->
-        <activity
-            android:name=".ImagePreviewActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:taskAffinity="" />
 
         <!-- The library's scanner screen, allowed to follow the phone's orientation. -->
         <activity
@@ -140,7 +40,7 @@
             android:theme="@style/zxing_CaptureTheme"
             android:windowSoftInputMode="stateAlwaysHidden" />
 
-        <!-- Autofill service (docs/plan-vault.md §7.1): the system binds it once the user picks ClipBridge as autofill service. -->
+        <!-- Autofill service (docs/plan-vault.md §7.1): the system binds it once the user picks this app as autofill service. -->
         <service
             android:name=".autofill.VaultAutofillService"
             android:exported="true"
@@ -180,33 +80,7 @@
             android:theme="@style/Theme.ClipBridge.AutofillSheet"
             android:windowSoftInputMode="adjustResize" />
 
-        <receiver
-            android:name=".NotificationActionReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name=".BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
-
-        <service
-            android:name=".QuickSendTileService"
-            android:exported="true"
-            android:icon="@drawable/ic_stat_clip"
-            android:label="@string/tile_label"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
-        </service>
-
-        <!-- Shares the verified update APK with the package installer, the notes attachments the user opens or shares and the
-             photo the camera app writes for "take a photo and send" (res/xml/update_paths.xml lists the three folders;
-             nothing else is shared). -->
+        <!-- Shares the verified update APK with the package installer (res/xml/update_paths.xml; nothing else is shared). -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"
@@ -216,26 +90,5 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/update_paths" />
         </provider>
-
-        <!-- Keeps the process, the Go core and its outbound tailnet connection alive.
-             specialUse (not dataSync): Android 15 caps dataSync foreground services
-             at roughly 6 hours per day, which would break a persistent connection. -->
-        <service
-            android:name=".SyncForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Keeps a direct peer connection to the user's paired devices over Tailscale to sync the clipboard and files" />
-        </service>
-
-        <!-- Receives the Shizuku binder; Shizuku requires exactly this provider declaration. -->
-        <provider
-            android:name="rikka.shizuku.ShizukuProvider"
-            android:authorities="${applicationId}.shizuku"
-            android:enabled="true"
-            android:exported="true"
-            android:multiprocess="false"
-            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 </manifest>

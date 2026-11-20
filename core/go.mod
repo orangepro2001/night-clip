@@ -3,8 +3,6 @@ module nightclip/core
 go 1.27
 
 require (
-	github.com/coder/websocket v1.8.15
-	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tobischo/argon2 v0.2.0
 	github.com/tobischo/gokeepasslib/v3 v3.7.1
 	golang.org/x/crypto v0.58.0

@@ -1,6 +1,7 @@
 # ADR-002：剪贴板同步采用“用户触发 + 策略应用”，不承诺后台实时读取
 
-- 状态：**部分 Superseded**（2026-10-26；用户触发原则仍有效，iOS 平台部分被 ADR-003/004 取代）
+- 状态：**Superseded**（2026-11，MoonPassword 移除剪贴板同步）
+- MoonPassword（2026-11）：剪贴板同步、文件传输、tailnet 配对和设备引荐已整体移除，信任改由 sso.moonl.cloud 提供（见 ADR-010）。本 ADR 只保留用于追溯。
 - 日期：2026-10-26
 - 决策者：项目组
 - 相关文档：[feasibility-analysis.md](../feasibility-analysis.md)、[architecture.md](../architecture.md)

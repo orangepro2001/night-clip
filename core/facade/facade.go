@@ -1,5 +1,5 @@
-// Package facade is the single entry point shared by the Windows DLL, the
-// Android gomobile binding and (later) the named-pipe server:
+// Package facade is the single entry point shared by the desktop library
+// (Windows DLL, macOS dylib) and the Android gomobile binding:
 //
 //	Call(method, paramsJSON) -> {"ok":true,"result":...} | {"ok":false,"error":{...}}
 //	NextEvent(timeoutMs)     -> event JSON, or "" on timeout
@@ -18,15 +18,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"nightclip/core/identity"
-	"nightclip/core/notes"
-	"nightclip/core/pairing"
-	"nightclip/core/peer"
 	"nightclip/core/proto"
 	"nightclip/core/store"
 	"nightclip/core/update"
-	"nightclip/core/vsync"
-	"nightclip/core/xfer"
 )
 
 // Version is the core version reported by the "version" method.
@@ -36,12 +30,10 @@ const eventQueueSize = 1024
 
 // Config is the JSON passed to Init (docs/api-spec.md §7.2).
 type Config struct {
-	DataDir    string `json:"data_dir"`   // absolute path; holds clipbridge.db
+	DataDir    string `json:"data_dir"`   // absolute path; holds moonpassword.db and the vault
 	DBKeyB64   string `json:"db_key_b64"` // base64 of exactly 32 bytes
 	DeviceName string `json:"device_name"`
 	Platform   string `json:"platform"` // "windows" | "android" | "macos"
-	Listen     bool   `json:"listen"`
-	Port       int    `json:"port"`
 
 	// Self-update (docs/update.md). AppVersionCode is the installed build's
 	// monotonically increasing versionCode; 0 marks a development build and
@@ -50,21 +42,14 @@ type Config struct {
 	AppVersionCode int64  `json:"app_version_code"`
 	AppVersionName string `json:"app_version_name"`
 	UpdateURL      string `json:"update_url"`
-
-	// Pipe, when set, is where the local control channel listens (Windows: the named
-	// pipe \\.\pipe\clipbridge.v1; tests: a Unix socket path). Empty disables it.
-	Pipe string `json:"pipe"`
 }
 
 // Core is one running core instance. Exactly one is expected per process.
 type Core struct {
 	mu      sync.RWMutex
 	cfg     Config
-	id      *identity.Identity
 	db      *store.DB
 	upd     *update.Manager
-	n       *netState
-	ctl     *controlChannel
 	vs      vaultState
 	ssh     sshState
 	started bool
@@ -74,40 +59,16 @@ type Core struct {
 	dropped atomic.Uint64
 	done    chan struct{}
 
-	// Events from the network layer that happen while Init is still running are held
-	// until core.started has been emitted, so a shell always sees core.started first.
+	// Events raised while Init is still running are held until core.started has
+	// been emitted, so a shell always sees core.started first.
 	gateMu   sync.Mutex
 	gateOpen bool
 	held     []map[string]any
-
-	// Test-only knobs, set by in-package tests before Init; zero in production.
-	hooks  peer.Hooks
-	timing peer.Timing
-	pairT  pairing.Timings
-	xferT  xfer.Timing
-	syncT  vsync.Timing
-	notesT notes.Timing
-}
-
-// testEngine, set only by this package's tests (see network_test.go), makes
-// every Core they create talk over loopback on random ports instead of binding
-// the machine's real tailnet addresses. It is nil in production.
-var testEngine *struct {
-	hooks  peer.Hooks
-	timing peer.Timing
-	pairT  pairing.Timings
-	xferT  xfer.Timing
-	syncT  vsync.Timing
-	notesT notes.Timing
 }
 
 // New returns an uninitialised Core.
 func New() *Core {
-	c := &Core{events: make(chan []byte, eventQueueSize), done: make(chan struct{})}
-	if testEngine != nil {
-		c.hooks, c.timing, c.pairT, c.xferT, c.syncT, c.notesT = testEngine.hooks, testEngine.timing, testEngine.pairT, testEngine.xferT, testEngine.syncT, testEngine.notesT
-	}
-	return c
+	return &Core{events: make(chan []byte, eventQueueSize), done: make(chan struct{})}
 }
 
 // Init configures the core. It is an error to call it twice.
@@ -131,9 +92,6 @@ func (c *Core) Init(configJSON string) (err error) {
 	if cfg.DeviceName == "" {
 		return proto.Errorf(proto.CodeInvalid, "device_name is required")
 	}
-	if cfg.Port == 0 {
-		cfg.Port = 47821
-	}
 	key, err := parseDBKey(cfg)
 	if err != nil {
 		return err
@@ -142,27 +100,15 @@ func (c *Core) Init(configJSON string) (err error) {
 	if err != nil {
 		return err
 	}
-	id, err := db.LoadOrCreateIdentity(cfg.DeviceName, cfg.Platform)
-	if err != nil {
-		_ = db.Close()
-		return err
-	}
 	upd, err := c.newUpdateManager(cfg, db)
 	if err != nil {
 		_ = db.Close()
 		return err
 	}
-	c.cfg, c.id, c.db = cfg, id, db
-	n, err := c.startNetwork(cfg)
-	if err != nil {
-		_ = db.Close()
-		return err
-	}
-	c.n, c.upd, c.started = n, upd, true
-	c.startControlChannel(cfg.Pipe)
+	c.cfg, c.db, c.upd, c.started = cfg, db, upd, true
 	c.sshInit()
 	upd.Run()
-	c.emit(map[string]any{"type": "core.started", "device_id": id.DeviceID})
+	c.emit(map[string]any{"type": "core.started"})
 	c.openGate()
 	return nil
 }
@@ -197,8 +143,8 @@ func parseDBKey(cfg Config) ([]byte, error) {
 // It is idempotent; every method answers NOT_INITIALIZED afterwards.
 func (c *Core) Shutdown() {
 	// Only the state change happens under the lock. Closing the components waits for
-	// goroutines (pipe handlers, transfers) that may be inside Call -> dispatch, which
-	// needs the read lock: holding the write lock here would deadlock against them.
+	// goroutines (agent connections) that may be inside Call -> dispatch, which needs
+	// the read lock: holding the write lock here would deadlock against them.
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
@@ -206,19 +152,13 @@ func (c *Core) Shutdown() {
 	}
 	c.closed = true
 	close(c.done)
-	upd, ctl, n, db := c.upd, c.ctl, c.n, c.db
+	upd, db := c.upd, c.db
 	c.mu.Unlock()
 
-	if ctl != nil { // first: no new outside requests
-		ctl.close()
-	}
-	c.sshShutdown() // before the vault: no signatures after this point
+	c.sshShutdown() // first: no new outside requests, and no signatures after this point
 	c.closeVault()
 	if upd != nil {
 		upd.Close()
-	}
-	if n != nil {
-		n.close()
 	}
 	if db != nil { // last: everything above may still write
 		_ = db.Close()
@@ -271,11 +211,11 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 	}
 	switch method {
 	case "version":
-		return map[string]any{"core": Version, "protocol": "clipbridge/v1"}, nil
+		return map[string]any{"core": Version}, nil
 	case "status":
 		return c.status()
-	case "identity.get":
-		return c.identity()
+	case "settings.get", "settings.set", "diagnostics.get":
+		return c.settingsCall(method, paramsJSON)
 	case "update.status", "update.check", "update.download", "update.config":
 		return c.updateCall(method, paramsJSON)
 	case "vault.status", "vault.create", "vault.unlock", "vault.lock", "vault.verify_master", "vault.change_master",
@@ -284,18 +224,11 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		"vault.restore_entry", "vault.empty_trash", "vault.move", "vault.groups", "vault.group_add", "vault.group_rename",
 		"vault.group_delete", "vault.history", "vault.history_restore", "vault.attach_add", "vault.attach_get",
 		"vault.attach_remove", "vault.health", "vault.restore_preview", "vault.restore", "vault.import_file",
-		"vault.import_csv", "vault.export_file", "vault.export_csv",
-		"vault.sync_status", "vault.sync_enable", "vault.sync_resolve", "vault.sync_now", "vault.match", "vault.touch", "vault.patch":
+		"vault.import_csv", "vault.export_file", "vault.export_csv", "vault.match", "vault.touch", "vault.patch":
 		return c.vaultCall(method, paramsJSON)
 	default:
 		if isSSHMethod(method) {
 			return c.sshCall(method, paramsJSON)
-		}
-		if isNotesMethod(method) {
-			return c.notesCall(method, paramsJSON)
-		}
-		if result, handled, err := c.networkCall(method, paramsJSON); handled {
-			return result, err
 		}
 		return nil, proto.Errorf(proto.CodeMethodNotFound, "unknown method %q", method)
 	}
@@ -307,50 +240,16 @@ func (c *Core) status() (any, error) {
 	if !c.started {
 		return nil, proto.Errorf(proto.CodeNotInitialized, "call Init first")
 	}
-	st := map[string]any{
-		"device_id":      c.id.DeviceID,
+	return map[string]any{
 		"device_name":    c.cfg.DeviceName,
 		"platform":       c.cfg.Platform,
-		"listen":         c.cfg.Listen,
-		"port":           c.cfg.Port,
-		"peers":          []any{},
 		"events_dropped": c.dropped.Load(),
-	}
-	if c.n != nil {
-		st["peers"] = c.n.eng.PeerStatuses()
-		st["capture"] = c.n.clip.Setting("capture")
-		// false until the user has answered the first-run question, so a shell can tell
-		// "never asked" from "asked and said no" (both read as capture = off)
-		_, configured, _ := c.db.GetSetting("capture")
-		st["capture_configured"] = configured
-		addrs := []string{}
-		for _, a := range c.n.eng.ListenAddrs() {
-			addrs = append(addrs, a.String())
-		}
-		st["listening_addrs"] = addrs
-		st["listening_port"] = c.n.eng.ListenPort()
-		if err := c.n.eng.ListenError(); err != nil {
-			st["listen_error"] = err.Error()
-		}
-	}
-	return st, nil
-}
-
-func (c *Core) identity() (any, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if !c.started {
-		return nil, proto.Errorf(proto.CodeNotInitialized, "call Init first")
-	}
-	return map[string]any{
-		"device_id":   c.id.DeviceID,
-		"fingerprint": c.id.Fingerprint(),
 	}, nil
 }
 
-// emitNet is what the engine and the services emit through: it waits for
-// core.started when Init has not finished yet.
-func (c *Core) emitNet(ev map[string]any) {
+// emitLate is for events raised by background work that may start before Init has
+// finished: it waits for core.started.
+func (c *Core) emitLate(ev map[string]any) {
 	c.gateMu.Lock()
 	if !c.gateOpen {
 		c.held = append(c.held, ev)
@@ -405,5 +304,5 @@ func recoverTo(err *error) {
 // logPanic keeps the panic value and stack out of any user-visible message.
 // TODO: replace with a structured file logger (stderr is lost in GUI processes).
 func logPanic(r any) {
-	fmt.Fprintf(os.Stderr, "clipbridge-core: recovered panic: %v\n%s\n", r, debug.Stack())
+	fmt.Fprintf(os.Stderr, "moonpassword-core: recovered panic: %v\n%s\n", r, debug.Stack())
 }

@@ -1,6 +1,7 @@
 # ADR-005：Go 核心库 + Tailnet 直连 P2P（取代 Gateway 作为主链路）
 
-- 状态：Accepted
+- 状态：**部分 Superseded**（2026-11：Go 核心仍是唯一的业务实现；tailnet P2P、配对与 mTLS 信任已由 ADR-010 取代）
+- MoonPassword（2026-11）：剪贴板同步、文件传输、tailnet 配对和设备引荐已整体移除，信任改由 sso.moonl.cloud 提供（见 ADR-010）。本 ADR 只保留用于追溯。
 - 日期：2026-10-26
 - 决策者：项目组
 - 取代：[ADR-004](004-gateway-long-connection.md) 的"Gateway 是唯一控制面"部分（ADR-004 降级为"可选中继，Phase 4 之后再议"）

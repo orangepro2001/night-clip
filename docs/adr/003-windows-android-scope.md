@@ -1,6 +1,7 @@
 # ADR-003：客户端范围收敛为 Windows + Android
 
-- 状态：Accepted
+- 状态：**Superseded**（2026-11，MoonPassword 是 Windows、macOS、Android 上的密码管理器）
+- MoonPassword（2026-11）：剪贴板同步、文件传输、tailnet 配对和设备引荐已整体移除，信任改由 sso.moonl.cloud 提供（见 ADR-010）。本 ADR 只保留用于追溯。
 - 日期：2026-10-26
 - 决策者：项目组
 - 相关文档：[README.md](../README.md)、[feasibility-analysis.md](../feasibility-analysis.md)、[development-plan.md](../development-plan.md)

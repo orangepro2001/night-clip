@@ -11,7 +11,7 @@ import (
 )
 
 func testAddress(t *testing.T) string {
-	return fmt.Sprintf(`\\.\pipe\clipbridge-test-%d-%d`, os.Getpid(), time.Now().UnixNano())
+	return fmt.Sprintf(`\\.\pipe\moonpassword-test-%d-%d`, os.Getpid(), time.Now().UnixNano())
 }
 
 // Wine does not implement FILE_FLAG_FIRST_PIPE_INSTANCE, which Windows documents as

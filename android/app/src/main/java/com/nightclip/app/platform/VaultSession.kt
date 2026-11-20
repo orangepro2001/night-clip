@@ -14,7 +14,6 @@ import com.nightclip.app.core.CoreEvent
 import com.nightclip.app.core.CoreHost
 import com.nightclip.app.core.VaultApi
 import com.nightclip.app.logic.AutoLockPolicy
-import com.nightclip.app.logic.VaultSyncLogic
 import com.nightclip.app.toastOnMain
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -66,17 +65,8 @@ object VaultSession : Application.ActivityLifecycleCallbacks {
             CoreHost.events.collect { ev ->
                 when (ev) {
                     is CoreEvent.VaultLocked -> onLocked(ev.reason)
-                    is CoreEvent.VaultSync -> {
-                        _attention.update { VaultSyncLogic.applyStateEvent(it, ev.deviceId, ev.state) }
-                        _syncVersion.update { it + 1 }
-                    }
-                    // Only an open vault is changed by a sync merge; the screens re-read from the core.
+                    // Only an open vault is changed behind the screens' back; they re-read from the core.
                     is CoreEvent.VaultChanged -> if (_unlocked.value) dataChanged()
-                    is CoreEvent.VaultJoined -> {
-                        _joined.value = VaultSyncLogic.joinedText(ev.name)
-                        application.toastOnMain(VaultSyncLogic.joinedText(ev.name))
-                        _syncVersion.update { it + 1 }
-                    }
                     else -> Unit
                 }
             }
@@ -84,29 +74,6 @@ object VaultSession : Application.ActivityLifecycleCallbacks {
         application.appScope.launch(Dispatchers.Main) {
             _unlocked.collect { open -> if (open) registerScreenOff() else unregisterScreenOff() }
         }
-    }
-
-    private val _attention = MutableStateFlow<Set<String>>(emptySet())
-
-    /** Devices whose vault sync waits for the user (needs_password / review): drives the dot on the sync entry point. */
-    val attention: StateFlow<Set<String>> = _attention.asStateFlow()
-
-    fun setAttention(ids: Set<String>) {
-        _attention.value = ids
-    }
-
-    private val _syncVersion = MutableStateFlow(0)
-
-    /** Bumped on every vault.sync / vault.joined event: the sync screen re-reads vault.sync_status. */
-    val syncVersion: StateFlow<Int> = _syncVersion.asStateFlow()
-
-    private val _joined = MutableStateFlow<String?>(null)
-
-    /** Text of the "joined another device's vault" notice until the user dismisses it (the vault screens show it). */
-    val joined: StateFlow<String?> = _joined.asStateFlow()
-
-    fun dismissJoined() {
-        _joined.value = null
     }
 
     fun markUnlocked() {

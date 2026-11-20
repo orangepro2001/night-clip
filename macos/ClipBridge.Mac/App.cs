@@ -21,7 +21,6 @@ public sealed partial class App : Application
 {
     private MacController? _shell;
     private MainWindow? _window;
-    private NativeMenuItem? _syncItem;
     private IClassicDesktopStyleApplicationLifetime? _desktop;
 
     // The theme is declared in App.axaml: created with `new` in code it adds no control templates
@@ -58,7 +57,6 @@ public sealed partial class App : Application
         _window = new MainWindow();
         _shell.ShowRequested += ShowMain;
         _shell.ExitRequested += Quit;
-        _shell.StateChanged += UpdateMenu;
         SetupTray();
         if (this.TryGetFeature<IActivatableLifetime>() is { } activatable)
             activatable.Activated += (_, e) => { if (e.Kind == ActivationKind.Reopen) ShowMain(null); };
@@ -91,23 +89,7 @@ public sealed partial class App : Application
             return;
         }
         if (!args.Contains("--minimized")) ShowMain(null);
-        UpdateMenu();
         if (args.Contains("--snapshot")) DispatcherTimer.RunOnce(() => _ = SnapshotPagesAsync(), TimeSpan.FromSeconds(3));
-        if (Array.IndexOf(args, "--preview-image") is var i and >= 0 && i + 1 < args.Length)
-            DispatcherTimer.RunOnce(() => _ = PreviewImageAsync(args[i + 1]), TimeSpan.FromSeconds(2));
-    }
-
-    /// <summary>
-    /// Diagnostics (`--preview-image PATH`): opens the received-image preview for PATH, copies the image to the
-    /// clipboard and renders the window to ~/Library/Logs/ClipBridge/preview.png; results go to the log.
-    /// </summary>
-    private async Task PreviewImageAsync(string path)
-    {
-        var opened = ImagePreviewWindow.TryOpen(path, Path.GetFileName(path), "diagnostics", held: false);
-        var copied = _shell?.CopyImageFile(path) ?? false;
-        MacLog.Write($"preview-image opened={opened} copied={copied}");
-        await Task.Delay(800);
-        if (ImagePreviewWindow.Latest is { } w) Render(w, Path.Combine(MacPaths.LogDir, "preview.png"));
     }
 
     private static void Render(Window w, string file)
@@ -123,8 +105,8 @@ public sealed partial class App : Application
     }
 
     /// <summary>
-    /// Diagnostics (`open -a ClipBridge --args --snapshot`): renders every main-window page to
-    /// ~/Library/Logs/ClipBridge/page-*.png, so the look can be checked remotely without screen-recording rights.
+    /// Diagnostics (`open -a MoonPassword --args --snapshot`): renders every main-window page to page-*.png in the
+    /// log folder, so the look can be checked remotely without screen-recording rights.
     /// </summary>
     private async Task SnapshotPagesAsync()
     {
@@ -143,7 +125,7 @@ public sealed partial class App : Application
             }
             catch (Exception ex) { MacLog.Error("snapshot", ex); }
         }
-        _window.Show(MainPage.Devices);
+        _window.Show(MainPage.Vault);
         MacLog.Write("snapshot done");
     }
 
@@ -175,17 +157,11 @@ public sealed partial class App : Application
 
     private void SetupTray()
     {
-        _syncItem = new NativeMenuItem(MacStrings.MenuSync) { ToggleType = MenuItemToggleType.CheckBox, IsChecked = true };
-        _syncItem.Click += async (_, _) => { if (_shell is { } s) await s.SetCaptureAsync(!s.Settings.Capture); };
         var menu = new NativeMenu
         {
             Item(MacStrings.MenuShow, () => ShowMain(null)),
-            Item(MacStrings.MenuSendClipboard, () => _shell?.SendCurrentClipboard()),
-            _syncItem,
             Item(Strings.TrayLockVault, () => { if (_shell is { CoreRunning: true } s) _ = s.LockVaultAsync(); }),
             new NativeMenuItemSeparator(),
-            Item(MacStrings.MenuPair, PairListenWindow.ShowOrActivate),
-            Item(MacStrings.MenuJoin, PairJoinWindow.ShowOrActivate),
             Item(MacStrings.MenuCheckUpdate, async () =>
             {
                 ShowMain(MainPage.Settings);
@@ -207,8 +183,4 @@ public sealed partial class App : Application
         return item;
     }
 
-    private void UpdateMenu()
-    {
-        if (_syncItem is not null && _shell is not null) _syncItem.IsChecked = _shell.Settings.Capture;
-    }
 }

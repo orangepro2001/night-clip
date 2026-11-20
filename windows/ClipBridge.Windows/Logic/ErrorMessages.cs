@@ -5,17 +5,8 @@ public static class ErrorMessages
 {
     public static string ForCode(string? code) => code switch
     {
-        "NO_TAILNET" => Strings.ErrNoTailnet,
-        "LISTEN_FAILED" => Strings.ErrListenFailed,
-        "NOT_PAIRED" => Strings.ErrNotPaired,
-        "PAIRING_EXPIRED" => Strings.ErrPairingExpired,
-        "PAIRING_FAILED" => Strings.ErrPairingFailed,
-        "PEER_OFFLINE" => Strings.ErrPeerOffline,
-        "TARGET_MISMATCH" => Strings.ErrTargetMismatch,
-        "SOURCE_MISMATCH" => Strings.ErrSourceMismatch,
         "EXPIRED" => Strings.ErrExpired,
         "HASH_MISMATCH" => Strings.ErrHashMismatch,
-        "SEQUENCE_GAP" => Strings.ErrSequenceGap,
         "TOO_LARGE" => Strings.ErrTooLarge,
         "NO_SPACE" => Strings.ErrNoSpace,
         "RATE_LIMITED" => Strings.ErrRateLimited,
@@ -70,66 +61,5 @@ public static class ErrorMessages
         "SSH_AGENT_UNAVAILABLE" => Strings.ErrSshAgentUnavailable,
         "TOO_LARGE" => Strings.ErrSshTooLarge,
         _ => ForVault(code),
-    };
-
-    /// <summary>
-    /// Message for a failed notes.* call (notes/api-spec.md §5). NOT_FOUND, CONFLICT, TOO_LARGE, UNSUPPORTED_FORMAT and
-    /// NOT_IMPLEMENTED mean something else here than for transfers, so notes never go through <see cref="ForCode"/> for them.
-    /// </summary>
-    public static string ForNotes(string? code) => code switch
-    {
-        "NOT_FOUND" => Strings.ErrNoteNotFound,
-        "CONFLICT" => Strings.ErrNoteInTrash,
-        "TOO_LARGE" => Strings.ErrNoteTooLarge,
-        "UNSUPPORTED_FORMAT" => Strings.ErrNoteUnsupportedFormat,
-        "NOT_IMPLEMENTED" => Strings.ErrNotImplemented,
-        "NOT_PAIRED" => Strings.ErrNotPaired,
-        "IO" => Strings.ErrNotesFileAccess, // not a core code: the shell could not read or write a file itself
-        _ => ForCode(code),
-    };
-
-    /// <summary>Message for a failed notes.attachment_* call: TOO_LARGE is the 32 MiB limit of a file here, not the size of a note.</summary>
-    public static string ForNotesAttachment(string? code) => code switch
-    {
-        "TOO_LARGE" => Strings.ErrAttachmentTooLarge,
-        "INVALID" => Strings.ErrAttachmentInvalid,
-        "NOT_FOUND" => Strings.ErrAttachmentNotFound,
-        _ => ForNotes(code),
-    };
-
-    /// <summary>Message for a failed notes.export or notes.import call.</summary>
-    public static string ForNotesTransfer(string? code) => code switch
-    {
-        "INVALID" => Strings.ErrNotesTransferInvalid,
-        "NOT_FOUND" => Strings.ErrNotesTransferNotFound,
-        _ => ForNotes(code),
-    };
-
-    /// <summary>Message for a failed file transfer; checksum failures get the dedicated wording.</summary>
-    public static string ForFile(string? code) => code switch
-    {
-        "HASH_MISMATCH" => Strings.ErrFileHashMismatch,
-        "TOO_LARGE" => Strings.ErrFileTooLarge,
-        _ => ForCode(code),
-    };
-
-    /// <summary>Message for a failed or rejected pairing result.</summary>
-    public static string ForPairResult(string state, string? code) => state switch
-    {
-        "rejected" => Strings.PairRejected,
-        "expired" => Strings.ErrPairingExpired,
-        "failed" => string.IsNullOrEmpty(code) ? Strings.PairFailed : ForCode(code),
-        _ => Strings.PairFailed,
-    };
-
-    /// <summary>
-    /// The text for a clip.local_changed "suppressed" reason, or null when the user does
-    /// not need to hear about it (echo, duplicate, empty, capture off, no peers).
-    /// </summary>
-    public static string? ForSuppressed(string? reason) => reason switch
-    {
-        "too_large" => Strings.TooLargeToSend,
-        "sensitive_blocked" => Strings.SensitiveBlocked,
-        _ => null,
     };
 }

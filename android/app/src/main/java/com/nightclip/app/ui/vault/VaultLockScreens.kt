@@ -41,7 +41,6 @@ import com.nightclip.app.logic.MasterPasswordRules
 import com.nightclip.app.logic.PasswordStrengthUi
 import com.nightclip.app.logic.KeyFileHint
 import com.nightclip.app.logic.RateLimitCountdown
-import com.nightclip.app.logic.VaultSyncLogic
 import com.nightclip.app.ui.InfoCard
 import kotlinx.coroutines.delay
 
@@ -129,7 +128,6 @@ fun UnlockScreen(vm: VaultViewModel, onMessage: (String) -> Unit, modifier: Modi
         }
         quickNotice?.let { HintText(it) }
         HintText(stringResource(R.string.vault_forgot_hint))
-        TextButton(onClick = { vm.openSync() }) { Text(stringResource(R.string.vault_sync_title)) }
     }
 }
 
@@ -159,10 +157,6 @@ fun CreateVaultScreen(vm: VaultViewModel, onMessage: (String) -> Unit, modifier:
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.vault_create_title), style = MaterialTheme.typography.headlineSmall)
-        InfoCard {
-            Text(VaultSyncLogic.HINT_NO_VAULT, style = MaterialTheme.typography.bodyMedium)
-            TextButton(onClick = { vm.openSync() }) { Text(stringResource(R.string.vault_sync_title)) }
-        }
         InfoCard(container = MaterialTheme.colorScheme.errorContainer) {
             Text(
                 stringResource(R.string.vault_forgot_warning_title),

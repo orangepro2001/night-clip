@@ -8,12 +8,10 @@
 #   make test-interop  C# interop tests against the Linux .so (needs a .NET SDK)
 #   make build-windows-app  compile the Windows app (Avalonia + Lumen.UI) on Linux (EnableWindowsTargeting)
 #   make apk         debug APK (needs JDK 17, Android SDK, make aar first)
-#   make cli         cbridge.exe (Windows) and cbridge (host)
 #   make aar         Android AAR (needs gomobile + Android NDK, see below)
 #   make dist-windows  update-ready zip of the Windows app (core/dist/clipbridge-windows.zip)
 #   make dist-android  release APK signed with the key in ~/.config/clipbridge
 #   scripts/release-local.sh   build + publish to the local release-publish service (see docs/update.md)
-#   make notes-check  the notes module only: Go (vet, gofmt, race tests) and the notes tests of both shells
 #   make clean
 
 GO        ?= go
@@ -40,9 +38,9 @@ export CB_VERSION_CODE := $(patsubst CB_VERSION_CODE=%,%,$(filter CB_VERSION_COD
 export CB_VERSION_NAME := $(patsubst CB_VERSION_NAME=%,%,$(filter CB_VERSION_NAME=%,$(CB_VERSION_VARS)))
 export CB_UPDATE_URL
 
-.PHONY: notes-check all test vet dll dll-smoke dll-wine test-interop build-windows-app cli aar apk dist-windows dist-android dist-macos check clean
+.PHONY: all test vet dll dll-smoke dll-wine test-interop build-windows-app aar apk dist-windows dist-android dist-macos check clean
 
-all: test dll cli
+all: test dll
 
 test:
 	cd core && $(GO) test -race ./...
@@ -78,12 +76,6 @@ build-windows-app: dll
 	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) build windows/ClipBridge.Windows \
 		-p:EnableWindowsTargeting=true -c Release
 
-cli:
-	mkdir -p $(DIST)/windows-amd64 $(DIST)/host
-	cd core && GOOS=windows GOARCH=amd64 $(GO) build -trimpath -ldflags="-s -w" \
-		-o dist/windows-amd64/cbridge.exe ./cmd/cbridge
-	cd core && $(GO) build -o dist/host/cbridge ./cmd/cbridge
-
 # Prerequisites (not installed by this repo):
 #   go install golang.org/x/mobile/cmd/gomobile@latest && gomobile init
 #   ANDROID_HOME and ANDROID_NDK_HOME set
@@ -98,15 +90,14 @@ apk: aar
 	cd android && ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
 
 # Windows release package: the published Avalonia app with its libraries (framework-dependent, win-x64) plus
-# clipbridge_core.dll and the cbridge.exe command line, zipped flat so the updater can copy it over the install folder.
-dist-windows: dll cli
+# clipbridge_core.dll, zipped flat so the updater can copy it over the install folder.
+dist-windows: dll
 	rm -rf $(DIST)/publish-win
 	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) publish windows/ClipBridge.Windows -c Release -r win-x64 \
 		--self-contained false -p:EnableWindowsTargeting=true -p:DebugType=None -p:DebugSymbols=false \
 		-p:CbVersionCode=$(CB_VERSION_CODE) -p:CbVersionName=$(CB_VERSION_NAME) -p:CbUpdateUrl=$(CB_UPDATE_URL) \
 		-o $(DIST)/publish-win
-	cp $(DIST)/windows-amd64/cbridge.exe $(DIST)/publish-win/cbridge.exe
-	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/clipbridge-windows.zip ClipBridge.exe clipbridge_core.dll cbridge.exe
+	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/clipbridge-windows.zip ClipBridge.exe clipbridge_core.dll
 
 # macOS package (Apple Silicon), built on Linux: zig links the Go core, rcodesign signs ad hoc
 # (docs/plan-macos.md). Output: core/dist/clipbridge-macos.zip holding ClipBridge.app.
@@ -119,18 +110,8 @@ dist-android: aar
 	@test -f android/app/build/outputs/apk/release/app-release.apk || { \
 		echo "release APK is unsigned: create ~/.config/clipbridge/android-signing.properties (docs/update.md)"; exit 1; }
 
-# The notes module on its own (notes/docs/development-plan.md §4): the Go packages it touches, with the
-# race detector, plus the notes tests of both shells. `check` is unchanged and still runs everything.
-notes-check: dll-smoke aar
-	cd core && $(GO) vet ./notes/... ./store ./facade ./pipe
-	@out="$$(cd core && gofmt -l notes store facade pipe proto)"; if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
-	cd core && $(GO) test -race ./notes/... ./store ./facade ./pipe ./proto
-	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) test windows/ClipBridge.Windows.Tests \
-		--filter "FullyQualifiedName~Note|FullyQualifiedName~RenderTree|FullyQualifiedName~MarkdownEdit"
-	cd android && ./gradlew --no-daemon :app:testDebugUnitTest --tests '*Notes*' --tests '*NoteEditor*' --tests '*MarkdownEdit*'
-
 # Everything that can be verified on a Linux machine without a device.
-check: vet test dll-smoke dll-wine test-interop build-windows-app cli aar apk
+check: vet test dll-smoke dll-wine test-interop build-windows-app aar apk
 
 clean:
 	rm -rf $(DIST) android/app/libs/*.aar

@@ -97,13 +97,6 @@ fun VaultSettingsScreen(vm: VaultViewModel, onMessage: (String) -> Unit) {
                 HintText(stringResource(R.string.vault_settings_quick_max_age_hint))
             }
 
-            SectionTitle(stringResource(R.string.vault_sync_title))
-            HintText(stringResource(R.string.vault_settings_sync_hint))
-            val attention by VaultSession.attention.collectAsStateWithLifecycle()
-            OutlinedButton(onClick = { vm.openSync() }) {
-                Text(stringResource(R.string.vault_sync_title) + if (attention.isNotEmpty()) " ●" else "")
-            }
-
             SectionTitle(stringResource(R.string.vault_settings_info))
             if (s != null) {
                 val kdf = s.kdf

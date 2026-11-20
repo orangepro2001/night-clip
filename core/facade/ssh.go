@@ -305,7 +305,7 @@ func (c *Core) sshDispatch(method, params string) (any, error) {
 }
 
 // currentVault returns the open vault without counting as user activity.
-func (c *Core) currentVault() *vault.Vault { return vaultProvider{c}.Current() }
+func (c *Core) currentVault() *vault.Vault { c.vs.mu.Lock(); defer c.vs.mu.Unlock(); return c.vs.v }
 
 // ---- methods ------------------------------------------------------------------------------------
 

@@ -24,9 +24,6 @@ import com.nightclip.app.platform.VaultSession
 import com.nightclip.app.ui.CollectWhileStarted
 import com.nightclip.app.ui.LifecycleRefresh
 
-/** Id of the vault tab in the bottom navigation (see AppRoot). */
-const val VAULT_TAB_ID = "vault"
-
 /**
  * The "密码库" tab: locked / create / unlocked screens. While any of it is visible the window is FLAG_SECURE.
  * All three view models are scoped to the activity and wipe themselves when the vault locks.
@@ -36,40 +33,21 @@ fun VaultRoot(onMessage: (String) -> Unit, modifier: Modifier = Modifier) {
     val vm: VaultViewModel = viewModel()
     val browse: VaultBrowseViewModel = viewModel()
     val data: VaultDataViewModel = viewModel()
-    val sync: VaultSyncViewModel = viewModel()
 
     SecureWindowEffect()
-    CollectWhileStarted(sync.messages, onMessage)
     CollectWhileStarted(vm.messages, onMessage)
     CollectWhileStarted(browse.messages, onMessage)
     CollectWhileStarted(data.messages, onMessage)
     CollectWhileStarted(VaultSession.locks) { reason -> if (reason != "user") onMessage(VaultTexts.LOCKED_NOTICE) }
-    LifecycleRefresh {
-        vm.refresh()
-        sync.refresh() // also feeds the dot on the sync entry point
-    }
+    LifecycleRefresh { vm.refresh() }
 
     val phase by vm.phase.collectAsStateWithLifecycle()
-    val syncOpen by vm.syncOpen.collectAsStateWithLifecycle()
-    val joined by VaultSession.joined.collectAsStateWithLifecycle()
     val body = modifier.imePadding()
-    if (syncOpen) {
-        VaultSyncScreen(vm, sync, onMessage)
-    } else {
-        when (phase) {
-            VaultPhase.LOADING -> VaultLoading(body)
-            VaultPhase.NO_VAULT -> CreateVaultScreen(vm, onMessage, body)
-            VaultPhase.LOCKED -> UnlockScreen(vm, onMessage, body)
-            VaultPhase.UNLOCKED -> UnlockedHost(vm, browse, data, onMessage, body)
-        }
-    }
-    joined?.let { text ->
-        AlertDialog(
-            onDismissRequest = { VaultSession.dismissJoined() },
-            title = { Text(stringResource(R.string.vault_joined_title)) },
-            text = { Text(text) },
-            confirmButton = { TextButton(onClick = { VaultSession.dismissJoined() }) { Text(stringResource(R.string.done)) } },
-        )
+    when (phase) {
+        VaultPhase.LOADING -> VaultLoading(body)
+        VaultPhase.NO_VAULT -> CreateVaultScreen(vm, onMessage, body)
+        VaultPhase.LOCKED -> UnlockScreen(vm, onMessage, body)
+        VaultPhase.UNLOCKED -> UnlockedHost(vm, browse, data, onMessage, body)
     }
 }
 

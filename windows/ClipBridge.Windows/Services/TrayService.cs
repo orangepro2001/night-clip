@@ -15,11 +15,7 @@ internal sealed class TrayService : IDisposable
 
     private readonly WinForms.NotifyIcon _icon;
     private readonly WinForms.ContextMenuStrip _menu = new();
-    private readonly WinForms.ToolStripMenuItem _syncItem;
     private readonly WinForms.ToolStripMenuItem _autoStartItem;
-    private readonly WinForms.ToolStripMenuItem _pauseItem;
-    private readonly WinForms.ToolStripMenuItem _resumeItem;
-    private readonly WinForms.ToolStripMenuItem _undoItem;
     private readonly WinForms.ToolStripMenuItem _lockVaultItem;
     private readonly Dictionary<TrayState, Drawing.Icon> _icons = new();
     private readonly List<IntPtr> _iconHandles = new();
@@ -30,12 +26,6 @@ internal sealed class TrayService : IDisposable
     private bool _disposed;
 
     public event Action? OpenRequested;
-    public event Action? PairRequested;
-    public event Action<bool>? SyncToggled;
-    public event Action? SendNowRequested;
-    /// <summary>Minutes to pause sync for; 0 = resume now.</summary>
-    public event Action<int>? PauseRequested;
-    public event Action? UndoRequested;
     public event Action? LockVaultRequested;
     public event Action<bool>? AutoStartToggled;
     public event Action? CheckUpdateRequested;
@@ -47,28 +37,9 @@ internal sealed class TrayService : IDisposable
         foreach (var state in Enum.GetValues<TrayState>()) _icons[state] = Render(size, state);
 
         _menu.Items.Add(Item(Strings.TrayOpen, () => OpenRequested?.Invoke()));
-        _menu.Items.Add(Item(Strings.TrayPair, () => PairRequested?.Invoke()));
         _lockVaultItem = Item(Strings.TrayLockVault, () => LockVaultRequested?.Invoke());
         _menu.Items.Add(_lockVaultItem);
         _menu.Items.Add(new WinForms.ToolStripSeparator());
-        _syncItem = new WinForms.ToolStripMenuItem(Strings.TraySync) { CheckOnClick = true };
-        _syncItem.Click += (_, _) => SyncToggled?.Invoke(_syncItem.Checked);
-        _menu.Items.Add(_syncItem);
-        _pauseItem = new WinForms.ToolStripMenuItem(Strings.TrayPause);
-        foreach (var minutes in new[] { 15, 60, 240 })
-        {
-            var m = minutes;
-            var label = m == 15 ? Strings.TrayPause15 : m == 60 ? Strings.TrayPause60 : Strings.TrayPause240;
-            _pauseItem.DropDownItems.Add(Item(label, () => PauseRequested?.Invoke(m)));
-        }
-        _menu.Items.Add(_pauseItem);
-        _resumeItem = Item("", () => PauseRequested?.Invoke(0));
-        _resumeItem.Visible = false;
-        _menu.Items.Add(_resumeItem);
-        _undoItem = Item(Strings.TrayUndo, () => UndoRequested?.Invoke());
-        _undoItem.Enabled = false;
-        _menu.Items.Add(_undoItem);
-        _menu.Items.Add(Item(Strings.TraySendNow, () => SendNowRequested?.Invoke()));
         _autoStartItem = new WinForms.ToolStripMenuItem(Strings.TrayAutoStart) { CheckOnClick = true };
         _autoStartItem.Click += (_, _) => AutoStartToggled?.Invoke(_autoStartItem.Checked);
         _menu.Items.Add(_autoStartItem);
@@ -80,7 +51,7 @@ internal sealed class TrayService : IDisposable
         _icon = new WinForms.NotifyIcon
         {
             Icon = _icons[TrayState.Normal],
-            Text = Strings.TrayTipNoPeers,
+            Text = Strings.AppName,
             ContextMenuStrip = _menu,
             Visible = true,
         };
@@ -95,13 +66,10 @@ internal sealed class TrayService : IDisposable
     private void StyleMenu()
     {
         _menu.Renderer = _renderer;
-        _pauseItem.DropDown.Renderer = _renderer;
         _menu.Padding = new WinForms.Padding(2, 6, 2, 6);
-        _pauseItem.DropDown.Padding = new WinForms.Padding(2, 6, 2, 6);
-        foreach (var item in _menu.Items.OfType<WinForms.ToolStripMenuItem>().Concat(_pauseItem.DropDownItems.OfType<WinForms.ToolStripMenuItem>()))
+        foreach (var item in _menu.Items.OfType<WinForms.ToolStripMenuItem>())
             item.Padding = new WinForms.Padding(4, 5, 12, 5);
         _menu.Opening += (_, _) => ApplyLook(_menu);
-        _pauseItem.DropDown.Opening += (_, _) => ApplyLook(_pauseItem.DropDown);
     }
 
     private void ApplyLook(WinForms.ToolStripDropDown dropDown)
@@ -138,18 +106,10 @@ internal sealed class TrayService : IDisposable
         _icon.Text = tooltip.Length <= 63 ? tooltip : tooltip[..63];
     }
 
-    public void SetSyncChecked(bool on) => _syncItem.Checked = on;
     public void SetAutoStartChecked(bool on) => _autoStartItem.Checked = on;
 
-    /// <summary>Shows "resume" instead of "pause" while sync is paused; <paramref name="until"/> is local time, null = not paused.</summary>
-    public void SetPaused(DateTime? until)
-    {
-        _pauseItem.Visible = until is null;
-        _resumeItem.Visible = until is not null;
-        if (until is { } u) _resumeItem.Text = Strings.TrayResume(u.ToString("HH:mm"));
-    }
-
-    public void SetUndoAvailable(bool available) => _undoItem.Enabled = available;
+    /// <summary>"锁定密码库" is offered only while the vault is unlocked.</summary>
+    public void SetVaultUnlocked(bool unlocked) => _lockVaultItem.Enabled = unlocked;
 
     /// <summary>
     /// Shows a balloon. <paramref name="onClick"/> runs if the user clicks it within 30 seconds; a
@@ -190,21 +150,23 @@ internal sealed class TrayService : IDisposable
             float s = size;
             var body = state switch
             {
-                TrayState.Normal => Drawing.Color.FromArgb(0x2E, 0x9E, 0x4F),
-                TrayState.NoConnection => Drawing.Color.FromArgb(0x8A, 0x8F, 0x98),
+                TrayState.Normal => Drawing.Color.FromArgb(0x3B, 0x5B, 0xDB),
                 _ => Drawing.Color.FromArgb(0xE0, 0x9B, 0x00),
             };
+            // a rounded shield with a key hole
             using (var bodyBrush = new Drawing.SolidBrush(body))
-            using (var path = RoundedRect(new Drawing.RectangleF(s * 0.14f, s * 0.12f, s * 0.72f, s * 0.82f), s * 0.14f))
+            using (var path = RoundedRect(new Drawing.RectangleF(s * 0.12f, s * 0.08f, s * 0.76f, s * 0.84f), s * 0.22f))
                 g.FillPath(bodyBrush, path);
-            g.FillRectangle(Drawing.Brushes.White, new Drawing.RectangleF(s * 0.26f, s * 0.30f, s * 0.48f, s * 0.54f));
-            using (var clipBrush = new Drawing.SolidBrush(Drawing.Color.FromArgb(0x33, 0x3A, 0x45)))
-            using (var path = RoundedRect(new Drawing.RectangleF(s * 0.32f, s * 0.03f, s * 0.36f, s * 0.20f), s * 0.06f))
-                g.FillPath(clipBrush, path);
-            using var line = new Drawing.Pen(body, Math.Max(1f, s * 0.06f));
-            g.DrawLine(line, s * 0.34f, s * 0.45f, s * 0.66f, s * 0.45f);
-            g.DrawLine(line, s * 0.34f, s * 0.60f, s * 0.66f, s * 0.60f);
-            g.DrawLine(line, s * 0.34f, s * 0.75f, s * 0.54f, s * 0.75f);
+            g.FillEllipse(Drawing.Brushes.White, new Drawing.RectangleF(s * 0.38f, s * 0.28f, s * 0.24f, s * 0.24f));
+            using (var hole = new Drawing.Drawing2D.GraphicsPath())
+            {
+                hole.AddPolygon(new[]
+                {
+                    new Drawing.PointF(s * 0.45f, s * 0.46f), new Drawing.PointF(s * 0.55f, s * 0.46f),
+                    new Drawing.PointF(s * 0.58f, s * 0.74f), new Drawing.PointF(s * 0.42f, s * 0.74f),
+                });
+                g.FillPath(Drawing.Brushes.White, hole);
+            }
         }
         var handle = bmp.GetHicon();
         _iconHandles.Add(handle); // kept alive for the icon's lifetime, destroyed in Dispose

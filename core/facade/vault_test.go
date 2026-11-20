@@ -19,7 +19,7 @@ func vcreate(t *testing.T, n *node) {
 }
 
 func TestVaultLifecycleThroughTheFacade(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	if st := n.call("vault.status", nil); st["exists"] != false || st["unlocked"] != false {
 		t.Fatalf("fresh status = %v", st)
 	}
@@ -118,7 +118,7 @@ func TestVaultLifecycleThroughTheFacade(t *testing.T) {
 }
 
 func TestVaultUnlockIsRateLimitedAfterThreeWrongAttempts(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	n.call("vault.lock", nil)
 	for i := 0; i < 3; i++ {
@@ -143,7 +143,7 @@ func TestVaultUnlockIsRateLimitedAfterThreeWrongAttempts(t *testing.T) {
 }
 
 func TestVaultLocksItselfWhenIdle(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	if code := n.errorCode("settings.set", map[string]any{"key": "vault_autolock_s", "value": "5"}); code != "INVALID" {
 		t.Fatalf("autolock below the minimum accepted: %s", code)
@@ -170,40 +170,8 @@ func TestVaultLocksItselfWhenIdle(t *testing.T) {
 	}
 }
 
-func TestVaultCopyIsNeverBroadcast(t *testing.T) {
-	win := startNode(t, "Tony-PC", "windows", true)
-	pix := startNode(t, "Pixel", "android", false)
-	pairNodes(t, win, pix)
-	vcreate(t, win)
-	id := win.call("vault.add", map[string]any{"entry": map[string]any{"title": "bank", "username": "me", "password": "Tr0ub4dor&3-bank-secret"}})["id"].(string)
-
-	cp := win.call("vault.copy", map[string]any{"id": id, "field": "password"})
-	if cp["value"] != "Tr0ub4dor&3-bank-secret" || cp["clear_after_s"].(float64) != 20 {
-		t.Fatalf("copy = %v", cp)
-	}
-	// the shell now writes the clipboard; the change notification must not send it anywhere
-	res := win.call("clip.local_changed", map[string]any{"text": "Tr0ub4dor&3-bank-secret"})
-	if res["suppressed"] != "vault_origin" || len(res["sent"].([]any)) != 0 {
-		t.Fatalf("a secret copied from the vault was broadcast: %v", res)
-	}
-	time.Sleep(150 * time.Millisecond)
-	if ev := pix.find("clip.received", nil); ev != nil {
-		t.Fatalf("the other device received it: %v", ev)
-	}
-	// the username was copied by hand: also not broadcast; ordinary text is
-	win.call("vault.copy", map[string]any{"id": id, "field": "username"})
-	if res := win.call("clip.local_changed", map[string]any{"text": "me"}); res["suppressed"] != "vault_origin" {
-		t.Fatalf("username copied from the vault: %v", res)
-	}
-	if res := win.call("clip.local_changed", map[string]any{"text": "just some other text"}); len(res["sent"].([]any)) != 1 {
-		t.Fatalf("ordinary copies must still be broadcast: %v", res)
-	}
-	// reveal (display on screen, no clipboard) registers nothing
-	win.call("vault.reveal", map[string]any{"id": id, "field": "notes"})
-}
-
 func TestVaultExportNeedsTheMasterPasswordAndNeverOverwrites(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	id := n.call("vault.add", map[string]any{"entry": map[string]any{"title": "t", "password": "p1"}})["id"].(string)
 	dir := t.TempDir()
@@ -224,7 +192,7 @@ func TestVaultExportNeedsTheMasterPasswordAndNeverOverwrites(t *testing.T) {
 		t.Fatalf("csv = %q", b)
 	}
 	// import the KDBX back into a second vault
-	m := startNode(t, "Other", "windows", false)
+	m := startNode(t, "Other", "windows")
 	m.call("vault.create", map[string]any{"password": "other master", "kdf": "low"})
 	r := m.call("vault.import_file", map[string]any{"path": kdbx, "password": "export pw"})
 	if r["stats"].(map[string]any)["entries_added"].(float64) != 1 {
@@ -237,7 +205,7 @@ func TestVaultExportNeedsTheMasterPasswordAndNeverOverwrites(t *testing.T) {
 }
 
 func TestVaultBackupsAndRestoreThroughTheFacade(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	id := n.call("vault.add", map[string]any{"entry": map[string]any{"title": "keep me", "password": "orig"}})["id"].(string)
 	snap := n.call("vault.backup_now", nil)
@@ -266,7 +234,7 @@ func TestVaultBackupsAndRestoreThroughTheFacade(t *testing.T) {
 }
 
 func TestVaultChangeMasterAndGenerators(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	n.call("vault.add", map[string]any{"entry": map[string]any{"title": "t", "password": "p"}})
 	if code := n.errorCode("vault.change_master", map[string]any{"password": "wrong", "new": map[string]any{"password": "n"}}); code != "VAULT_WRONG_CREDENTIALS" {
@@ -301,7 +269,7 @@ func TestVaultChangeMasterAndGenerators(t *testing.T) {
 
 // Whatever happens, no response may repeat a password or master key that was sent in.
 func TestVaultResponsesNeverEchoSecretsOrParams(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	probe := "ZZ-never-echo-ZZ"
 	for _, c := range []struct {
@@ -323,7 +291,7 @@ func TestVaultResponsesNeverEchoSecretsOrParams(t *testing.T) {
 }
 
 func TestVaultMatchForAutofill(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	n.call("vault.add", map[string]any{"entry": map[string]any{"title": "GitHub", "url": "https://github.com/login", "username": "me", "password": "gh-secret"}})
 	n.call("vault.add", map[string]any{"entry": map[string]any{"title": "Phish bait", "url": "https://github.com.evil.example", "password": "x"}})
@@ -342,7 +310,7 @@ func TestVaultMatchForAutofill(t *testing.T) {
 }
 
 func TestVaultTotpDoesNotKeepAnUnattendedVaultUnlocked(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	id := n.call("vault.add", map[string]any{"entry": map[string]any{"title": "t", "totp": "JBSWY3DPEHPK3PXP"}})["id"].(string)
 	_ = n.c.db.SetSetting(settingVaultAutoLock, "1")
@@ -366,7 +334,7 @@ func TestVaultTotpDoesNotKeepAnUnattendedVaultUnlocked(t *testing.T) {
 }
 
 func TestVaultGroupDeleteNotEmptyCode(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	gid := n.call("vault.group_add", map[string]any{"name": "G"})["id"].(string)
 	n.call("vault.add", map[string]any{"entry": map[string]any{"title": "x", "group_id": gid}})
@@ -376,7 +344,7 @@ func TestVaultGroupDeleteNotEmptyCode(t *testing.T) {
 }
 
 func TestVaultPatchChangesOnlyWhatIsGiven(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	id := n.call("vault.add", map[string]any{"entry": map[string]any{
 		"title": "site", "username": "me", "password": "old", "totp": "JBSWY3DPEHPK3PXP",
@@ -405,7 +373,7 @@ func TestVaultPatchChangesOnlyWhatIsGiven(t *testing.T) {
 // ---- regression tests for the adversarial review ---------------------------------------------
 
 func TestVaultStatusDoesNotKeepTheVaultOpenAndAWallClockGapLocks(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	_ = n.c.db.SetSetting(settingVaultAutoLock, "1")
 	n.call("vault.list", nil)
@@ -428,7 +396,7 @@ func TestVaultStatusDoesNotKeepTheVaultOpenAndAWallClockGapLocks(t *testing.T) {
 }
 
 func TestVaultGuessingCannotBeParallelisedOrResetByOtherCalls(t *testing.T) {
-	n := startNode(t, "Desk", "windows", false)
+	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)
 	n.call("vault.backup_now", nil)
 	name := n.call("vault.backup_list", nil)["backups"].([]any)[0].(map[string]any)["name"].(string)
@@ -463,53 +431,5 @@ func TestVaultGuessingCannotBeParallelisedOrResetByOtherCalls(t *testing.T) {
 	n.c.vs.mu.Unlock()
 	if fails < 3 {
 		t.Fatalf("a successful backup_verify reset the failure counter (%d)", fails)
-	}
-}
-
-func TestVaultSyncResolveRefusesInventedDeviceIDs(t *testing.T) {
-	n := startNode(t, "Desk", "windows", true)
-	n2 := startNode(t, "Other", "android", false)
-	pairNodes(t, n, n2)
-	vcreate(t, n)
-	file := filepath.Join(n.c.vaultDir(), "vault.kdbx")
-	for _, id := range []string{"../vault", "..\\vault", "dev_x", "", "dev_aaaaaaaaaaaaaaaaaaaaaaaaaa/../../vault"} {
-		r := n.try("vault.sync_resolve", map[string]any{"device_id": id, "approve": true, "sha256": "x"})
-		if r.OK {
-			t.Fatalf("device_id %q was accepted", id)
-		}
-	}
-	if _, err := os.Stat(file); err != nil {
-		t.Fatalf("the vault file is gone: %v", err)
-	}
-}
-
-func TestEverythingTheVaultHandsOutIsKeptOffTheClipboardSync(t *testing.T) {
-	win := startNode(t, "Tony-PC", "windows", true)
-	pix := startNode(t, "Pixel", "android", false)
-	pairNodes(t, win, pix)
-	vcreate(t, win)
-	id := win.call("vault.add", map[string]any{"entry": map[string]any{"title": "x", "username": "admin-user", "password": "Rev3aled-pass-word", "notes": "secret note text", "totp": "JBSWY3DPEHPK3PXP"}})["id"].(string)
-	suppressed := func(text string) bool {
-		return win.call("clip.local_changed", map[string]any{"text": text})["suppressed"] == "vault_origin"
-	}
-	win.call("vault.reveal", map[string]any{"id": id, "field": "password"})
-	if !suppressed("Rev3aled-pass-word") {
-		t.Fatal("a revealed password that the user copies by hand was broadcast")
-	}
-	gen := win.call("vault.generate", map[string]any{"type": "password", "length": 20})["value"].(string)
-	if !suppressed(gen) {
-		t.Fatal("a generated password was broadcast")
-	}
-	code := win.call("vault.totp", map[string]any{"id": id})["code"].(string)
-	if !suppressed(code) {
-		t.Fatal("a one-time code was broadcast")
-	}
-	win.call("vault.get", map[string]any{"id": id})
-	if !suppressed("secret note text") {
-		t.Fatal("the notes of an open entry were broadcast")
-	}
-	time.Sleep(150 * time.Millisecond)
-	if pix.find("clip.received", nil) != nil {
-		t.Fatal("the other device received something from the vault")
 	}
 }
