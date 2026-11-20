@@ -22,6 +22,12 @@ data class CoreStatus(val deviceName: String = "", val platform: String = "", va
     }
 }
 
+data class AccountStatus(val state: String = "", val name: String = "", val username: String = "", val error: String = "") {
+    companion object {
+        fun from(o: JSONObject) = AccountStatus(o.optString("state"), o.optString("name"), o.optString("username"), o.optString("error"))
+    }
+}
+
 /**
  * Type-safe wrapper over [CoreHost.call] (api-spec §7.3 and shell-guide §2) for everything that is not the vault
  * ([VaultApi]). All functions suspend off the main thread.
@@ -34,6 +40,12 @@ object CoreApi {
 
     suspend fun status() = run("status", parse = CoreStatus::from)
     suspend fun diagnostics() = run("diagnostics.get") { it.toString(2) }
+
+    suspend fun accountStatus() = run("account.status", parse = AccountStatus::from)
+    suspend fun startAccountLogin() = run("account.login") { it.optString("authorization_url") }
+    suspend fun completeAccountLogin(callback: String) = run("account.complete", JSONObject().put("callback", callback)) { }
+    suspend fun cancelAccountLogin() = run("account.cancel") { }
+    suspend fun accountLogout() = run("account.logout") { }
 
     suspend fun setSetting(key: String, value: String) =
         run("settings.set", JSONObject().put("key", key).put("value", value)) { }

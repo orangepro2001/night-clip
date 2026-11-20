@@ -144,4 +144,40 @@ func TestAccountBrowserAuthorizationAndLogout(t *testing.T) {
 	if _, found, err := n.c.db.GetSecret(accountSecret); found || err != nil {
 		t.Fatalf("logout left a stored session: %v", err)
 	}
+
+	android := newAccountState(storage, issuer, clientID, func() {})
+	android.mobile = n.c.db
+	authorization, err = android.begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	android.close()
+	u, err = url.Parse(authorization)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q = u.Query()
+	if q.Get("redirect_uri") != mobileRedirect || q.Get("dpop_jkt") == "" {
+		t.Fatal("Android did not use the registered custom scheme and DPoP")
+	}
+	auth.Store(&q)
+	androidRestarted := newAccountState(storage, issuer, clientID, func() {})
+	androidRestarted.mobile = n.c.db
+	defer androidRestarted.close()
+	if androidRestarted.status().State != "authorizing" {
+		t.Fatal("Android lost the pending authorization on restart")
+	}
+	if err := androidRestarted.completeMobile(mobileRedirect + "?state=wrong&iss=" + url.QueryEscape(issuer)); err == nil {
+		t.Fatal("Android accepted an unrelated callback")
+	}
+	code = url.Values{"code": {"issued-code"}, "state": {q.Get("state")}, "iss": {issuer}}
+	if err := androidRestarted.completeMobile(mobileRedirect + "?" + code.Encode()); err != nil {
+		t.Fatal(err)
+	}
+	if androidRestarted.status().State != "signed_in" {
+		t.Fatal("Android did not finish authorization after restart")
+	}
+	if err := androidRestarted.completeMobile(mobileRedirect + "?" + code.Encode()); err == nil {
+		t.Fatal("Android accepted a replayed callback")
+	}
 }

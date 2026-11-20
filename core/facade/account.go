@@ -52,9 +52,11 @@ type accountState struct {
 	id      string
 	notify  func()
 
-	session *moonsso.Session
-	login   *accountLogin
-	failure string
+	session     *moonsso.Session
+	sessionStop context.CancelFunc
+	mobile      *store.DB
+	login       *accountLogin
+	failure     string
 }
 
 type accountLogin struct {
@@ -101,10 +103,19 @@ func (a *accountState) ensureSession() error {
 	if err != nil {
 		return err
 	}
+	a.useClient(client)
+	return nil
+}
+
+func (a *accountState) useClient(client *moonsso.Client) {
+	if a.sessionStop != nil {
+		a.sessionStop()
+	}
+	ctx, stop := context.WithCancel(a.ctx)
+	a.sessionStop = stop
 	a.session = client.NewSession(a.storage, moonsso.SessionOptions{OnSessionExpired: a.notify})
 	session := a.session
-	a.workers.Go(func() { session.KeepFresh(a.ctx) })
-	return nil
+	a.workers.Go(func() { session.KeepFresh(ctx) })
 }
 
 func (a *accountState) status() accountView {
@@ -123,10 +134,22 @@ func (a *accountState) status() accountView {
 	if profile := a.session.Profile(a.ctx); profile != nil {
 		return accountView{State: "signed_in", Name: profile.Name, Username: profile.PreferredUsername}
 	}
+	if a.mobile != nil {
+		pending, err := a.loadMobile()
+		if err != nil {
+			return accountView{State: "signed_out", Error: "session_storage"}
+		}
+		if pending != nil {
+			return accountView{State: "authorizing"}
+		}
+	}
 	return accountView{State: "signed_out", Error: a.failure}
 }
 
 func (a *accountState) begin() (string, error) {
+	if a.mobile != nil {
+		return a.beginMobile()
+	}
 	a.mu.Lock()
 	switch {
 	case a.ctx.Err() != nil || a.id == "":
@@ -181,8 +204,14 @@ func (a *accountState) authorize(login *accountLogin, session *moonsso.Session) 
 	a.notify()
 }
 
-func (a *accountState) cancelLogin() {
+func (a *accountState) cancelLogin() error {
 	a.mu.Lock()
+	if a.mobile != nil {
+		if err := a.mobile.DeleteSecret(mobileAccountSecret); err != nil {
+			a.mu.Unlock()
+			return err
+		}
+	}
 	if a.login != nil {
 		a.login.cancel()
 		a.login = nil
@@ -190,6 +219,7 @@ func (a *accountState) cancelLogin() {
 	a.failure = ""
 	a.mu.Unlock()
 	a.notify()
+	return nil
 }
 
 func (a *accountState) logout() error {
@@ -203,6 +233,11 @@ func (a *accountState) logout() error {
 		a.login = nil
 	}
 	a.failure = ""
+	if a.mobile != nil {
+		if err := a.mobile.DeleteSecret(mobileAccountSecret); err != nil {
+			return err
+		}
+	}
 	if a.session == nil {
 		return a.storage.Clear(a.ctx)
 	}
@@ -216,7 +251,7 @@ func (a *accountState) close() {
 	a.workers.Wait()
 }
 
-func (c *Core) accountCall(method string) (any, error) {
+func (c *Core) accountCall(method, params string) (any, error) {
 	c.mu.RLock()
 	a := c.account
 	c.mu.RUnlock()
@@ -233,7 +268,20 @@ func (c *Core) accountCall(method string) (any, error) {
 		}
 		return map[string]string{"authorization_url": url}, nil
 	case "account.cancel":
-		a.cancelLogin()
+		if err := a.cancelLogin(); err != nil {
+			return nil, proto.Errorf(proto.CodeInternal, "could not cancel Moon SSO authorization")
+		}
+	case "account.complete":
+		var p struct {
+			Callback string `json:"callback"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		if err := a.completeMobile(p.Callback); err != nil {
+			return nil, err
+		}
+		a.notify()
 	case "account.logout":
 		if err := a.logout(); err != nil {
 			return nil, proto.Errorf(proto.CodeInternal, "could not clear the local Moon SSO session")

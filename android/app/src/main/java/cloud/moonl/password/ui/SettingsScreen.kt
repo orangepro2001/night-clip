@@ -3,6 +3,8 @@ package cloud.moonl.password.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -44,6 +46,8 @@ import cloud.moonl.password.platform.Notifications
 fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val update by vm.update.collectAsStateWithLifecycle()
+    val account by vm.account.collectAsStateWithLifecycle()
+    val accountBusy by vm.accountBusy.collectAsStateWithLifecycle()
     val deviceName by vm.deviceName.collectAsStateWithLifecycle()
     val diagnostics by vm.diagnostics.collectAsStateWithLifecycle()
     val vaultPreventCapture by context.app.prefs.vaultPreventCapture.collectAsStateWithLifecycle()
@@ -61,6 +65,29 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
             stringResource(R.string.nav_settings),
             subtitle = stringResource(R.string.settings_subtitle),
         )
+
+        SectionCard(stringResource(R.string.account_title)) {
+            Text(stringResource(R.string.account_description), style = MaterialTheme.typography.bodySmall)
+            Text(when {
+                account.error == "session_storage" -> stringResource(R.string.account_session_failed)
+                account.error == "authorization_failed" -> stringResource(R.string.account_authorization_failed)
+                account.state == "signed_in" -> stringResource(R.string.account_signed_in, account.name.ifBlank { account.username })
+                account.state == "authorizing" -> stringResource(R.string.account_authorizing)
+                account.state == "signed_out" -> stringResource(R.string.account_signed_out)
+                account.state == "unavailable" -> stringResource(R.string.account_unavailable)
+                else -> stringResource(R.string.account_loading)
+            })
+            if (account.state in setOf("signed_in", "signed_out", "authorizing")) {
+                Button(enabled = !accountBusy, onClick = { vm.accountAction { openAccountBrowser(context, it) } }) {
+                    Text(stringResource(when {
+                        account.error == "session_storage" -> R.string.account_clear
+                        account.state == "signed_in" -> R.string.account_logout
+                        account.state == "authorizing" -> R.string.account_cancel
+                        else -> R.string.account_login
+                    }))
+                }
+            }
+        }
 
         SectionCard(stringResource(R.string.settings_vault)) {
             SwitchRow(stringResource(R.string.settings_vault_capture), vaultPreventCapture) { on ->
@@ -128,6 +155,18 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
             },
             dismissButton = { TextButton(onClick = { vm.closeDiagnostics() }) { Text(stringResource(R.string.close)) } },
         )
+    }
+}
+
+private fun openAccountBrowser(context: Context, url: String): Boolean {
+    val uri = Uri.parse(url)
+    if (uri.scheme != "https" || !uri.host.equals("sso.moonl.cloud", ignoreCase = true) ||
+        uri.userInfo != null || uri.port !in listOf(-1, 443)) return false
+    return try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+        true
+    } catch (_: Exception) {
+        false
     }
 }
 

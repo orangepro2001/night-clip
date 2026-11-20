@@ -14,6 +14,7 @@ sealed interface CoreEvent {
     val logId: String get() = ""
 
     data object CoreStarted : CoreEvent { override val type = "core.started" }
+    data object AccountChanged : CoreEvent { override val type = "account.changed" }
 
     data class UpdateAvailable(val versionCode: Long, val versionName: String, val mandatory: Boolean, val notes: String) : CoreEvent {
         override val type = "update.available"
@@ -50,6 +51,7 @@ sealed interface CoreEvent {
 
         private fun fromJson(type: String, o: JSONObject): CoreEvent = when (type) {
             "core.started" -> CoreStarted
+            "account.changed" -> AccountChanged
             "update.available" -> UpdateAvailable(o.optLong("version_code"), o.optString("version_name"), o.optBoolean("mandatory"), o.optString("notes"))
             "update.progress" -> UpdateProgress(o.optLong("received"), o.optLong("total"))
             "update.ready" -> UpdateReady(o.optLong("version_code"), o.optString("version_name"), o.optString("path"), o.optBoolean("mandatory"))

@@ -107,5 +107,20 @@
     <string name="channel_info_name">提示</string>
     <string name="channel_info_desc">与密码库和账户有关的提示。</string>
     <string name="settings_subtitle">密码库、通知与更新</string>
+    <string name="account_title">Moon SSO 账号</string>
+    <string name="account_description">在系统浏览器授权 MoonPassword。密码库仍用主密码解锁。</string>
+    <string name="account_loading">正在读取账号状态…</string>
+    <string name="account_unavailable">此版本尚未配置 Moon SSO。</string>
+    <string name="account_signed_out">未登录</string>
+    <string name="account_signed_in">已登录 %1$s</string>
+    <string name="account_authorizing">请在浏览器内完成授权。</string>
+    <string name="account_login">使用 Moon SSO 登录</string>
+    <string name="account_logout">退出登录</string>
+    <string name="account_cancel">取消授权</string>
+    <string name="account_clear">清除登录会话</string>
+    <string name="account_session_failed">无法读取本机登录会话，可清除它后重试。</string>
+    <string name="account_authorization_failed">授权未完成，可以重新登录。</string>
+    <string name="account_browser_failed">无法打开 Moon SSO 授权页。</string>
+    <string name="account_action_failed">Moon SSO 操作失败，请重试。</string>
     <string name="about_device_name">设备名称</string>
 </resources>
