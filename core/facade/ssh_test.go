@@ -533,9 +533,19 @@ func TestSSHAgentWithOpenSSH(t *testing.T) {
 	authPub, _, _, _, _ := ssh.ParseAuthorizedKey(pubLine)
 	host, addr := startTestSSHServer(t, authPub)
 	id := filepath.Join(dir, "id") // id does not exist, id.pub does
-	login := &exec.Cmd{Path: sshExe, Env: env, Args: []string{sshExe, "-F", "none", "-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=" + filepath.Join(dir, "kh"),
-		"-o", "IdentitiesOnly=yes", "-o", "IdentityFile=" + id, "-p", addr.port, "tester@" + addr.host, "true"}}
+	configPath := filepath.Join(dir, "config")
+	config := "Host e2e-office\n  HostName " + addr.host + "\n  Port " + addr.port +
+		"\n  User tester\n  IdentitiesOnly yes\n  IdentityFile \"" + filepath.ToSlash(id) + "\"\n"
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scan := n.call("ssh.scan", map[string]any{"dir": dir})
+	hosts := scan["config_hosts"].([]any)
+	if len(hosts) != 1 || hosts[0].(map[string]any)["aliases"].([]any)[0] != "e2e-office" || len(scan["items"].([]any)) != 0 {
+		t.Fatalf("scan with only a public key on disk: %v", scan)
+	}
+	login := &exec.Cmd{Path: sshExe, Env: env, Args: []string{sshExe, "-F", configPath, "-o", "BatchMode=yes",
+		"-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=" + filepath.Join(dir, "kh"), "e2e-office", "true"}}
 	if out, err := login.CombinedOutput(); err != nil {
 		t.Fatalf("ssh login through the agent: %v\n%s", err, out)
 	}

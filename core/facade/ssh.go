@@ -727,7 +727,10 @@ func (c *Core) sshScan(params string) (any, error) {
 	res, err := sshkey.Scan(p.Dir, home)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]any{"dir": p.Dir, "items": []any{}, "skipped": 0, "vault_unlocked": c.currentVault() != nil}, nil
+			return map[string]any{
+				"dir": p.Dir, "items": []any{}, "skipped": 0, "vault_unlocked": c.currentVault() != nil,
+				"config_hosts": res.ConfigHosts, "config_partial": res.ConfigPartial,
+			}, nil
 		}
 		return nil, proto.Errorf(proto.CodeInvalid, "cannot read that folder")
 	}
@@ -753,7 +756,10 @@ func (c *Core) sshScan(params string) (any, error) {
 		}
 		items = append(items, m)
 	}
-	return map[string]any{"dir": res.Dir, "items": items, "skipped": res.Skipped, "vault_unlocked": v != nil}, nil
+	return map[string]any{
+		"dir": res.Dir, "items": items, "skipped": res.Skipped, "vault_unlocked": v != nil,
+		"config_hosts": res.ConfigHosts, "config_partial": res.ConfigPartial,
+	}, nil
 }
 
 func (c *Core) sshWritePub(params string) (any, error) {

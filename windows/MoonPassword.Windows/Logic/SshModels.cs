@@ -81,11 +81,26 @@ public sealed record SshScanItem(
     public string TypeText => SshText.Algo(Algo, Bits);
 }
 
+public sealed record SshConfigHost(
+    IReadOnlyList<string> Aliases, string HostName, string User, string Port, IReadOnlyList<string> IdentityFiles)
+{
+    public static SshConfigHost FromJson(JsonElement e) => new(
+        JsonRead.StrArr(e, "aliases"), JsonRead.Str(e, "host_name"), JsonRead.Str(e, "user"),
+        JsonRead.Str(e, "port"), JsonRead.StrArr(e, "identity_files"));
+}
+
 public sealed record SshScan(string Dir, IReadOnlyList<SshScanItem> Items, int Skipped, bool VaultUnlocked)
 {
+    public IReadOnlyList<SshConfigHost> ConfigHosts { get; init; } = Array.Empty<SshConfigHost>();
+    public bool ConfigPartial { get; init; }
+
     public static SshScan FromJson(JsonElement r) => new(
         JsonRead.Str(r, "dir"), JsonRead.Arr(r, "items").Select(SshScanItem.FromJson).ToList(),
-        (int)JsonRead.Long(r, "skipped"), JsonRead.Bool(r, "vault_unlocked"));
+        (int)JsonRead.Long(r, "skipped"), JsonRead.Bool(r, "vault_unlocked"))
+    {
+        ConfigHosts = JsonRead.Arr(r, "config_hosts").Select(SshConfigHost.FromJson).ToList(),
+        ConfigPartial = JsonRead.Bool(r, "config_partial"),
+    };
 }
 
 /// <summary>ssh.status.</summary>

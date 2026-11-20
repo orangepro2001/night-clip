@@ -67,7 +67,7 @@ public sealed class SshApi
         _core.Call("ssh.export", p);
     }
 
-    /// <summary>Lists private keys in <paramref name="dir"/> (empty = ~/.ssh).</summary>
+    /// <summary>Lists private keys and configured hosts in <paramref name="dir"/> (empty = ~/.ssh).</summary>
     public SshScan Scan(string dir = "") =>
         SshScan.FromJson(dir.Length > 0 ? _core.Call("ssh.scan", new { dir }) : _core.Call("ssh.scan"));
 

@@ -549,6 +549,7 @@ internal sealed class SshMigrateWindow
     private readonly VaultWindow _window;
     private readonly StackPanel _list = new() { Spacing = 8 };
     private readonly TextBlock _summary = Ui.Text(Strings.SshMigrateScanning, "secondary");
+    private readonly Expander _config = new() { IsVisible = false, HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly InfoBar _info = new() { Severity = Severity.Info, IsOpen = false, IsClosable = false };
     private readonly InfoBar _error = new() { Severity = Severity.Danger, IsOpen = false };
     private readonly StackPanel _recycle = new() { Spacing = 8, IsVisible = false };
@@ -576,6 +577,7 @@ internal sealed class SshMigrateWindow
             {
                 DialogKit.Text(Strings.SshMigrateIntro, "caption", "secondary").With(t => t.TextWrapping = TextWrapping.Wrap),
                 _summary,
+                _config,
                 _info,
                 _list,
                 _recycle,
@@ -605,6 +607,7 @@ internal sealed class SshMigrateWindow
         if (!r.Ok) { _summary.Text = r.Error; return; }
         var scan = r.Value!;
         _summary.Text = Strings.SshMigrateFound(scan.Items.Count, scan.Dir);
+        RenderConfig(scan);
         foreach (var item in scan.Items)
         {
             var row = new Row { Item = item };
@@ -620,6 +623,35 @@ internal sealed class SshMigrateWindow
         }
         Render();
         UpdateButtons();
+    }
+
+    private void RenderConfig(SshScan scan)
+    {
+        var panel = new StackPanel { Spacing = 8 };
+        void AddLine(StackPanel target, string line, string style) =>
+            target.Children.Add(Ui.Text(line, style).With(t => t.TextWrapping = TextWrapping.Wrap));
+
+        if (scan.ConfigPartial) AddLine(panel, Strings.SshConfigPartial, "caption");
+        if (scan.ConfigHosts.Count == 0)
+            AddLine(panel, Strings.SshConfigEmpty, "caption");
+        else
+            AddLine(panel, Strings.SshConfigAgentHint, "caption");
+
+        foreach (var host in scan.ConfigHosts)
+        {
+            var block = new StackPanel { Spacing = 3 };
+            AddLine(block, string.Join("、", host.Aliases), "medium");
+            if (host.HostName.Length > 0) AddLine(block, "HostName " + host.HostName, "caption");
+            if (host.User.Length > 0) AddLine(block, "User " + host.User, "caption");
+            if (host.Port.Length > 0) AddLine(block, "Port " + host.Port, "caption");
+            foreach (var path in host.IdentityFiles) AddLine(block, "IdentityFile " + path, "caption");
+            panel.Children.Add(SshUi.Block(block, 10));
+        }
+
+        _config.Header = Strings.SshConfigTitle(scan.ConfigHosts.Count);
+        _config.Content = panel;
+        _config.IsExpanded = scan.ConfigPartial || (scan.Items.Count == 0 && scan.ConfigHosts.Count > 0);
+        _config.IsVisible = true;
     }
 
     private void UpdateButtons()

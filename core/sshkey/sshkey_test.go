@@ -547,6 +547,9 @@ func TestScanFindsKeysAndNeverReturnsContent(t *testing.T) {
 	if res.Skipped != 2 {
 		t.Fatalf("skipped %d", res.Skipped)
 	}
+	if len(res.ConfigHosts) != 2 || strings.Join(res.ConfigHosts[1].Aliases, ",") != "a,b" {
+		t.Fatalf("configured hosts: %+v", res.ConfigHosts)
+	}
 	if it := byName["id_ed25519"]; it.PubState != PubOK || it.Fingerprint == "" || strings.Join(it.ConfigHosts, ",") != "*" || len(it.ReferencedBy) != 0 {
 		t.Fatalf("id_ed25519: %+v", it)
 	}
@@ -572,6 +575,32 @@ func TestScanFindsKeysAndNeverReturnsContent(t *testing.T) {
 	}
 }
 
+func TestScanConfigWithoutPrivateKeys(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "hosts"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	config := "\uFEFFInclude hosts/*.conf\r\nHost * !excluded\r\n  User default\r\nHost local\r\n  HostName 127.0.0.1\r\n"
+	include := "Host \"work\" backup *.example !excluded # comment\n  HostName server.example\n  User=tester\n  Port 2222\n  IdentityFile \"~/.ssh/work key\" # comment\nMatch exec \"never evaluated\"\n  HostName ignored\n"
+	for name, content := range map[string]string{"config": config, "hosts/work.conf": include} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := Scan(dir, filepath.Dir(dir))
+	if err != nil || res.ConfigPartial || len(res.Items) != 0 || len(res.ConfigHosts) != 2 {
+		t.Fatalf("scan: %+v, error: %v", res, err)
+	}
+	got := res.ConfigHosts[0]
+	if strings.Join(got.Aliases, ",") != "work,backup" || got.HostName != "server.example" ||
+		got.User != "tester" || got.Port != "2222" || strings.Join(got.IdentityFiles, ",") != "~/.ssh/work key" {
+		t.Fatalf("included hosts: %+v", got)
+	}
+	if local := res.ConfigHosts[1]; local.Aliases[0] != "local" || local.HostName != "127.0.0.1" || local.User != "" {
+		t.Fatalf("local host: %+v", local)
+	}
+}
+
 func TestConfigIdentities(t *testing.T) {
 	home := filepath.FromSlash("/home/u")
 	cfg := `# comment
@@ -583,7 +612,9 @@ Match host x
 Host *
     IdentityFile none
 `
-	got := configIdentities(cfg, home)
+	scan := configScan{identities: map[string][]string{}}
+	scan.parse(cfg, "", home, 0, []string{"*"}, -1)
+	got := scan.identities
 	want := map[string][]string{
 		pathKey(filepath.Join(home, ".ssh", "global")): {"*"},
 		pathKey(filepath.Join(home, ".ssh", "k 1")):    {"one", "two"},

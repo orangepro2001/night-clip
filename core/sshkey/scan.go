@@ -50,11 +50,13 @@ type ScanItem struct {
 	Public ssh.PublicKey `json:"-"`
 }
 
-// ScanResult lists the private keys found in one directory.
+// ScanResult lists private keys and SSH host declarations found in one directory.
 type ScanResult struct {
-	Dir     string     `json:"dir"`
-	Items   []ScanItem `json:"items"`
-	Skipped int        `json:"skipped"`
+	Dir           string       `json:"dir"`
+	Items         []ScanItem   `json:"items"`
+	Skipped       int          `json:"skipped"`
+	ConfigHosts   []ConfigHost `json:"config_hosts"`
+	ConfigPartial bool         `json:"config_partial"`
 }
 
 // Scan looks at the regular files directly inside dir (no recursion),
@@ -62,7 +64,7 @@ type ScanResult struct {
 // and finds which ssh config Host blocks and which scripts in the same
 // directory refer to it. home expands "~" and "%d" in the config.
 func Scan(dir, home string) (ScanResult, error) {
-	res := ScanResult{Dir: dir, Items: []ScanItem{}}
+	res := ScanResult{Dir: dir, Items: []ScanItem{}, ConfigHosts: []ConfigHost{}}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return res, err
@@ -97,13 +99,12 @@ func Scan(dir, home string) (ScanResult, error) {
 		res.Items = append(res.Items, item)
 	}
 
-	hosts := map[string][]string{}
-	if cfg, _, err := readCapped(filepath.Join(dir, "config"), 1<<20); err == nil {
-		hosts = configIdentities(string(cfg), home)
-	}
+	cfg := configScan{hosts: res.ConfigHosts, identities: map[string][]string{}, remaining: 64, bytesLeft: 1 << 20}
+	cfg.read(filepath.Join(dir, "config"), dir, home, 0, []string{"*"}, -1)
+	res.ConfigHosts, res.ConfigPartial = cfg.hosts, cfg.partial
 	for i := range res.Items {
 		it := &res.Items[i]
-		it.ConfigHosts = hosts[pathKey(it.Path)]
+		it.ConfigHosts = cfg.identities[pathKey(it.Path)]
 		if it.ConfigHosts == nil {
 			it.ConfigHosts = []string{}
 		}

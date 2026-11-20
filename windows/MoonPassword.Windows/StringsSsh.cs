@@ -103,7 +103,7 @@ public static partial class Strings
     // ---- vault page: list and detail ----------------------------------------------------------
     public const string SshMenuImport = "导入 SSH 密钥…";
     public const string SshMenuGenerate = "生成 SSH 密钥…";
-    public const string SshMenuMigrate = "从 ~/.ssh 迁移…";
+    public const string SshMenuMigrate = "查看 SSH 主机和迁移密钥…";
     public const string SshSectionTitle = "SSH 密钥";
     public const string SshLabelType = "类型";
     public const string SshLabelFingerprint = "指纹";
@@ -207,7 +207,11 @@ public static partial class Strings
     // ---- migration wizard -------------------------------------------------------------------------
     public const string SshMigrateTitle = "把 ~/.ssh 的密钥移进密码库";
     public const string SshMigrateIntro = "导入后 ssh 通过 MoonPassword 的代理使用这些钥匙。私钥文件默认保留；只有确认一切正常、且没有别的程序直接读取它时，才可以选择移到回收站。";
-    public const string SshMigrateScanning = "正在查找私钥…";
+    public const string SshMigrateScanning = "正在读取 SSH 配置并查找私钥…";
+    public static string SshConfigTitle(int count) => $"SSH 主机配置（{count} 条）";
+    public const string SshConfigEmpty = "没有找到明确命名的 Host 条目。";
+    public const string SshConfigPartial = "部分 SSH 配置无法读取或超出扫描范围。";
+    public const string SshConfigAgentHint = "下方显示配置文件中声明的值。把对应私钥导入密码库并启用代理后，可继续用 ssh 主机别名连接。OpenSSH 会按原配置选择密钥和代理。";
     public static string SshMigrateFound(int n, string dir) => n == 0 ? $"{dir} 里没有找到私钥。" : $"在 {dir} 找到 {n} 把私钥。";
     public const string SshMigrateNeedAgent = "SSH 代理还没开。迁移会顺便打开它。";
     public const string SshMigrateBackup = "先备份密码库";

@@ -167,7 +167,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `ssh.set_agent` | `id`、`enabled` | `{agent}`；改写（或新建）`KeeAgent.settings`，保留其中不认识的元素 |
 | `ssh.normalize` | `id`、`passphrase?`（缺省用条目的 Password） | `{fingerprint}`；附件改成不加密的 OpenSSH 格式 |
 | `ssh.set_hosts` | `id`、`hosts:[…]`（最多 32 个；空 = 任何主机） | `{hosts}`（去掉首尾空白和重复后实际保存的）。每项是主机名（可用 `*`、`?`）、`[主机]:端口`，或服务器主机钥匙的指纹 `SHA256:…`；格式不对时 `INVALID`（`details.host`）。保存在条目的 CustomData `MoonPassword.SSH.Hosts`（KeePassXC 会保留但不执行），不产生历史版本 |
-| `ssh.scan` | `dir?`（默认 `~/.ssh`） | `{dir, items:[{path, format, encrypted, algo, bits, fingerprint, comment, pub_path, pub_state, config_hosts, referenced_by:[{file,line}], problem, in_vault}], skipped, vault_unlocked}`。只看目录本身（不递归），每个文件最多读 64 KiB，靠内容判断哪些是私钥；**从不返回文件内容**。`pub_state`：`ok`/`missing`/`mismatch`/`unverified`；`config_hosts` 来自同目录 `config` 的 `Host`/`IdentityFile`；`referenced_by` 是同目录 `*.ps1/*.sh/*.bat/*.cmd` 里直接写了这个文件路径的行 |
+| `ssh.scan` | `dir?`（默认 `~/.ssh`） | `{dir, items:[{path, format, encrypted, algo, bits, fingerprint, comment, pub_path, pub_state, config_hosts, referenced_by:[{file,line}], problem, in_vault}], skipped, vault_unlocked, config_hosts:[{aliases,host_name?,user?,port?,identity_files}], config_partial}`。在目录内按内容识别私钥，每个候选文件最多读 64 KiB，响应只含元数据。`pub_state` 为 `ok`/`missing`/`mismatch`/`unverified`。密钥条目的 `config_hosts` 来自声明该 `IdentityFile` 的配置段，`referenced_by` 来自同目录脚本。 |
 | `ssh.write_pub` | `path`（必须以 `.pub` 结尾）、`id` 或 `fingerprint` | `{pub_path, state}`：`created`/`same`/`mismatch`；从不覆盖 |
 | `ssh.status` | — | `{supported, enabled, state, pipe, error, keys_loaded, keys_state, expires_at, vault_unlocked, ttl_s, allow_forwarding, connections}`；`state`：`listening`/`stopped`/`conflict`（管道名已被别的程序占用）/`error`/`unsupported`；`keys_state`：`empty`/`loaded`/`grace` |
 | `ssh.keys` | — | `{vault_unlocked, keys:[…]}`：库解锁时为全部 SSH 条目（同 `vault.get` 的 `ssh` 块，外加 `group_path`）；锁着时只有 Agent 里已加载的钥匙 |
@@ -175,6 +175,10 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `ssh.selftest` | — | `{ok, listed, fingerprints, error}`：作为客户端连自己的管道并列出钥匙（只列不签） |
 
 除 `ssh.import/generate/export/set_agent/normalize/set_hosts` 外都可以在库锁着时调用。
+
+Windows 的「查看 SSH 主机和迁移密钥」读取 `~/.ssh/config` 和 `Include` 文件。顶层 `config_hosts` 按声明列出实际命名的 `Host` 条目，即使目录内没有私钥也会返回。显示值来自对应配置段，全局默认值、通配规则和 `Match` 的生效结果由 OpenSSH 在连接时计算。读取失败或达到扫描上限时，`config_partial` 为真。
+
+将对应私钥导入密码库并开启代理后，可继续用 `ssh 主机别名`。使用 `IdentitiesOnly yes` 时，OpenSSH 可用 `IdentityFile` 指定的公钥或原路径旁保留的匹配 `.pub` 选择代理里的私钥。迁移窗口会检查或补写公钥。指向其他代理或设为 `none` 的 `IdentityAgent` 仍按 OpenSSH 配置生效。
 
 **主机绑定**（`hosts` 非空的钥匙）：ssh 连上服务器后会把服务器的主机钥匙告诉 Agent（session-bind，OpenSSH 8.9 起）。这样的连接上，Agent 只列出没有绑定的钥匙和绑定到这台服务器的钥匙，所以钥匙多时不会因为依次尝试而撞上服务器的尝试次数上限（默认 6 次）；登录签名请求如果来自别的服务器，拒绝（`ssh.refused`，`reason:"host"`）。主机名的判断靠用户的 `known_hosts`（`~/.ssh/known_hosts`、`known_hosts2` 和系统级的那份），哈希过的条目只能匹配不带通配符的主机名；指纹则不依赖 `known_hosts`。没有 session-bind 的连接（`ssh-add -l`、`ssh-keygen -Y sign` 这类本地用途，以及老版本客户端）照常列出全部钥匙；不是登录的签名（例如 git 提交签名）不受主机绑定限制。
 
