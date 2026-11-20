@@ -28,6 +28,12 @@ data class AccountStatus(val state: String = "", val name: String = "", val user
     }
 }
 
+data class SyncStatus(val enabled: Boolean = false, val lastSync: Long = 0, val error: String = "") {
+    companion object {
+        fun from(o: JSONObject) = SyncStatus(o.optBoolean("enabled"), o.optLong("last_sync"), o.optString("error"))
+    }
+}
+
 /**
  * Type-safe wrapper over [CoreHost.call] (api-spec §7.3 and shell-guide §2) for everything that is not the vault
  * ([VaultApi]). All functions suspend off the main thread.
@@ -46,6 +52,11 @@ object CoreApi {
     suspend fun completeAccountLogin(callback: String) = run("account.complete", JSONObject().put("callback", callback)) { }
     suspend fun cancelAccountLogin() = run("account.cancel") { }
     suspend fun accountLogout() = run("account.logout") { }
+    suspend fun syncStatus() = run("sync.status", parse = SyncStatus::from)
+    suspend fun syncEnable(mode: String, key: String) = run("sync.enable", JSONObject().put("mode", mode).put("key", key), parse = SyncStatus::from)
+    suspend fun syncNow() = run("sync.now", parse = SyncStatus::from)
+    suspend fun syncKey() = run("sync.recovery_key") { it.optString("key") }
+    suspend fun syncDisconnect() = run("sync.disconnect", parse = SyncStatus::from)
 
     suspend fun setSetting(key: String, value: String) =
         run("settings.set", JSONObject().put("key", key).put("value", value)) { }

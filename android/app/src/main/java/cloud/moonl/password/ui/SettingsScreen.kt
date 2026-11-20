@@ -18,6 +18,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -41,6 +43,9 @@ import cloud.moonl.password.UpdateState
 import cloud.moonl.password.app
 import cloud.moonl.password.logic.UpdatePresenter
 import cloud.moonl.password.platform.Notifications
+import cloud.moonl.password.platform.VaultSession
+import java.text.DateFormat
+import java.util.Date
 
 @Composable
 fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier: Modifier = Modifier) {
@@ -88,6 +93,8 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
                 }
             }
         }
+
+        VaultSyncCard(vm, account.state == "signed_in")
 
         SectionCard(stringResource(R.string.settings_vault)) {
             SwitchRow(stringResource(R.string.settings_vault_capture), vaultPreventCapture) { on ->
@@ -154,6 +161,66 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
                 }
             },
             dismissButton = { TextButton(onClick = { vm.closeDiagnostics() }) { Text(stringResource(R.string.close)) } },
+        )
+    }
+}
+
+@Composable
+private fun VaultSyncCard(vm: SettingsViewModel, signedIn: Boolean) {
+    val sync by vm.sync.collectAsStateWithLifecycle()
+    val busy by vm.syncBusy.collectAsStateWithLifecycle()
+    val unlocked by VaultSession.unlocked.collectAsStateWithLifecycle()
+    var showJoin by remember { mutableStateOf(false) }
+    var showDisconnect by remember { mutableStateOf(false) }
+
+    SectionCard(stringResource(R.string.sync_title)) {
+        Text(stringResource(R.string.sync_description), style = MaterialTheme.typography.bodySmall)
+        Text(when {
+            !signedIn -> stringResource(R.string.sync_sign_in)
+            !unlocked -> stringResource(R.string.sync_locked)
+            sync.error.isNotBlank() -> stringResource(syncErrorText(sync.error))
+            !sync.enabled -> stringResource(R.string.sync_disabled)
+            sync.lastSync == 0L -> stringResource(R.string.sync_queued)
+            else -> stringResource(R.string.sync_last, DateFormat.getDateTimeInstance().format(Date(sync.lastSync * 1000)))
+        })
+        if (sync.enabled) {
+            Button(enabled = !busy && unlocked && signedIn, onClick = vm::syncNow) { Text(stringResource(R.string.sync_now)) }
+            OutlinedButton(enabled = !busy && unlocked, onClick = vm::copySyncKey) { Text(stringResource(R.string.sync_copy_key)) }
+            TextButton(enabled = !busy, onClick = { showDisconnect = true }) { Text(stringResource(R.string.sync_disconnect)) }
+        } else {
+            Button(enabled = !busy && unlocked && signedIn, onClick = vm::createSync) { Text(stringResource(R.string.sync_create)) }
+            OutlinedButton(enabled = !busy && unlocked && signedIn, onClick = { showJoin = true }) { Text(stringResource(R.string.sync_join)) }
+        }
+    }
+    if (showJoin && unlocked && signedIn) {
+        var key by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showJoin = false },
+            title = { Text(stringResource(R.string.sync_join)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.sync_join_hint))
+                    OutlinedTextField(key, { if (it.length <= 64) key = it }, singleLine = true,
+                        label = { Text(stringResource(R.string.sync_key)) }, visualTransformation = PasswordVisualTransformation())
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = key.trim().length == 43, onClick = {
+                    vm.joinSync(key)
+                    key = ""
+                    showJoin = false
+                }) { Text(stringResource(R.string.sync_merge)) }
+            },
+            dismissButton = { TextButton(onClick = { showJoin = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+    if (showDisconnect) {
+        AlertDialog(
+            onDismissRequest = { showDisconnect = false },
+            title = { Text(stringResource(R.string.sync_disconnect)) },
+            text = { Text(stringResource(R.string.sync_disconnect_hint)) },
+            confirmButton = { TextButton(onClick = { showDisconnect = false; vm.disconnectSync() }) { Text(stringResource(R.string.sync_disconnect)) } },
+            dismissButton = { TextButton(onClick = { showDisconnect = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

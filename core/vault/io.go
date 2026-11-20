@@ -64,6 +64,10 @@ func (v *Vault) MergeGuarded(data []byte, c Creds, reason string, o MergeOptions
 	if err := v.usable(); err != nil {
 		return MergeStats{}, err
 	}
+	return v.mergeSourceLocked(src, reason, o)
+}
+
+func (v *Vault) mergeSourceLocked(src *g.Database, reason string, o MergeOptions) (MergeStats, error) {
 	if o.RequireSameVault && src.Content.Root.Groups[0].UUID != v.root().UUID {
 		return MergeStats{}, ErrDifferentVault
 	}
@@ -148,6 +152,10 @@ func (v *Vault) ExportKDBX(c Creds, kdf KDF) ([]byte, error) {
 	if err := v.usable(); err != nil {
 		return nil, err
 	}
+	return v.exportKDBXLocked(c, kdf)
+}
+
+func (v *Vault) exportKDBXLocked(c Creds, kdf KDF) ([]byte, error) {
 	if kdf == (KDF{}) {
 		kp := v.db.Header.FileHeaders.KdfParameters
 		kdf = KDF{MemoryMiB: kp.Memory >> 20, Iterations: kp.Iterations, Parallelism: kp.Parallelism}

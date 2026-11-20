@@ -14,12 +14,13 @@ import (
 
 // MergeStats says what a merge changed in the receiving vault.
 type MergeStats struct {
-	EntriesAdded   int `json:"entries_added"`
-	EntriesUpdated int `json:"entries_updated"`
-	EntriesRemoved int `json:"entries_removed"`
-	EntriesMoved   int `json:"entries_moved"`
-	GroupsAdded    int `json:"groups_added"`
-	GroupsRemoved  int `json:"groups_removed"`
+	EntriesAdded    int `json:"entries_added"`
+	EntriesUpdated  int `json:"entries_updated"`
+	EntriesRemoved  int `json:"entries_removed"`
+	EntriesMoved    int `json:"entries_moved"`
+	GroupsAdded     int `json:"groups_added"`
+	GroupsRemoved   int `json:"groups_removed"`
+	metadataChanged bool
 }
 
 // Changed reports whether anything happened.
@@ -186,11 +187,13 @@ func (m *merger) mergeGroups(sg *g.Group, dstParent g.UUID) {
 			if m.c(child.Times.LastModificationTime) > m.c(existing.Times.LastModificationTime) {
 				existing.Name, existing.Notes = child.Name, child.Notes
 				existing.Times.LastModificationTime = child.Times.LastModificationTime
+				m.st.metadataChanged = true
 			}
 			if m.locationWins(child.Times.LocationChanged, existing.Times.LocationChanged, dstParent, m.dstParent[existing.UUID]) && !m.isAncestor(existing.UUID, dstParent) {
 				m.moveGroup(existing.UUID, dstParent, child.Times.LocationChanged)
 			} else if dstParent == m.dstParent[existing.UUID] && m.c(child.Times.LocationChanged) > m.c(existing.Times.LocationChanged) {
 				existing.Times.LocationChanged = child.Times.LocationChanged
+				m.st.metadataChanged = true
 			}
 		} else if t, gone := m.deletedAt[child.UUID]; gone && t >= m.touchedT(&child.Times) {
 			continue
@@ -261,6 +264,7 @@ func (m *merger) moveGroup(id, newParent g.UUID, at *w.TimeWrapper) {
 		np = m.dstGroups[oldID]
 	}
 	np.Groups = append(np.Groups, moved)
+	m.st.metadataChanged = true
 	m.index()
 }
 
@@ -587,6 +591,17 @@ func (m *merger) unionDeleted() {
 		out = append(out, g.DeletedObjectData{UUID: u, DeletionTime: timeWrap(t)})
 	}
 	sort.Slice(out, func(i, j int) bool { return uuidHex(out[i].UUID) < uuidHex(out[j].UUID) })
+	current := m.dst.Content.Root.DeletedObjects
+	if len(out) != len(current) {
+		m.st.metadataChanged = true
+	} else {
+		for i, item := range out {
+			if item.UUID != current[i].UUID || unix(item.DeletionTime) != unix(current[i].DeletionTime) {
+				m.st.metadataChanged = true
+				break
+			}
+		}
+	}
 	m.dst.Content.Root.DeletedObjects = out
 }
 

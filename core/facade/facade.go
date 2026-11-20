@@ -53,6 +53,7 @@ type Core struct {
 	vs      vaultState
 	ssh     sshState
 	account *accountState
+	cloud   *cloudSync
 	started bool
 	closed  bool
 
@@ -108,10 +109,14 @@ func (c *Core) Init(configJSON string) (err error) {
 	}
 	c.cfg, c.db, c.upd, c.started = cfg, db, upd, true
 	c.account = newAccountState(accountStore{db}, accountIssuer, accountClientID,
-		func() { c.emit(map[string]any{"type": "account.changed"}) })
+		func() {
+			c.emit(map[string]any{"type": "account.changed"})
+			c.cloud.schedule()
+		})
 	if cfg.Platform == proto.PlatformAndroid {
 		c.account.mobile = db
 	}
+	c.cloud = newCloudSync(c, syncBase)
 	c.sshInit()
 	upd.Run()
 	c.emit(map[string]any{"type": "core.started"})
@@ -158,11 +163,14 @@ func (c *Core) Shutdown() {
 	}
 	c.closed = true
 	close(c.done)
-	upd, db, account := c.upd, c.db, c.account
+	upd, db, account, cloud := c.upd, c.db, c.account, c.cloud
 	c.mu.Unlock()
 
 	c.sshShutdown() // first: no new outside requests, and no signatures after this point
 	c.closeVault()
+	if cloud != nil {
+		cloud.close()
+	}
 	if account != nil {
 		account.close()
 	}
@@ -229,6 +237,8 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		return c.updateCall(method, paramsJSON)
 	case "account.status", "account.login", "account.cancel", "account.complete", "account.logout":
 		return c.accountCall(method, paramsJSON)
+	case "sync.status", "sync.enable", "sync.now", "sync.disconnect", "sync.recovery_key":
+		return c.cloudCall(method, paramsJSON)
 	case "vault.status", "vault.create", "vault.unlock", "vault.lock", "vault.verify_master", "vault.change_master",
 		"vault.generate", "vault.strength", "vault.backup_list", "vault.backup_verify", "vault.backup_now",
 		"vault.list", "vault.get", "vault.reveal", "vault.copy", "vault.totp", "vault.add", "vault.update", "vault.delete",

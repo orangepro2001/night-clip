@@ -56,7 +56,7 @@ internal sealed class AccountSettingsCard : Card
         int request = ++_refresh;
         try
         {
-            var result = await _shell.AccountCallAsync("account.status");
+            var result = await _shell.SessionCallAsync("account.status");
             if (request != _refresh) return;
             _status = JsonRead.Str(result, "state");
             var name = JsonRead.Str(result, "name");
@@ -101,19 +101,19 @@ internal sealed class AccountSettingsCard : Card
             {
                 case "signed_in":
                 case "clear_session":
-                    await _shell.AccountCallAsync("account.logout");
+                    await _shell.SessionCallAsync("account.logout");
                     break;
                 case "authorizing":
-                    await _shell.AccountCallAsync("account.cancel");
+                    await _shell.SessionCallAsync("account.cancel");
                     break;
                 case "signed_out":
-                    var result = await _shell.AccountCallAsync("account.login");
+                    var result = await _shell.SessionCallAsync("account.login");
                     var url = JsonRead.Str(result, "authorization_url");
                     if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
                         !uri.IdnHost.Equals("sso.moonl.cloud", StringComparison.OrdinalIgnoreCase) || !uri.IsDefaultPort ||
                         uri.UserInfo.Length != 0 || _shell.OpenWebUrl(uri.AbsoluteUri) is not null)
                     {
-                        await _shell.AccountCallAsync("account.cancel");
+                        await _shell.SessionCallAsync("account.cancel");
                         _shell.ShowStatus("无法打开 Moon SSO 授权页。", StatusKind.Error);
                     }
                     break;

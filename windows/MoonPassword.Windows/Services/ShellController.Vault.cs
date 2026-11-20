@@ -178,10 +178,15 @@ internal sealed partial class ShellController
         var r = await VaultCallAsync(a => a.Copy(entryId, field));
         if (!r.Ok) return r.Error;
         var copy = r.Value!;
+        return await CopySensitiveTextAsync(copy.Value, label, copy.ClearAfterSeconds, field == "notes");
+    }
+
+    public async Task<string?> CopySensitiveTextAsync(string value, string label, int clearAfterSeconds, bool convertNewlines = false)
+    {
         var tcs = new TaskCompletionSource<bool>();
-        _clipQueue.Post(() => tcs.TrySetResult(WriteVaultSecretOnWorker(copy.Value, copy.ClearAfterSeconds, field == "notes")));
+        _clipQueue.Post(() => tcs.TrySetResult(WriteVaultSecretOnWorker(value, clearAfterSeconds, convertNewlines)));
         if (!await tcs.Task) return Strings.ClipboardCopyFailed;
-        ShowStatus(Strings.Copied(label, copy.ClearAfterSeconds));
+        ShowStatus(Strings.Copied(label, clearAfterSeconds));
         return null;
     }
 

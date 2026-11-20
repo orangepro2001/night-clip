@@ -12,6 +12,8 @@ import cloud.moonl.password.core.CoreApi
 import cloud.moonl.password.core.CoreEvent
 import cloud.moonl.password.core.CoreHost
 import cloud.moonl.password.core.CoreState
+import cloud.moonl.password.core.SyncStatus
+import cloud.moonl.password.platform.VaultClipboard
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -30,6 +32,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val account = _account.asStateFlow()
     private val _accountBusy = MutableStateFlow(false)
     val accountBusy = _accountBusy.asStateFlow()
+    private val _sync = MutableStateFlow(SyncStatus())
+    val sync = _sync.asStateFlow()
+    private val _syncBusy = MutableStateFlow(false)
+    val syncBusy = _syncBusy.asStateFlow()
 
     private val _deviceName = MutableStateFlow("")
     val deviceName: StateFlow<String> = _deviceName.asStateFlow()
@@ -52,6 +58,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     is CoreEvent.UpdateProgress -> _update.update { it.copy(state = "downloading", received = ev.received, total = ev.total) }
                     is CoreEvent.UpdateAvailable, is CoreEvent.UpdateReady, is CoreEvent.UpdateError -> refreshUpdate()
                     is CoreEvent.AccountChanged -> refreshAccount()
+                    is CoreEvent.SyncChanged -> refreshSync()
                     else -> Unit
                 }
             }
@@ -64,10 +71,54 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         refreshUpdate()
         refreshAccount()
+        refreshSync()
     }
 
     private fun refreshAccount() {
         viewModelScope.launch { CoreApi.accountStatus().okOrNull?.let { _account.value = it } }
+    }
+
+    private fun refreshSync() {
+        viewModelScope.launch { CoreApi.syncStatus().okOrNull?.let { _sync.value = it } }
+    }
+
+    fun createSync() = runSync { CoreApi.syncEnable("create", "") }
+    fun joinSync(key: String) = runSync { CoreApi.syncEnable("join", key) }
+    fun syncNow() = runSync { CoreApi.syncNow() }
+    fun disconnectSync() = runSync { CoreApi.syncDisconnect() }
+
+    private fun runSync(action: suspend () -> ApiResult<SyncStatus>) {
+        if (_syncBusy.value) return
+        _syncBusy.value = true
+        viewModelScope.launch {
+            try {
+                when (val result = action()) {
+                    is ApiResult.Ok -> _sync.value = result.value
+                    is ApiResult.Fail -> _messages.tryEmit(getApplication<MoonPasswordApp>().getString(syncErrorText(result.code)))
+                }
+            } finally {
+                _syncBusy.value = false
+            }
+        }
+    }
+
+    fun copySyncKey() {
+        if (_syncBusy.value) return
+        _syncBusy.value = true
+        viewModelScope.launch {
+            try {
+                val app = getApplication<MoonPasswordApp>()
+                when (val result = CoreApi.syncKey()) {
+                    is ApiResult.Ok -> {
+                        val message = if (VaultClipboard.copy(app, result.value, 30)) R.string.sync_key_copied else R.string.toast_copy_failed
+                        _messages.tryEmit(app.getString(message))
+                    }
+                    is ApiResult.Fail -> _messages.tryEmit(app.getString(syncErrorText(result.code)))
+                }
+            } finally {
+                _syncBusy.value = false
+            }
+        }
     }
 
     fun accountAction(openBrowser: (String) -> Boolean) {
@@ -133,4 +184,16 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun closeDiagnostics() {
         _diagnostics.value = null
     }
+}
+
+internal fun syncErrorText(code: String): Int = when (code) {
+    "VAULT_LOCKED" -> R.string.sync_locked
+    "SYNC_SIGN_IN" -> R.string.sync_sign_in
+    "SYNC_ACCOUNT" -> R.string.sync_account_mismatch
+    "SYNC_EXISTS" -> R.string.sync_exists
+    "SYNC_MISSING" -> R.string.sync_missing
+    "SYNC_KEY" -> R.string.sync_bad_key
+    "SYNC_CONFLICT" -> R.string.sync_conflict
+    "SYNC_DATA" -> R.string.sync_invalid
+    else -> R.string.sync_network_error
 }

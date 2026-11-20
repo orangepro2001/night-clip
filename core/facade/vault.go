@@ -43,8 +43,12 @@ func (c *Core) vaultDir() string { return filepath.Join(c.cfg.DataDir, "vault") 
 // afterOpen wires a freshly opened vault to the SSH agent (every save may change which keys the agent
 // offers). Called without vs.mu held.
 func (c *Core) vaultAfterOpen(v *vault.Vault) {
-	v.SetOnSaved(c.sshScheduleLoad)
+	v.SetOnSaved(func() {
+		c.sshScheduleLoad()
+		c.cloud.schedule()
+	})
 	go c.sshLoad()
+	c.cloud.schedule()
 }
 
 func (c *Core) vaultIntSetting(key string, def int) int {

@@ -6,9 +6,10 @@ be opened with KeePassXC.
 
 MoonPassword grew out of ClipBridge (clipboard sync over a Tailscale tailnet). Clipboard sync, file transfer and
 tailnet pairing were removed in 2026-11; the old design documents are kept in
-[`docs/archive-clipbridge/`](docs/archive-clipbridge). On Windows and Android, the Settings page offers Moon SSO sign-in
-in the system browser. The master password still unlocks the local vault. Cross-device transfer currently
-uses encrypted KDBX export and import.
+[`docs/archive-clipbridge/`](docs/archive-clipbridge). On Windows and Android, Settings offers Moon SSO sign-in
+and automatic encrypted vault sync. Unlock the local vault with its own master password. Create the
+cloud vault on the first device and copy its sync key. On a second device, sign into the same account,
+unlock its local vault and connect to the existing cloud vault with that key. See [vault sync](docs/vault-sync.md).
 
 ```text
 core/                         Go module `moonpassword/core`: all business logic
