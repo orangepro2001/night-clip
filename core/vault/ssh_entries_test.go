@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"nightclip/core/sshkey"
@@ -213,5 +214,31 @@ func TestKeePassXCExportsSSHAttachmentsUnchanged(t *testing.T) {
 		if got, _ := os.ReadFile(out); !bytes.Equal(got, want) {
 			t.Fatalf("%s differs after KeePassXC export", name)
 		}
+	}
+}
+
+func TestSSHHostsRoundTripWithoutHistory(t *testing.T) {
+	a, clock := baseVault(t)
+	id := addSSHEntry(t, a, "GitHub")
+	if err := a.SetSSHHosts(id, []string{"github.com", "*.corp.example"}); err != nil {
+		t.Fatal(err)
+	}
+	cs, _ := a.SSHCandidates(id)
+	if strings.Join(cs[0].Hosts, ",") != "github.com,*.corp.example" {
+		t.Fatalf("%v", cs[0].Hosts)
+	}
+	if e, _ := a.Get(id); e.History != 0 {
+		t.Fatalf("history %d", e.History)
+	}
+	b := fork(t, a, clock)
+	if err := b.SetSSHHosts(id, nil); err != nil {
+		t.Fatal(err)
+	}
+	merge(t, a, b)
+	if cs, _ := a.SSHCandidates(id); len(cs[0].Hosts) != 0 {
+		t.Fatalf("clearing the hosts did not merge: %v", cs[0].Hosts)
+	}
+	if err := a.SetSSHHosts("nope", nil); err != ErrNotFound {
+		t.Fatalf("%v", err)
 	}
 }

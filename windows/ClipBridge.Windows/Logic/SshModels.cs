@@ -12,6 +12,9 @@ public sealed record SshKeyInfo(
     string Comment, string PublicKey, bool Agent, bool Loaded, string SourceFormat, bool Encrypted,
     string Problem, string Reason, long LastUsedAt, long ExpiresAt)
 {
+    /// <summary>The servers the key is limited to (host patterns or "SHA256:" host key fingerprints); empty = any server.</summary>
+    public IReadOnlyList<string> Hosts { get; init; } = Array.Empty<string>();
+
     public bool Usable => Problem.Length == 0 || Problem == "missing_settings";
 
     public static SshKeyInfo FromJson(JsonElement e) => new(
@@ -19,7 +22,10 @@ public sealed record SshKeyInfo(
         JsonRead.Str(e, "algo"), (int)JsonRead.Long(e, "bits"), JsonRead.Str(e, "fingerprint"), JsonRead.Str(e, "comment"),
         JsonRead.Str(e, "public_key"), JsonRead.Bool(e, "agent"), JsonRead.Bool(e, "loaded"), JsonRead.Str(e, "source_format"),
         JsonRead.Bool(e, "encrypted"), JsonRead.Str(e, "problem"), JsonRead.Str(e, "reason"),
-        JsonRead.Long(e, "last_used_at"), JsonRead.Long(e, "expires_at"));
+        JsonRead.Long(e, "last_used_at"), JsonRead.Long(e, "expires_at"))
+    {
+        Hosts = JsonRead.StrArr(e, "hosts"),
+    };
 
     /// <summary>"Ed25519", "RSA 3072", "ECDSA P-384".</summary>
     public string TypeText => SshText.Algo(Algo, Bits);
@@ -182,4 +188,63 @@ public static class SshText
         "unsupported" => Strings.SshUnsupported(reason),
         _ => Strings.SshProblemCorrupt,
     };
+}
+
+/// <summary>Host binding (ssh.set_hosts): which servers a key is offered to.</summary>
+public static class SshHosts
+{
+    public const int Max = 32;
+
+    /// <summary>Splits what the user typed (one per line, or separated by commas / spaces), trimmed and without duplicates.</summary>
+    public static IReadOnlyList<string> Parse(string? text)
+    {
+        var out_ = new List<string>();
+        foreach (var raw in (text ?? "").Split(new[] { '\n', '\r', ',', ' ', '\t', '，', '、' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var h = raw.Trim();
+            if (h.Length > 0 && !out_.Contains(h, StringComparer.Ordinal)) out_.Add(h);
+        }
+        return out_;
+    }
+
+    /// <summary>The same rule as the core (sshagent.ValidHostPattern): a host name or address with * ? wildcards, "[host]:port", or "SHA256:" plus 43 base64 characters.</summary>
+    public static bool Valid(string p)
+    {
+        if (p.Length == 0 || p.Length > 255) return false;
+        if (p.StartsWith("SHA256:", StringComparison.Ordinal))
+        {
+            var b64 = p["SHA256:".Length..];
+            if (b64.Length != 43) return false;
+            try { return Convert.FromBase64String(b64 + "=").Length == 32; }
+            catch (FormatException) { return false; }
+        }
+        foreach (var c in p)
+        {
+            if (char.IsAsciiLetterOrDigit(c) || ".-_*?:[]".Contains(c)) continue;
+            return false;
+        }
+        return true;
+    }
+
+    /// <summary>The first pattern that is not valid, or null.</summary>
+    public static string? FirstInvalid(IEnumerable<string> patterns) => patterns.FirstOrDefault(p => !Valid(p));
+
+    /// <summary>
+    /// Servers this key recently logged in to (newest first): the host name when known_hosts names it, otherwise the
+    /// host key fingerprint, so the suggestion always works.
+    /// </summary>
+    public static IReadOnlyList<string> Suggestions(IEnumerable<SshUse> recent, string fingerprint)
+    {
+        var out_ = new List<string>();
+        foreach (var u in recent)
+        {
+            if (u.Fingerprint != fingerprint || !u.Signed || u.Kind != "userauth") continue;
+            var h = u.Host.Length > 0 ? u.Host : u.HostKeyFp;
+            if (h.Length > 0 && !out_.Contains(h, StringComparer.OrdinalIgnoreCase)) out_.Add(h);
+        }
+        return out_;
+    }
+
+    /// <summary>How a pattern is shown: fingerprints shortened.</summary>
+    public static string Display(string p) => p.StartsWith("SHA256:", StringComparison.Ordinal) ? SshText.ShortFingerprint(p) : p;
 }

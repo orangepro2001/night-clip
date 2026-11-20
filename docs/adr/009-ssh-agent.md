@@ -19,7 +19,8 @@
 5. **存放方式与 KeePassXC 互通。** 条目 kind 为 `ssh`；私钥统一转成**不加密**的 OpenSSH 格式存为附件（密码库本身就是加密层）；同时写 `KeeAgent.settings`（KeePassXC/KeeAgent 的格式，UTF-16LE），`AddAtDatabaseOpen` 即“提供给 Agent”的开关。没有 `ClipBridge.Kind` 但带 `KeeAgent.settings` 的条目读作 `ssh`；旧客户端把它改成 `login` 时核心保持 `ssh`。能否进 Agent 看 `KeeAgent.settings`，不看 kind。
 6. **格式识别在核心。** 新包 `core/sshkey` 按内容（不看文件名）识别并解密：OpenSSH（none、aes128/192/256-ctr/cbc、aes128/256-gcm、chacha20-poly1305、3des-cbc）、PEM PKCS#1/SEC1（含旧式 Proc-Type 加密）、PKCS#8（明文与 PBES2：PBKDF2-HMAC-SHA1/224/256/384/512 或 scrypt，AES-CBC 或 3DES）、裸 DER、PuTTY PPK v2/v3（Argon2i/d/id）。能识别但拒绝并说明原因：DSA、FIDO（sk-*）、ssh.com 格式、PPK v1、PBES1、公钥/证书、RSA < 2048、其它曲线、一文件多钥。每条解密路径都有成本上限（bcrypt 轮数、PBKDF2 次数、scrypt/Argon2 内存），解密在锁外进行。
 7. **私钥只经 `ssh.export` 离开核心**，且要求再次输入主密码，文件以独占方式新建（不覆盖）。
-8. **迁移 `~/.ssh` 默认不删文件。** 扫描只读元数据，从不返回文件内容。ssh 在私钥文件不存在、只有 `<路径>.pub` 时会改用 Agent 里的同一把钥匙（本机 Windows OpenSSH 9.5 实测），所以迁移只需补 `.pub`，`~/.ssh/config` 不用改。只有指纹一致、`.pub` 正确、Agent 已列出、且同目录脚本没有直接引用这个文件时，才提供（默认不勾选）移到回收站。
+8. **主机绑定**（2026-11-20 补充）：钥匙可以限定服务器（主机名模式或主机钥匙指纹，存在 CustomData `ClipBridge.SSH.Hosts`）。有 session-bind 的连接只列出与目标服务器相符的钥匙，并拒绝发往别处的登录签名；本地用途（没有 session-bind）和非登录签名不受限制。主机名靠用户的 `known_hosts` 识别。
+9. **迁移 `~/.ssh` 默认不删文件。** 扫描只读元数据，从不返回文件内容。ssh 在私钥文件不存在、只有 `<路径>.pub` 时会改用 Agent 里的同一把钥匙（本机 Windows OpenSSH 9.5 实测），所以迁移只需补 `.pub`，`~/.ssh/config` 不用改。只有指纹一致、`.pub` 正确、Agent 已列出、且同目录脚本没有直接引用这个文件时，才提供（默认不勾选）移到回收站。
 
 ## 后果
 

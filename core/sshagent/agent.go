@@ -29,6 +29,7 @@ const (
 	RefusedForwarding = "forwarding"  // the request came through ssh -A and forwarding is off
 	RefusedUnknownKey = "unknown_key" // the key is not (or no longer) loaded
 	RefusedNoKeys     = "no_keys"     // nothing is loaded at all
+	RefusedHost       = "host"        // the key is bound to other hosts than the one the client talks to
 	RefusedError      = "error"       // signing failed
 )
 
@@ -56,6 +57,9 @@ type Hooks struct {
 	OnKeysNeeded    func(client []Proc)
 	Client          func(conn io.ReadWriteCloser) []Proc
 	Now             func() time.Time
+	// KnownHosts maps a server's host key to names for keys bound to hosts
+	// (Key.Hosts). Nil means only fingerprint patterns can match.
+	KnownHosts *KnownHosts
 }
 
 // Listener is what the server accepts connections from (core/pipe's
@@ -222,6 +226,9 @@ func (a *connAgent) List() ([]*agent.Key, error) {
 		return []*agent.Key{}, nil
 	}
 	if hk := a.boundHost(); hk != nil {
+		// The client said which server it talks to: offer only the keys meant for it, so a
+		// server that allows few attempts is not tried with every key first.
+		keys = a.s.forHost(keys, hk)
 		used := a.s.usedFor(hk)
 		sort.SliceStable(keys, func(i, j int) bool {
 			return used[keys[i].Fingerprint] > used[keys[j].Fingerprint]
@@ -267,6 +274,9 @@ func (a *connAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Si
 		return refuse(RefusedUnknownKey)
 	}
 	use.Title, use.EntryID = k.Title, k.EntryID
+	if len(k.Hosts) > 0 && req.Kind == KindUserauth && use.HostKey != nil && !a.s.hostAllowed(k, use.HostKey) {
+		return refuse(RefusedHost)
+	}
 
 	var sig *ssh.Signature
 	var err error
@@ -318,6 +328,24 @@ func (a *connAgent) RemoveAll() error               { return errRefused }
 func (a *connAgent) Lock([]byte) error              { return errRefused }
 func (a *connAgent) Unlock([]byte) error            { return errRefused }
 func (a *connAgent) Signers() ([]ssh.Signer, error) { return nil, errRefused }
+
+// forHost keeps the keys that are not bound to hosts, or are bound to hk.
+func (s *Server) forHost(keys []*Key, hk ssh.PublicKey) []*Key {
+	out := keys[:0:0]
+	for _, k := range keys {
+		if len(k.Hosts) == 0 || s.hostAllowed(k, hk) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+func (s *Server) hostAllowed(k *Key, hk ssh.PublicKey) bool {
+	if s.hooks.KnownHosts == nil {
+		return (*KnownHosts)(nil).Matches(hk, k.Hosts)
+	}
+	return s.hooks.KnownHosts.Matches(hk, k.Hosts)
+}
 
 func (s *Server) report(u Use) {
 	if s.hooks.OnUse != nil {

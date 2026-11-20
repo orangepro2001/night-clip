@@ -1,6 +1,8 @@
 package vault
 
 import (
+	"strings"
+
 	g "github.com/tobischo/gokeepasslib/v3"
 
 	"nightclip/core/sshkey"
@@ -127,6 +129,51 @@ type SSHCandidate struct {
 	KeyName   string // the attachment holding the key; empty when unknown
 	Key       []byte // copy of that attachment; nil when missing or too large
 	KeySize   int    // size of the attachment, even when too large to copy
+	Hosts     []string
+}
+
+// cdSSHHosts holds the hosts an SSH key is limited to, one pattern per line.
+// KeePassXC keeps CustomData it does not know, so the binding survives a
+// round trip through it (KeePassXC itself does not enforce it).
+const cdSSHHosts = "ClipBridge.SSH.Hosts"
+
+func splitHosts(v string) []string {
+	var out []string
+	for _, h := range strings.Split(v, "\n") {
+		if h = strings.TrimSpace(h); h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// SetSSHHosts limits an SSH key entry to the given hosts (none = any host).
+// Patterns are stored as given; the facade validates them. The change is
+// metadata: it does not add a history item.
+func (v *Vault) SetSSHHosts(id string, hosts []string) error {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if err := v.usable(); err != nil {
+		return err
+	}
+	le, _, _, _ := v.findEntry(id)
+	if le == nil {
+		return ErrNotFound
+	}
+	if len(hosts) > 32 {
+		return ErrTooLarge
+	}
+	value := strings.Join(hosts, "\n")
+	if getCustom(le, cdSSHHosts) == value {
+		return nil
+	}
+	if value == "" {
+		delCustom(le, cdSSHHosts)
+	} else {
+		setCustom(le, cdSSHHosts, value)
+	}
+	v.touch(le)
+	return v.commit("save")
 }
 
 // SSHCandidates returns the entries that carry KeeAgent.settings or have
@@ -149,7 +196,7 @@ func (v *Vault) SSHCandidates(id string) ([]SSHCandidate, error) {
 		}
 		c := SSHCandidate{
 			ID: uuidHex(le.UUID), Title: entryGet(le, fTitle), GroupID: gid, Kind: kind, InTrash: trash,
-			Password: entryGet(le, fPassword),
+			Password: entryGet(le, fPassword), Hosts: splitHosts(getCustom(le, cdSSHHosts)),
 		}
 		if le.Times.Expires.Bool {
 			c.ExpiresAt = unix(le.Times.ExpiryTime)

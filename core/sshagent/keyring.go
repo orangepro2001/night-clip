@@ -24,6 +24,9 @@ type Key struct {
 	Title       string
 	Comment     string
 	Fingerprint string
+	// Hosts, when not empty, limits the key to these servers (host name
+	// patterns or "SHA256:" host key fingerprints, see KnownHosts.Matches).
+	Hosts []string
 
 	// seed is zeroed when the key is dropped (Ed25519 only: RSA and ECDSA
 	// keys live in big.Int values that cannot be wiped reliably).

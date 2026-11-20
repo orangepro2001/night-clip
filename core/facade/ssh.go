@@ -12,6 +12,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"nightclip/core/proto"
+	"nightclip/core/sshagent"
 	"nightclip/core/sshkey"
 	"nightclip/core/vault"
 )
@@ -169,6 +170,7 @@ func (c *Core) sshEntryView(e sshEval, groupPaths map[string]string) map[string]
 		"entry_id": e.cand.ID, "title": e.cand.Title, "group_id": e.cand.GroupID,
 		"key_attachment": e.cand.KeyName, "agent": e.agentOn(), "loaded": false,
 		"problem": e.problem, "in_trash": e.cand.InTrash, "expires_at": e.cand.ExpiresAt,
+		"hosts": nonNil(e.cand.Hosts),
 	}
 	if e.reason != "" {
 		v["reason"] = e.reason
@@ -296,6 +298,8 @@ func (c *Core) sshDispatch(method, params string) (any, error) {
 		return c.sshSetAgent(v, params)
 	case "ssh.normalize":
 		return c.sshNormalize(v, params)
+	case "ssh.set_hosts":
+		return c.sshSetHosts(v, params)
 	}
 	return nil, proto.Errorf(proto.CodeMethodNotFound, "unknown method %q", method)
 }
@@ -584,6 +588,52 @@ func (c *Core) sshNormalize(v *vault.Vault, params string) (any, error) {
 	return map[string]any{"fingerprint": k.Fingerprint()}, nil
 }
 
+// sshSetHosts limits a key to some servers (an empty list lifts the limit).
+// Patterns are host names with optional * ? wildcards, "[host]:port", or a
+// host key fingerprint "SHA256:…"; the agent matches names through the
+// user's known_hosts files.
+func (c *Core) sshSetHosts(v *vault.Vault, params string) (any, error) {
+	var p struct {
+		ID    string   `json:"id"`
+		Hosts []string `json:"hosts"`
+	}
+	if err := parseParams(params, &p); err != nil {
+		return nil, err
+	}
+	if _, err := c.sshCandidate(v, p.ID); err != nil {
+		return nil, err
+	}
+	hosts := []string{}
+	for _, h := range p.Hosts {
+		h = strings.TrimSpace(h)
+		if h == "" || containsString(hosts, h) {
+			continue
+		}
+		if !sshagent.ValidHostPattern(h) {
+			e := proto.Errorf(proto.CodeInvalid, "not a host name, [host]:port or SHA256 fingerprint: %q", h)
+			e.Details = map[string]any{"host": h}
+			return nil, e
+		}
+		hosts = append(hosts, h)
+	}
+	if len(hosts) > 32 {
+		return nil, proto.Errorf(proto.CodeInvalid, "at most 32 hosts")
+	}
+	if err := v.SetSSHHosts(p.ID, hosts); err != nil {
+		return nil, err
+	}
+	return map[string]any{"hosts": hosts}, nil
+}
+
+func containsString(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
 // sshKeys lists the vault's SSH entries, or only the loaded keys when the
 // vault is locked.
 func (c *Core) sshKeys() (any, error) {
@@ -594,6 +644,7 @@ func (c *Core) sshKeys() (any, error) {
 			keys = append(keys, map[string]any{
 				"entry_id": k.EntryID, "title": k.Title, "algo": k.Public.Type(), "fingerprint": k.Fingerprint,
 				"comment": k.Comment, "agent": true, "loaded": true, "problem": "", "last_used_at": c.sshLastUsed(k.Fingerprint),
+				"hosts": nonNil(k.Hosts),
 			})
 		}
 		return map[string]any{"vault_unlocked": false, "keys": keys}, nil

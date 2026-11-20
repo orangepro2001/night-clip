@@ -65,6 +65,7 @@ public static partial class Strings
         "forwarding" => "有请求经 ssh -A 转发过来；转发默认关闭，可在设置里打开。",
         "no_keys" => "密码库已锁定，代理里没有可用的密钥。",
         "unknown_key" => "请求的密钥已不在代理里。",
+        "host" => "这把钥匙限定了主机，请求来自别的服务器。",
         _ => "签名失败。",
     };
 
@@ -128,6 +129,20 @@ public static partial class Strings
     public const string SshNormalizeText = "密码库本身已加密。去掉密钥自己的口令后，SSH 代理就能直接使用它；导出时可以重新加口令。";
     public const string SshNormalizeDone = "已去掉口令";
     public const string SshKindHint = "SSH 密钥由“导入”或“生成”创建，类型不能更改。";
+
+    // ---- host binding ---------------------------------------------------------------------------
+    public const string SshHostsTitle = "限定主机";
+    public const string SshHostsAny = "任何主机";
+    public const string SshHostsHint = "只在 ssh 连接这些服务器时提供这把钥匙；钥匙多时可避免服务器因尝试次数过多而拒绝登录。";
+    public const string SshHostsEdit = "设置…";
+    public const string SshHostsPromptTitle = "限定这把钥匙用于哪些主机";
+    public const string SshHostsPromptLabel = "每行一个：主机名（可用 * 和 ?）、[主机]:端口，或服务器主机钥匙的指纹 SHA256:…。主机名按 known_hosts 识别；留空表示任何主机。";
+    public static string SshHostsInvalid(string host) => $"“{host}”不是主机名、[主机]:端口或 SHA256 指纹。";
+    public const string SshHostsInvalidAny = "有一行不是主机名、[主机]:端口或 SHA256 指纹，或者超过了 32 个。";
+    public const string SshHostsSaved = "已更新限定主机";
+    public static string SshHostsSuggest(IReadOnlyList<string> hosts) => "最近用于：" + string.Join("、", hosts.Select(SshHosts.Display));
+    public const string SshHostsUseSuggested = "只用于这些主机";
+    public const string SshHostsUnboundNote = "没有限定时，任何服务器都可能被依次尝试这把钥匙。"; 
 
     // ---- import window ------------------------------------------------------------------------
     public const string SshImportTitle = "导入 SSH 密钥";

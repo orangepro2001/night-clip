@@ -20,11 +20,17 @@
 | 3 Windows 界面 | 密码库“SSH 密钥”筛选与详情区块、导入 / 生成 / 导出 / 迁移窗口、设置页“SSH 代理”卡片（环境检查、Git 一键修复、服务冲突处理、最近使用）、气泡节流 | **完成**；真机验证见下 |
 | 4 macOS | `listen_unix` 用 LOCAL_PEERPID；`~/.clipbridge/agent.sock`；经同意后用 Include 引入受管的 `IdentityAgent` 配置；移植界面 | 未开始 |
 | 5 Android | ssh kind 的显示、筛选、复制公钥；Agent 方法返回 UNSUPPORTED | 未开始（核心在 Android 上已返回 `state:"unsupported"`） |
-| 6 以后 | 主机绑定（按 session-bind 的主机钥匙筛选列表，解决钥匙多时撞上服务器 MaxAuthTries=6）；Pageant 兼容与 PPK 导出；Git SSH 签名助手；本地 SSH CA（CA 私钥在密码库，给选中的钥匙签短期证书，生成 `TrustedUserCAKeys` / `@cert-authority` 行与主机证书，需要改服务器配置，只做可选） | 未开始。主机绑定建议优先：本机已有 5 把钥匙，没有 `IdentitiesOnly` 的主机会依次被尝试 |
+| 6a 主机绑定 | 每把钥匙可限定服务器（主机名 / 通配符 / `[主机]:端口` / 主机钥匙指纹），按 session-bind 的主机钥匙和 `known_hosts`（含哈希条目）筛选列表、拒绝发往别处的登录签名；`ssh.set_hosts`；Windows 详情里“限定主机”区块和“只用于最近登录过的主机”一键设置 | **完成**（2026-11-20）。`CB_SSH_E2E=1` 的测试用真实 ssh 验证：绑到别的服务器时登录失败，绑到这台时成功 |
+| 6 以后 | Pageant 兼容与 PPK 导出；Git SSH 签名助手；本地 SSH CA（CA 私钥在密码库，给选中的钥匙签短期证书，生成 `TrustedUserCAKeys` / `@cert-authority` 行与主机证书，需要改服务器配置，只做可选）；macOS（阶段 4）、Android（阶段 5） | 未开始 |
+
+## 发布
+
+- **0.1.112**（提交 `894efc6`，2026-11-20）：阶段 0–3，同时把更新服务换成 `https://release.moonl.cloud`（[update.md §7b](update.md#7b-2026-11-20迁到-releasemoonlcloud)）。三个平台都已发布并按 App 的方式验证；Windows 包在本机开发实例里跑过完整截图（真实核心：SSH 条目、导入预览、迁移扫描）。
+- 主机绑定（阶段 6a）在 0.1.112 之后，随下一个版本发布。
 
 ## 真机还要验证的
 
-本机没有 cgo 工具链，核心 DLL 需要在构建机上交叉编译后，用开发实例（`CLIPBRIDGE_DATA_DIR`）依次确认：
+本机没有 cgo 工具链，核心 DLL 在构建机（`AI`）上交叉编译。用开发实例（`CLIPBRIDGE_DATA_DIR`）依次确认：
 
 1. 设置页开启 SSH 代理，状态为“正在运行”，自检列出钥匙；
 2. 用“从 ~/.ssh 迁移”导入现有钥匙（先不移走文件），`ssh-add -l` 能列出；

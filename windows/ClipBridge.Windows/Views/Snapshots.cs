@@ -155,7 +155,14 @@ internal static class Snapshots
             await shell.VaultCallAsync(a => a.Add(new EntryDraft { Kind = EntryKinds.ApiKey, Title = "OpenWeather API", Password = "sk_live_51HxQ2example", Url = "https://api.openweathermap.org" }));
             await shell.VaultCallAsync(a => a.Add(new EntryDraft { Kind = EntryKinds.Login, Title = "家里路由器", Username = "admin", Password = "Tr0ub4dor&3", Url = "http://192.168.1.1" }));
             await shell.VaultCallAsync(a => a.Add(new EntryDraft { Kind = EntryKinds.Note, Title = "Wi-Fi 访客网络", Notes = "SSID: Home-Guest\n密码写在冰箱上。" }));
-            await shell.SshCallAsync(a => a.Generate("ed25519", 0, "GitHub 部署密钥", "deploy@clipbridge"));
+            var key = await shell.SshCallAsync(a => a.Generate("ed25519", 0, "GitHub 部署密钥", "deploy@clipbridge"));
+            if (key.Ok) await shell.SshCallAsync(a => a.SetHosts(key.Value!.Id, new[] { "github.com", "*.github.com" }));
+        }
+        // The agent on its own pipe (never the real ssh one), so the SSH screens show a running agent with loaded keys.
+        if (!shell.SshState.Listening)
+        {
+            await shell.CallAsync(a => a.SettingsSet("ssh_agent_pipe", @"\\.\pipe\clipbridge-snapshot-" + Environment.ProcessId));
+            await shell.SetSshAgentAsync(true);
         }
 
         var notes = await shell.NotesCallAsync(api => api.List());

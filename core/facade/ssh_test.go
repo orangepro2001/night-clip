@@ -2,6 +2,7 @@ package facade
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"io"
@@ -542,6 +543,23 @@ func TestSSHAgentWithOpenSSH(t *testing.T) {
 	if auth["user"] != "tester" || auth["host_key_fp"] != ssh.FingerprintSHA256(host) {
 		t.Fatalf("userauth use (session-bind expected to name the server): %v", auth)
 	}
+
+	// Host binding with the real client: bound to some other server, the key is not offered and
+	// the login fails; bound to this server's host key, it works again.
+	other, _ := sshkey.Generate("ed25519", 0, "elsewhere")
+	otherPub, _ := ssh.NewPublicKey(other.Signer.Public())
+	n.call("ssh.set_hosts", map[string]any{"id": gen["id"], "hosts": []string{ssh.FingerprintSHA256(otherPub)}})
+	time.Sleep(600 * time.Millisecond) // the agent reloads 200 ms after the save
+	again := &exec.Cmd{Path: sshExe, Env: env, Args: login.Args}
+	if out, err := again.CombinedOutput(); err == nil {
+		t.Fatalf("login with a key bound to another host succeeded:\n%s", out)
+	}
+	n.call("ssh.set_hosts", map[string]any{"id": gen["id"], "hosts": []string{ssh.FingerprintSHA256(host)}})
+	time.Sleep(600 * time.Millisecond)
+	third := &exec.Cmd{Path: sshExe, Env: env, Args: login.Args}
+	if out, err := third.CombinedOutput(); err != nil {
+		t.Fatalf("login with the key bound to this host: %v\n%s", err, out)
+	}
 }
 
 func fileExists(p string) bool {
@@ -605,4 +623,65 @@ func startTestSSHServer(t *testing.T, allowed ssh.PublicKey) (ssh.PublicKey, hos
 	}()
 	h, p, _ := net.SplitHostPort(l.Addr().String())
 	return signer.PublicKey(), hostPort{h, p}
+}
+
+func TestSSHHostBindingThroughTheFacade(t *testing.T) {
+	n := startNode(t, "Desk", "windows", false)
+	name := enableAgent(t, n)
+	vcreate(t, n)
+	bound := n.call("ssh.generate", map[string]any{"title": "Bound"})
+	free := n.call("ssh.generate", map[string]any{"title": "Free"})
+	waitFor(t, "both keys loaded", func() bool { return len(listFPs(t, name)) == 2 })
+
+	if code := n.errorCode("ssh.set_hosts", map[string]any{"id": bound["id"], "hosts": []string{"two words"}}); code != "INVALID" {
+		t.Fatalf("bad pattern: %s", code)
+	}
+	host, _ := sshkey.Generate("ed25519", 0, "host")
+	signer, _ := ssh.NewSignerFromKey(host.Signer)
+	fp := ssh.FingerprintSHA256(signer.PublicKey())
+	set := n.call("ssh.set_hosts", map[string]any{"id": bound["id"], "hosts": []string{" github.com ", fp, "github.com"}})
+	if hosts := set["hosts"].([]any); len(hosts) != 2 {
+		t.Fatalf("hosts not trimmed and deduplicated: %v", hosts)
+	}
+	if v := n.call("vault.get", map[string]any{"id": bound["id"]})["ssh"].(map[string]any); len(v["hosts"].([]any)) != 2 {
+		t.Fatalf("vault.get hosts: %v", v)
+	}
+
+	bindAndList := func(s ssh.Signer) []string {
+		a := agentClient(t, name)
+		sig, _ := s.Sign(rand.Reader, []byte("session"))
+		msg := ssh.Marshal(struct {
+			HostKey, SessionID, Sig []byte
+			Fwd                     bool
+		}{s.PublicKey().Marshal(), []byte("session"), ssh.Marshal(sig), false})
+		if _, err := a.Extension("session-bind@openssh.com", msg); err != nil {
+			t.Fatal(err)
+		}
+		keys, err := a.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, k := range keys {
+			out = append(out, k.Comment)
+		}
+		return out
+	}
+	waitFor(t, "binding loaded", func() bool { return strings.Join(bindAndList(signer), ",") != "" })
+	if got := bindAndList(signer); len(got) != 2 {
+		t.Fatalf("to the bound host: %v", got)
+	}
+	other, _ := sshkey.Generate("ed25519", 0, "other")
+	otherSigner, _ := ssh.NewSignerFromKey(other.Signer)
+	waitFor(t, "bound key hidden from other hosts", func() bool {
+		got := bindAndList(otherSigner)
+		return len(got) == 1 && got[0] == "Free"
+	})
+	if fps := listFPs(t, name); len(fps) != 2 {
+		t.Fatalf("an unbound connection (ssh-add -l) lists every key: %v", fps)
+	}
+
+	n.call("ssh.set_hosts", map[string]any{"id": bound["id"], "hosts": []string{}})
+	waitFor(t, "limit lifted", func() bool { return len(bindAndList(otherSigner)) == 2 })
+	_ = free
 }

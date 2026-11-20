@@ -155,7 +155,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 
 **存放：** kind `ssh` 的条目。私钥以**不加密**的 OpenSSH 格式作为附件（名字沿用原文件名，生成的叫 `id_<算法>`），另有 `KeeAgent.settings` 附件（KeePassXC 的格式；`AllowUseOfSshKey` 与 `AddAtDatabaseOpen` 都为真时提供给 Agent）。KeePassXC 习惯把加密私钥的口令放在条目的 Password 里，核心读取时会用它试着解密；`ssh.normalize` 可以把这类条目转成不加密的 OpenSSH 附件。
 
-**`vault.get` 的 `ssh` 块**（只有 SSH 条目有）：`{entry_id, title, group_id, key_attachment, algo, bits, fingerprint:"SHA256:…", comment, public_key, agent, loaded, source_format, encrypted, problem, reason?, last_used_at?, in_trash, expires_at}`。`problem` 为空表示可用；其它值：`needs_passphrase`（附件仍加密且没有可用口令）、`external_file`（KeePassXC 指向磁盘文件，不支持）、`missing_key`、`too_large`、`unsupported`（`reason` 同下表）、`corrupt`、`missing_settings`（可用，但没有 `KeeAgent.settings`，不会进 Agent）。
+**`vault.get` 的 `ssh` 块**（只有 SSH 条目有）：`{entry_id, title, group_id, key_attachment, algo, bits, fingerprint:"SHA256:…", comment, public_key, agent, loaded, source_format, encrypted, problem, reason?, last_used_at?, in_trash, expires_at, hosts:[…]}`。`problem` 为空表示可用；其它值：`needs_passphrase`（附件仍加密且没有可用口令）、`external_file`（KeePassXC 指向磁盘文件，不支持）、`missing_key`、`too_large`、`unsupported`（`reason` 同下表）、`corrupt`、`missing_settings`（可用，但没有 `KeeAgent.settings`，不会进 Agent）。
 
 | 方法 | 参数 | 结果 |
 | --- | --- | --- |
@@ -166,6 +166,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `ssh.export` | `credParams`（主密码，再确认）、`id`、`format`（`openssh` 默认 / `pkcs8` / `pem`，pem 只限 RSA/ECDSA 且不加密）、`passphrase?`、`path`（绝对路径） | `{size}`；以独占方式新建文件（权限 0600），已存在则 `INVALID`。**私钥离开核心的唯一途径** |
 | `ssh.set_agent` | `id`、`enabled` | `{agent}`；改写（或新建）`KeeAgent.settings`，保留其中不认识的元素 |
 | `ssh.normalize` | `id`、`passphrase?`（缺省用条目的 Password） | `{fingerprint}`；附件改成不加密的 OpenSSH 格式 |
+| `ssh.set_hosts` | `id`、`hosts:[…]`（最多 32 个；空 = 任何主机） | `{hosts}`（去掉首尾空白和重复后实际保存的）。每项是主机名（可用 `*`、`?`）、`[主机]:端口`，或服务器主机钥匙的指纹 `SHA256:…`；格式不对时 `INVALID`（`details.host`）。保存在条目的 CustomData `ClipBridge.SSH.Hosts`（KeePassXC 会保留但不执行），不产生历史版本 |
 | `ssh.scan` | `dir?`（默认 `~/.ssh`） | `{dir, items:[{path, format, encrypted, algo, bits, fingerprint, comment, pub_path, pub_state, config_hosts, referenced_by:[{file,line}], problem, in_vault}], skipped, vault_unlocked}`。只看目录本身（不递归），每个文件最多读 64 KiB，靠内容判断哪些是私钥；**从不返回文件内容**。`pub_state`：`ok`/`missing`/`mismatch`/`unverified`；`config_hosts` 来自同目录 `config` 的 `Host`/`IdentityFile`；`referenced_by` 是同目录 `*.ps1/*.sh/*.bat/*.cmd` 里直接写了这个文件路径的行 |
 | `ssh.write_pub` | `path`（必须以 `.pub` 结尾）、`id` 或 `fingerprint` | `{pub_path, state}`：`created`/`same`/`mismatch`；从不覆盖 |
 | `ssh.status` | — | `{supported, enabled, state, pipe, error, keys_loaded, keys_state, expires_at, vault_unlocked, ttl_s, allow_forwarding, connections}`；`state`：`listening`/`stopped`/`conflict`（管道名已被别的程序占用）/`error`/`unsupported`；`keys_state`：`empty`/`loaded`/`grace` |
@@ -173,7 +174,9 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `ssh.recent` | `limit?`（≤100） | `{uses:[…]}`，最新在前，字段同 `ssh.used` 事件 |
 | `ssh.selftest` | — | `{ok, listed, fingerprints, error}`：作为客户端连自己的管道并列出钥匙（只列不签） |
 
-除 `ssh.import/generate/export/set_agent/normalize` 外都可以在库锁着时调用。
+除 `ssh.import/generate/export/set_agent/normalize/set_hosts` 外都可以在库锁着时调用。
+
+**主机绑定**（`hosts` 非空的钥匙）：ssh 连上服务器后会把服务器的主机钥匙告诉 Agent（session-bind，OpenSSH 8.9 起）。这样的连接上，Agent 只列出没有绑定的钥匙和绑定到这台服务器的钥匙，所以钥匙多时不会因为依次尝试而撞上服务器的尝试次数上限（默认 6 次）；登录签名请求如果来自别的服务器，拒绝（`ssh.refused`，`reason:"host"`）。主机名的判断靠用户的 `known_hosts`（`~/.ssh/known_hosts`、`known_hosts2` 和系统级的那份），哈希过的条目只能匹配不带通配符的主机名；指纹则不依赖 `known_hosts`。没有 session-bind 的连接（`ssh-add -l`、`ssh-keygen -Y sign` 这类本地用途，以及老版本客户端）照常列出全部钥匙；不是登录的签名（例如 git 提交签名）不受主机绑定限制。
 
 **SSH 错误码**：`SSH_KEY_UNSUPPORTED`（`details.reason`：`dsa`、`sk`、`sshcom`、`putty1`、`pbes1`、`public_only`、`certificate`、`rsa_small`、`curve`、`multi`、`cipher`、`unknown`）、`SSH_KEY_PASSPHRASE`（`details.wrong`）、`SSH_KEY_CORRUPT`、`SSH_KEY_TOO_EXPENSIVE`（密钥派生参数超过核心上限，没有尝试解密）、`SSH_KEY_DUPLICATE`、`SSH_AGENT_UNAVAILABLE`。
 
@@ -183,7 +186,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 {"type":"ssh.agent","state":"listening|stopped|conflict|error","pipe":"\\.\pipe\openssh-ssh-agent","error":""}
 {"type":"ssh.keys","state":"loaded|grace|cleared|expired","count":2,"keys_state":"grace","reason":"idle","expires_at":1790000000}
 {"type":"ssh.used","at":1790000000,"fingerprint":"SHA256:…","title":"GitHub","entry_id":"…","client":[{"pid":1,"name":"ssh.exe","path":"…"},{"pid":2,"name":"git.exe"}],"host":"github.com","host_key_fp":"SHA256:…","user":"git","kind":"userauth|sshsig|other","namespace":"git","forwarded":false,"result":"signed","reason":""}
-{"type":"ssh.refused", …同上…, "result":"refused","reason":"forwarding|no_keys|unknown_key|error"}
+{"type":"ssh.refused", …同上…, "result":"refused","reason":"forwarding|no_keys|unknown_key|host|error"}
 {"type":"ssh.keys_needed","client":[…]}   // 有程序来要钥匙，但一把也没加载（库锁着）；每分钟最多一次
 ```
 

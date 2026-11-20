@@ -27,6 +27,7 @@ internal sealed class EntryDetailPane : Border
     private EntryDetail? _detail;
     private IReadOnlyList<DetailRow> _rows = Array.Empty<DetailRow>();
     private IReadOnlyList<VersionInfo> _history = Array.Empty<VersionInfo>();
+    private IReadOnlyList<SshUse> _sshRecent = Array.Empty<SshUse>();
     private DateTimeOffset _lastActivity = DateTimeOffset.UtcNow;
     private int _autolockSeconds = 300;
     private int _generation;
@@ -127,6 +128,13 @@ internal sealed class EntryDetailPane : Border
         _detail = r.Value;
         _rows = DetailRows.Build(_detail!);
         _history = Array.Empty<VersionInfo>();
+        _sshRecent = Array.Empty<SshUse>();
+        if (_detail!.Ssh is not null)
+        {
+            var recent = await _shell.SshCallAsync(a => a.Recent(100));
+            if (gen != _generation) return;
+            if (recent.Ok) _sshRecent = recent.Value!;
+        }
         if (_detail!.History > 0)
         {
             var h = await _shell.VaultCallAsync(a => a.History(id));
@@ -366,10 +374,9 @@ internal sealed class EntryDetailPane : Border
         var outer = new StackPanel { Spacing = 10 };
         if (SshText.Problem(k.Problem, k.Reason) is { Length: > 0 } problem)
         {
-            var bar = new InfoBar { Severity = Severity.Warning, IsOpen = true, IsClosable = false, Message = problem };
+            outer.Children.Add(new InfoBar { Severity = Severity.Warning, IsOpen = true, IsClosable = false, Message = problem });
             if (k.Problem == "needs_passphrase" && !inTrash)
-                bar.Actions = Ui.TextButton(Strings.SshBtnNormalize, () => _ = NormalizeAsync(k, needsPassphrase: true), "soft", "sm");
-            outer.Children.Add(bar);
+                outer.Children.Add(Ui.TextButton(Strings.SshBtnNormalize, () => _ = NormalizeAsync(k, needsPassphrase: true), "soft", "sm"));
         }
 
         var fields = new StackPanel { Spacing = 0 };
@@ -404,10 +411,11 @@ internal sealed class EntryDetailPane : Border
         var agentBlock = new StackPanel { Spacing = 6, Children = { agentRow } };
         if (k.Agent && state.Supported && !state.Listening)
         {
-            var bar = new InfoBar { Severity = Severity.Info, IsOpen = true, IsClosable = false, Message = Strings.SshAgentNotRunning };
-            bar.Actions = Ui.TextButton(Strings.SshBtnEnableAgent, () => _ = EnableAgentAsync(), "soft", "sm");
-            agentBlock.Children.Add(bar);
+            // The pane is narrow: the button goes under the text instead of squeezing it.
+            agentBlock.Children.Add(new InfoBar { Severity = Severity.Info, IsOpen = true, IsClosable = false, Message = Strings.SshAgentNotRunning });
+            agentBlock.Children.Add(Ui.TextButton(Strings.SshBtnEnableAgent, () => _ = EnableAgentAsync(), "soft", "sm").With(b => b.Margin = new Thickness(0, 0, 0, 8)));
         }
+        if (k.Usable) agentBlock.Children.Add(BuildHosts(k));
         outer.Children.Add(Section(agentBlock));
 
         var actions = new WrapPanel { Orientation = Orientation.Horizontal };
@@ -420,6 +428,68 @@ internal sealed class EntryDetailPane : Border
         }
         if (actions.Children.Count > 0) outer.Children.Add(actions);
         return outer;
+    }
+
+    /// <summary>Host binding: the servers the key is offered to, and a one-click limit to the ones it was used with.</summary>
+    private Control BuildHosts(SshKeyInfo k)
+    {
+        var panel = new StackPanel { Spacing = 6, Margin = new Thickness(0, 4, 0, 8) };
+        var head = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        head.Children.Add(new StackPanel
+        {
+            Spacing = 2,
+            Children = { Ui.Text(Strings.SshHostsTitle, "medium"), Ui.Text(Strings.SshHostsHint, "caption", "tertiary").With(t => t.TextWrapping = TextWrapping.Wrap) },
+        });
+        var edit = Ui.TextButton(Strings.SshHostsEdit, () => _ = EditHostsAsync(k), "soft", "sm");
+        edit.VerticalAlignment = VerticalAlignment.Top;
+        edit.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(edit, 1);
+        head.Children.Add(edit);
+        panel.Children.Add(head);
+
+        var chips = new WrapPanel { Orientation = Orientation.Horizontal };
+        if (k.Hosts.Count == 0) chips.Children.Add(new Badge { Content = Strings.SshHostsAny, Margin = new Thickness(0, 2, 6, 2) });
+        foreach (var h in k.Hosts)
+        {
+            var b = new Badge { Content = SshHosts.Display(h), Margin = new Thickness(0, 2, 6, 2) };
+            b.Classes.Add("accent");
+            ToolTip.SetTip(b, h);
+            chips.Children.Add(b);
+        }
+        panel.Children.Add(chips);
+
+        var used = SshHosts.Suggestions(_sshRecent, k.Fingerprint).Where(h => !k.Hosts.Contains(h)).ToList();
+        if (used.Count > 0)
+        {
+            var hosts = k.Hosts.Count == 0 ? used : k.Hosts.Concat(used).ToList();
+            panel.Children.Add(Ui.Text(Strings.SshHostsSuggest(used), "caption", "secondary").With(t => t.TextWrapping = TextWrapping.Wrap));
+            panel.Children.Add(Ui.TextButton(Strings.SshHostsUseSuggested, () => _ = SaveHostsAsync(k, hosts), "ghost", "sm"));
+        }
+        else if (k.Hosts.Count == 0)
+            panel.Children.Add(Ui.Text(Strings.SshHostsUnboundNote, "caption", "tertiary").With(t => t.TextWrapping = TextWrapping.Wrap));
+        return panel;
+    }
+
+    private async Task EditHostsAsync(SshKeyInfo k)
+    {
+        var text = await Ui.PromptAsync(this, Strings.SshHostsPromptTitle, Strings.SshHostsPromptLabel, string.Join("\n", k.Hosts),
+            v =>
+            {
+                var hosts = SshHosts.Parse(v);
+                return hosts.Count <= SshHosts.Max && SshHosts.FirstInvalid(hosts) is null ? string.Join("\n", hosts) : null;
+            },
+            Strings.SshHostsInvalidAny, Strings.BtnSave, multiline: true);
+        if (text is null) return;
+        await SaveHostsAsync(k, SshHosts.Parse(text));
+    }
+
+    private async Task SaveHostsAsync(SshKeyInfo k, IReadOnlyList<string> hosts)
+    {
+        var id = k.EntryId;
+        var r = await _shell.SshCallAsync(a => a.SetHosts(id, hosts));
+        if (!r.Ok) { await Fail(r.Error); return; }
+        _shell.ShowStatus(Strings.SshHostsSaved, StatusKind.Success);
+        if (_detail?.Id == id) await ShowAsync(id);
     }
 
     private async Task SetAgentAsync(SshKeyInfo k, bool on)

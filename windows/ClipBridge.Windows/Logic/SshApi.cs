@@ -51,6 +51,10 @@ public sealed class SshApi
 
     public void SetAgent(string id, bool enabled) => _core.Call("ssh.set_agent", new { id, enabled });
 
+    /// <summary>Limits the key to these servers (empty = any server). Returns what the core stored.</summary>
+    public IReadOnlyList<string> SetHosts(string id, IReadOnlyList<string> hosts) =>
+        JsonRead.StrArr(_core.Call("ssh.set_hosts", new { id, hosts }), "hosts");
+
     public string Normalize(string id, string passphrase = "") =>
         JsonRead.Str(_core.Call("ssh.normalize", new { id, passphrase }), "fingerprint");
 

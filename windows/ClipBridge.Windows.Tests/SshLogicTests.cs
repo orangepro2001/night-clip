@@ -421,3 +421,58 @@ public class SshPrefsAndDiagnosticsTests
         Assert.DoesNotContain("SHA256", text);
     }
 }
+
+public class SshHostBindingTests
+{
+    [Fact]
+    public void Parse_SplitsTrimsAndDeduplicates()
+    {
+        Assert.Equal(new[] { "github.com", "*.corp.example", "[box]:2222" },
+            SshHosts.Parse(" github.com\r\n*.corp.example, [box]:2222 \tgithub.com、"));
+        Assert.Empty(SshHosts.Parse(null));
+        Assert.Empty(SshHosts.Parse(" \n "));
+    }
+
+    [Theory]
+    [InlineData("github.com", true)]
+    [InlineData("10.0.0.*", true)]
+    [InlineData("[git.example.com]:2222", true)]
+    [InlineData("my_host-1", true)]
+    [InlineData("two words", false)]
+    [InlineData("a,b", false)]
+    [InlineData("!neg", false)]
+    [InlineData("SHA256:short", false)]
+    [InlineData("SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU", true)]
+    public void Valid_MatchesTheCoreRule(string p, bool ok) => Assert.Equal(ok, SshHosts.Valid(p));
+
+    [Fact]
+    public void Suggestions_ComeFromSignedLoginsOfThisKey()
+    {
+        SshUse U(string fp, string host, string hostFp, string kind = "userauth", string result = "signed") =>
+            new(0, fp, "", "", Array.Empty<SshProc>(), host, hostFp, "git", kind, "", false, result, "");
+        var recent = new[]
+        {
+            U("SHA256:k", "github.com", "SHA256:h1"),
+            U("SHA256:k", "GitHub.com", "SHA256:h1"),
+            U("SHA256:k", "", "SHA256:h2"),            // no known_hosts name: the host key fingerprint
+            U("SHA256:k", "x.example", "SHA256:h3", kind: "sshsig"),
+            U("SHA256:k", "y.example", "SHA256:h4", result: "refused"),
+            U("SHA256:other", "z.example", "SHA256:h5"),
+        };
+        Assert.Equal(new[] { "github.com", "SHA256:h2" }, SshHosts.Suggestions(recent, "SHA256:k"));
+    }
+
+    [Fact]
+    public void KeyInfo_ParsesHosts_AndApiSendsThem()
+    {
+        var k = SshKeyInfo.FromJson(VJ.Parse("""{"entry_id":"e","hosts":["github.com","SHA256:abc"]}"""));
+        Assert.Equal(2, k.Hosts.Count);
+        Assert.Empty(SshKeyInfo.FromJson(VJ.Parse("{}")).Hosts);
+
+        var core = new ScriptedCore().On("ssh.set_hosts", """{"hosts":["github.com"]}""");
+        var stored = new SshApi(core).SetHosts("e1", new[] { "github.com" });
+        Assert.Equal("github.com", Assert.Single(stored));
+        Assert.Equal("github.com", core.ParamsOf("ssh.set_hosts").Single().GetProperty("hosts")[0].GetString());
+        Assert.Contains("限定了主机", Strings.SshRefusedText(new SshUse(0, "", "", "", Array.Empty<SshProc>(), "", "", "", "userauth", "", false, "refused", "host")));
+    }
+}

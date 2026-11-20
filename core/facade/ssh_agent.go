@@ -151,9 +151,7 @@ func (c *Core) sshInit() {
 	if !c.sshSupported() {
 		c.ssh.state = sshStateUnsupported
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		c.ssh.known = sshagent.NewKnownHosts(filepath.Join(home, ".ssh", "known_hosts"))
-	}
+	c.ssh.known = sshagent.NewKnownHosts(knownHostsFiles()...)
 	if c.sshSupported() && c.sshEnabled() {
 		c.sshStart()
 	}
@@ -194,10 +192,28 @@ func (c *Core) sshStart() {
 			}
 			return sshagent.ClientChain(pid)
 		},
+		KnownHosts: c.ssh.known,
 	})
 	c.ssh.state, c.ssh.err = sshStateListening, ""
 	c.emit(map[string]any{"type": "ssh.agent", "state": c.ssh.state, "pipe": name, "error": ""})
 	go c.sshLoad()
+}
+
+// knownHostsFiles are the files OpenSSH reads by default: the user's and the
+// system-wide one.
+func knownHostsFiles() []string {
+	var files []string
+	if home, err := os.UserHomeDir(); err == nil {
+		files = append(files, filepath.Join(home, ".ssh", "known_hosts"), filepath.Join(home, ".ssh", "known_hosts2"))
+	}
+	if runtime.GOOS == "windows" {
+		if pd := os.Getenv("ProgramData"); pd != "" {
+			files = append(files, filepath.Join(pd, "ssh", "ssh_known_hosts"))
+		}
+	} else {
+		files = append(files, "/etc/ssh/ssh_known_hosts")
+	}
+	return files
 }
 
 // pipeTaken reports whether a listen error means another process owns the name.
@@ -320,6 +336,7 @@ func (c *Core) sshLoad() {
 		if err != nil {
 			continue
 		}
+		k.Hosts = append([]string(nil), e.cand.Hosts...)
 		keys = append(keys, k)
 	}
 	c.vs.mu.Lock()
