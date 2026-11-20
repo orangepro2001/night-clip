@@ -7,7 +7,7 @@ import (
 	g "github.com/tobischo/gokeepasslib/v3"
 	w "github.com/tobischo/gokeepasslib/v3/wrappers"
 
-	"nightclip/core/sshkey"
+	"moonpassword/core/sshkey"
 )
 
 type (
@@ -177,7 +177,24 @@ func (v *Vault) applyEntry(le *g.Entry, e Entry) {
 	}
 }
 
+// legacyKey is the name ClipBridge used for one of this app's CustomData keys, or "" for any other key.
+func legacyKey(key string) string {
+	if !strings.HasPrefix(key, cdPrefix) {
+		return ""
+	}
+	return cdLegacyPrefix + strings.TrimPrefix(key, cdPrefix)
+}
+
+// isCustomKey reports whether k is key or its ClipBridge-era name.
+func isCustomKey(k, key string) bool {
+	return k == key || (k != "" && k == legacyKey(key))
+}
+
+// setCustom stores key and drops its ClipBridge-era twin, so a saved entry carries only the new name.
 func setCustom(le *g.Entry, key, value string) {
+	if old := legacyKey(key); old != "" {
+		dropCustom(le, old)
+	}
 	for i := range le.CustomData {
 		if le.CustomData[i].Key == key {
 			le.CustomData[i].Value = value
@@ -187,16 +204,32 @@ func setCustom(le *g.Entry, key, value string) {
 	le.CustomData = append(le.CustomData, g.CustomData{Key: key, Value: value})
 }
 
+// getCustom reads key, falling back to the name ClipBridge wrote it under.
 func getCustom(le *g.Entry, key string) string {
 	for _, cd := range le.CustomData {
 		if cd.Key == key {
 			return cd.Value
 		}
 	}
+	if old := legacyKey(key); old != "" {
+		for _, cd := range le.CustomData {
+			if cd.Key == old {
+				return cd.Value
+			}
+		}
+	}
 	return ""
 }
 
+// delCustom removes key and its ClipBridge-era twin.
 func delCustom(le *g.Entry, key string) {
+	dropCustom(le, key)
+	if old := legacyKey(key); old != "" {
+		dropCustom(le, old)
+	}
+}
+
+func dropCustom(le *g.Entry, key string) {
 	out := le.CustomData[:0]
 	for _, cd := range le.CustomData {
 		if cd.Key != key {
@@ -366,7 +399,7 @@ func (v *Vault) RestoreVersion(id string, index int) error {
 	le.Tags = past.Tags
 	le.Times.Expires, le.Times.ExpiryTime = past.Times.Expires, past.Times.ExpiryTime
 	for _, cd := range past.CustomData {
-		if cd.Key == cdKind {
+		if isCustomKey(cd.Key, cdKind) {
 			setCustom(le, cdKind, cd.Value)
 		}
 	}

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"nightclip/core/sshkey"
+	"moonpassword/core/sshkey"
 )
 
 const testKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nnot parsed by the vault package\n-----END OPENSSH PRIVATE KEY-----\n"

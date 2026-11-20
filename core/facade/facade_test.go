@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"nightclip/core/proto"
-	"nightclip/core/store"
+	"moonpassword/core/proto"
+	"moonpassword/core/store"
 )
 
 type reply struct {

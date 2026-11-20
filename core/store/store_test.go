@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"nightclip/core/proto"
+	"moonpassword/core/proto"
 )
 
 func testKey(seed byte) []byte {

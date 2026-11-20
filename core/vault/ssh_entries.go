@@ -5,7 +5,7 @@ import (
 
 	g "github.com/tobischo/gokeepasslib/v3"
 
-	"nightclip/core/sshkey"
+	"moonpassword/core/sshkey"
 )
 
 // maxSSHKeyBytes caps the key attachment the agent loader will read. Real
@@ -135,7 +135,7 @@ type SSHCandidate struct {
 // cdSSHHosts holds the hosts an SSH key is limited to, one pattern per line.
 // KeePassXC keeps CustomData it does not know, so the binding survives a
 // round trip through it (KeePassXC itself does not enforce it).
-const cdSSHHosts = "ClipBridge.SSH.Hosts"
+const cdSSHHosts = cdPrefix + "SSH.Hosts"
 
 func splitHosts(v string) []string {
 	var out []string

@@ -6,7 +6,7 @@ import (
 
 	g "github.com/tobischo/gokeepasslib/v3"
 
-	"nightclip/core/sshkey"
+	"moonpassword/core/sshkey"
 )
 
 // Entry kinds. The kind only changes how a shell presents an entry; every kind is a normal KeePass
@@ -28,8 +28,11 @@ const (
 	fNotes    = "Notes"
 	fOTP      = "otp"
 
-	cdKind      = "ClipBridge.Kind"
-	cdPrevGroup = "ClipBridge.PrevGroup"
+	// CustomData keys of this app. KeePassXC and other KDBX clients keep CustomData they do not know.
+	cdPrefix       = "MoonPassword."
+	cdLegacyPrefix = "ClipBridge." // written by ClipBridge (the app's former name); still read, replaced on save
+	cdKind         = cdPrefix + "Kind"
+	cdPrevGroup    = cdPrefix + "PrevGroup"
 )
 
 var reserved = map[string]bool{"title": true, "username": true, "password": true, "url": true, "notes": true, "otp": true}
@@ -221,7 +224,7 @@ func fromLib(db *g.Database, le *g.Entry, groupID string, trash bool) Entry {
 	return e
 }
 
-// entryKind derives the kind of a library entry. A valid ClipBridge.Kind other than login wins.
+// entryKind derives the kind of a library entry. A valid MoonPassword.Kind other than login wins.
 // Otherwise an entry carrying KeeAgent.settings is an SSH key, so entries made in KeePassXC (which
 // never write ClipBridge.Kind) and entries an older client rewrote to "login" both read as ssh.
 func entryKind(le *g.Entry) string {

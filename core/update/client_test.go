@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"nightclip/core/update/updatetest"
+	"moonpassword/core/update/updatetest"
 	"relhub/pkg/relproto"
 )
 

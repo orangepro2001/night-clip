@@ -70,7 +70,7 @@ func Exists(dir string) bool {
 // Create makes a new vault in dir (created if needed, mode 0700). It fails if one exists.
 func Create(dir string, c Creds, kdf KDF, name string) (*Vault, error) {
 	if name == "" {
-		name = "ClipBridge"
+		name = "MoonPassword"
 	}
 	if Exists(dir) {
 		return nil, ErrExists
@@ -262,7 +262,7 @@ func fingerprint(b []byte) [32]byte { return sha256.Sum256(b) }
 // binUUIDFor derives the recycle bin's id from the vault's root group, so replicas of one vault that
 // each create their bin on their own still end up with the same group.
 func binUUIDFor(root g.UUID) g.UUID {
-	sum := sha256.Sum256(append([]byte("clipbridge/recycle-bin/"), root[:]...))
+	sum := sha256.Sum256(append([]byte("moonpassword/recycle-bin/"), root[:]...))
 	var u g.UUID
 	copy(u[:], sum[:16])
 	return u

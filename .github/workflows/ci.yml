@@ -1,6 +1,6 @@
 # Linux job mirrors `make check` minus the Android toolchain; the Android job builds the
 # AAR and APKs on the runner's preinstalled SDK; the Windows job is the only place the
-# real Windows app (Avalonia + Lumen.UI) is built and the real clipbridge_core.dll is loaded by .NET on Windows.
+# real Windows app (Avalonia + Lumen.UI) is built and the real moonpassword_core.dll is loaded by .NET on Windows.
 name: ci
 
 on:
@@ -68,17 +68,17 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - name: Build clipbridge_core.dll (cgo needs gcc; the runner image ships MinGW)
+      - name: Build moonpassword_core.dll (cgo needs gcc; the runner image ships MinGW)
         shell: bash
         run: |
           mkdir -p core/dist/windows-amd64
           cd core
           CGO_ENABLED=1 go build -buildmode=c-shared -trimpath -ldflags="-s -w" \
-            -o dist/windows-amd64/clipbridge_core.dll ./cmd/cbcore-dll
+            -o dist/windows-amd64/moonpassword_core.dll ./cmd/cbcore-dll
       - name: Go tests
         run: go test ./...
         working-directory: core
       - name: C# interop tests against the real DLL
-        run: dotnet test windows/ClipBridge.Windows.Tests
+        run: dotnet test windows/MoonPassword.Windows.Tests
       - name: Build Windows app
-        run: dotnet build windows/ClipBridge.Windows -c Release
+        run: dotnet build windows/MoonPassword.Windows -c Release

@@ -54,7 +54,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 ```
 
 - `kind` 只影响界面的呈现：`login`（站点账号）、`apikey`（API 密钥/令牌：密钥放 `password`，端点放 `url`，Key ID/区域/环境等放 `fields`）、`secret`（单个机密：许可证、PIN、恢复码，放 `password`）、`note`（安全笔记，只用 `notes`）、`ssh`（SSH 私钥，见 §3.9；由 `ssh.import`/`ssh.generate` 创建，不要用 `vault.add` 手写）。KeePassXC 里它们都是普通条目。
-- 没有 `ClipBridge.Kind`（或它是 `login`）但带 `KeeAgent.settings` 附件的条目读作 `ssh`，因此从 KeePassXC 导入的 SSH 条目会被识别；`vault.update` 对这样的条目收到 `kind:"login"` 时保持 `ssh`。
+- 没有 `MoonPassword.Kind`（或它是 `login`）但带 `KeeAgent.settings` 附件的条目读作 `ssh`，因此从 KeePassXC 导入的 SSH 条目会被识别；`vault.update` 对这样的条目收到 `kind:"login"` 时保持 `ssh`。
 - `fields[].name` 不能是保留名（Title/UserName/Password/URL/Notes/otp，大小写不敏感），不能重复，≤128 字节；单个文本字段 ≤256 KiB；最多 100 个字段/标签。
 
 | 方法 | 参数 | 结果 |
@@ -166,7 +166,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `ssh.export` | `credParams`（主密码，再确认）、`id`、`format`（`openssh` 默认 / `pkcs8` / `pem`，pem 只限 RSA/ECDSA 且不加密）、`passphrase?`、`path`（绝对路径） | `{size}`；以独占方式新建文件（权限 0600），已存在则 `INVALID`。**私钥离开核心的唯一途径** |
 | `ssh.set_agent` | `id`、`enabled` | `{agent}`；改写（或新建）`KeeAgent.settings`，保留其中不认识的元素 |
 | `ssh.normalize` | `id`、`passphrase?`（缺省用条目的 Password） | `{fingerprint}`；附件改成不加密的 OpenSSH 格式 |
-| `ssh.set_hosts` | `id`、`hosts:[…]`（最多 32 个；空 = 任何主机） | `{hosts}`（去掉首尾空白和重复后实际保存的）。每项是主机名（可用 `*`、`?`）、`[主机]:端口`，或服务器主机钥匙的指纹 `SHA256:…`；格式不对时 `INVALID`（`details.host`）。保存在条目的 CustomData `ClipBridge.SSH.Hosts`（KeePassXC 会保留但不执行），不产生历史版本 |
+| `ssh.set_hosts` | `id`、`hosts:[…]`（最多 32 个；空 = 任何主机） | `{hosts}`（去掉首尾空白和重复后实际保存的）。每项是主机名（可用 `*`、`?`）、`[主机]:端口`，或服务器主机钥匙的指纹 `SHA256:…`；格式不对时 `INVALID`（`details.host`）。保存在条目的 CustomData `MoonPassword.SSH.Hosts`（KeePassXC 会保留但不执行），不产生历史版本 |
 | `ssh.scan` | `dir?`（默认 `~/.ssh`） | `{dir, items:[{path, format, encrypted, algo, bits, fingerprint, comment, pub_path, pub_state, config_hosts, referenced_by:[{file,line}], problem, in_vault}], skipped, vault_unlocked}`。只看目录本身（不递归），每个文件最多读 64 KiB，靠内容判断哪些是私钥；**从不返回文件内容**。`pub_state`：`ok`/`missing`/`mismatch`/`unverified`；`config_hosts` 来自同目录 `config` 的 `Host`/`IdentityFile`；`referenced_by` 是同目录 `*.ps1/*.sh/*.bat/*.cmd` 里直接写了这个文件路径的行 |
 | `ssh.write_pub` | `path`（必须以 `.pub` 结尾）、`id` 或 `fingerprint` | `{pub_path, state}`：`created`/`same`/`mismatch`；从不覆盖 |
 | `ssh.status` | — | `{supported, enabled, state, pipe, error, keys_loaded, keys_state, expires_at, vault_unlocked, ttl_s, allow_forwarding, connections}`；`state`：`listening`/`stopped`/`conflict`（管道名已被别的程序占用）/`error`/`unsupported`；`keys_state`：`empty`/`loaded`/`grace` |

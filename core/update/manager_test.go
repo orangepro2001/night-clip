@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"nightclip/core/update/updatetest"
+	"moonpassword/core/update/updatetest"
 	"os"
 	"path/filepath"
 	"strings"

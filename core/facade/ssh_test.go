@@ -18,8 +18,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	"nightclip/core/pipe"
-	"nightclip/core/sshkey"
+	"moonpassword/core/pipe"
+	"moonpassword/core/sshkey"
 )
 
 const fixturePass = "correct horse battery"

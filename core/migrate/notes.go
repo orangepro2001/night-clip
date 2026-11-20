@@ -17,7 +17,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"nightclip/core/proto"
+	"moonpassword/core/proto"
 )
 
 // Limits for one notes import.

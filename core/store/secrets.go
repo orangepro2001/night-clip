@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"nightclip/core/proto"
+	"moonpassword/core/proto"
 )
 
 // MaxSecretBytes bounds one sealed value.

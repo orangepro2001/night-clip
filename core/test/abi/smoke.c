@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "libclipbridge_core.h"
+#include "libmoonpassword_core.h"
 
 #define CHECK(cond, msg) do { if (!(cond)) { fprintf(stderr, "FAIL: %s\n", msg); return 1; } } while (0)
 
@@ -14,7 +14,7 @@
 
 int main(void) {
     char *err = NULL;
-    char dir[] = "/tmp/clipbridge-smoke-XXXXXX";
+    char dir[] = "/tmp/moonpassword-smoke-XXXXXX";
     CHECK(mkdtemp(dir) != NULL, "mkdtemp");
     char config[512];
     snprintf(config, sizeof config,

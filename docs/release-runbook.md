@@ -6,10 +6,10 @@
 
 | 情况 | 做什么 |
 | --- | --- |
-| **第一次发版**（设备上装的还是 ≤ 0.1.79，只认旧源 `/clipbridge`） | 做 §1 → §2 → §3 → §4：发到 release-publish，**再把同一个包推到旧源**。这一版叫「桥接版」。 |
+| **第一次发版**（设备上装的还是 ≤ 0.1.79，只认旧源 `/moonpassword`） | 做 §1 → §2 → §3 → §4：发到 release-publish，**再把同一个包推到旧源**。这一版叫「桥接版」。 |
 | **桥接版之后的每次发版**（所有设备都已装过桥接版或更新的版本） | 只做 §1 → §2 → §4：只发到 release-publish，不再碰旧源。 |
 
-判断依据：桥接版装上之后，设备才开始问 `…/release`。可以用 `relhub stats -app clipbridge` 看有没有来自新版本号的检查（统计按版本号计数，不区分设备），也可以在每台设备的「关于」里看版本号。
+判断依据：桥接版装上之后，设备才开始问 `…/release`。可以用 `relhub stats -app moonpassword` 看有没有来自新版本号的检查（统计按版本号计数，不区分设备），也可以在每台设备的「关于」里看版本号。
 
 ## 1. 发版前
 
@@ -18,7 +18,7 @@
 3. **预检**（几秒，不构建、不上传，可以随时跑）：
 
    ```sh
-   cd ~/dev/Bark/night-clip
+   cd ~/dev/Bark/moonpassword
    scripts/release-local.sh --check
    ```
 
@@ -41,7 +41,7 @@ scripts/release-local.sh --notes "更新说明（一两句话，设备上会显�
 成功后核对：
 
 ```sh
-relhub list -all -app clipbridge          # 两个平台都出现新版本，渠道 stable
+relhub list -all -app moonpassword          # 两个平台都出现新版本，渠道 stable
 scripts/probe-update.sh -c 1               # 用真实核心代码 + 编译进去的公钥，通过公开地址检查并完整下载（只读）
 ```
 
@@ -52,18 +52,18 @@ scripts/probe-update.sh -c 1               # 用真实核心代码 + 编译进�
 **这一步会让真机收到更新。** 桥接版如果更新链路有错（公钥、地址、应用 id、平台名），装了它的设备就再也收不到更新，只能手动重装。所以一定要在 §2 全部通过之后再做，并且推荐先在一台设备上验证（见 §5）。
 
 ```sh
-cd ~/dev/Bark/night-clip
+cd ~/dev/Bark/moonpassword
 eval "$(scripts/version.sh)"        # 得到 CB_VERSION_CODE / CB_VERSION_NAME，与 §2 发布的相同
 cbdist=~/.local/bin/cbdist
-feed=~/.local/share/clipbridge/releases
-key=~/.config/clipbridge/release-ed25519.key
+feed=~/.local/share/moonpassword/releases
+key=~/.config/moonpassword/release-ed25519.key
 notes="更新说明（与 §2 相同）"
 tmp=$(mktemp -d)
 
 for p in android windows; do
   case $p in android) ext=apk ;; windows) ext=zip ;; esac
   # 包取 release-publish 里的那份，保证两边字节相同
-  relhub download -app clipbridge -platform $p -out "$tmp/bridge.$ext"
+  relhub download -app moonpassword -platform $p -out "$tmp/bridge.$ext"
   $cbdist publish -dir "$feed" -key "$key" -platform $p -file "$tmp/bridge.$ext" \
     -code "$CB_VERSION_CODE" -name "$CB_VERSION_NAME" -notes "$notes"
 done
@@ -72,9 +72,9 @@ rm -rf "$tmp"
 
 要点：
 
-- 旧工具只在 `~/.local/bin/cbdist`（仓库里已无源码，最后一个带它的提交是 `29326f3`），用旧 Ed25519 私钥 `~/.config/clipbridge/release-ed25519.key` 签名。旧服务 `clipbridge-dist` 仍在跑，不需要重启。
+- 旧工具只在 `~/.local/bin/cbdist`（仓库里已无源码，最后一个带它的提交是 `29326f3`），用旧 Ed25519 私钥 `~/.config/moonpassword/release-ed25519.key` 签名。旧服务 `moonpassword-dist` 仍在跑，不需要重启。
 - 旧源要求 `-code` 严格高于已发布的（现在是 79），所以与 release-publish 用同一个 `versionCode` 即可。
-- 核对旧源：`cat ~/.local/share/clipbridge/releases/android/latest.json`、`…/windows/latest.json` 里应是新版本号、`sha256` 与 release-publish 中的相同。
+- 核对旧源：`cat ~/.local/share/moonpassword/releases/android/latest.json`、`…/windows/latest.json` 里应是新版本号、`sha256` 与 release-publish 中的相同。
 
 ## 4. 发完之后
 
@@ -85,7 +85,7 @@ rm -rf "$tmp"
 
 1. 一台装着 0.1.79 的设备：打开应用，应在约几秒内收到新版本通知并自动下载（Android 通知栏 / Windows 任务栏闪烁），点击安装。
 2. 安装后在「关于」确认版本号是新版本。
-3. 此后这台设备问的是 `…/release`：`relhub stats -app clipbridge` 里应出现来自新版本号的检查。
+3. 此后这台设备问的是 `…/release`：`relhub stats -app moonpassword` 里应出现来自新版本号的检查。
 4. 再发下一个版本（只做 §1 → §2 → §4），确认这台设备能从 release-publish 收到——这才证明新通道是通的。如果这一步失败，旧源和旧工具还在，可以补发一个修复版到两边。
 5. 两台设备（Windows 与 Android）都过了这几步之后，才考虑退役旧源。
 
@@ -100,8 +100,8 @@ rm -rf "$tmp"
 | 预检报 `the service signs with … which core/update/keys.go does not trust` | 服务换过签名密钥。**不要继续发版。** 把新公钥加进 `core/update/keys.go`（保留旧的）并提交后再发，且先让设备装上一个同时信任两把钥匙的版本。 |
 | 预检报 `already has versionCode … or higher` | 这个提交数已经发过。先提交新的内容再发，不要改脚本。 |
 | `cannot reach the update service` | `curl -fsS https://release.moonl.cloud/healthz`；服务在 moon 上：`ssh moon systemctl status release-publish`。`release.local.env` 里的 `CB_UPDATE_URL` 不要再写旧的 tailnet 地址（注意它会覆盖命令行里同名的环境变量）。 |
-| `RELHUB_TOKEN is empty` | 远端服务需要只能发布 clipbridge 的令牌，写进 `release.local.env`，见 [update.md §7b](update.md#7b-2026-11-20迁到-releasemoonlcloud)。 |
-| Android 签名与上次不一致 | 脚本钉了签名证书 SHA-256（`~/.config/clipbridge/android-signer.sha256`）。签名不同的 APK 装不上去，检查是不是换了 keystore。 |
+| `RELHUB_TOKEN is empty` | 远端服务需要只能发布 moonpassword 的令牌，写进 `release.local.env`，见 [update.md §7b](update.md#7b-2026-11-20迁到-releasemoonlcloud)。 |
+| Android 签名与上次不一致 | 脚本钉了签名证书 SHA-256（`~/.config/moonpassword/android-signer.sha256`）。签名不同的 APK 装不上去，检查是不是换了 keystore。 |
 | 构建被杀 / 内存不足 | 见 §1 第 1 条；释放内存后原样重跑。 |
 | 想撤回一个坏版本 | `relhub channel promote` 把渠道指回旧版本，再 `relhub yank`。已升级的设备不会被降级；要让它们换到修复版，必须发更高 `versionCode` 的新版本，必要时 `--force`。 |
 
@@ -109,7 +109,7 @@ rm -rf "$tmp"
 
 - 不要在生产数据目录上运行 `relhub keys rotate`，不要动 `go-nx` 等别的应用。
 - 不要为这个项目新增 `tailscale serve` 路径；不要对 serve 用 `reset`。
-- 签名私钥不进仓库、不进 CI。`~/backups/release-publish-keys/` 和 `~/backups/clipbridge-keys/` 请另存一份到本机之外。
+- 签名私钥不进仓库、不进 CI。`~/backups/release-publish-keys/` 和 `~/backups/moonpassword-keys/` 请另存一份到本机之外。
 
 ## 附：macOS（2026-10-28 起）
 

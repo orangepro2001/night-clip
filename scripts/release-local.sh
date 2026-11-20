@@ -40,7 +40,7 @@ case "$platform" in android|windows|macos|all) ;; *) echo "--platform must be an
 die() { echo "$*" >&2; exit 1; }
 
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
-app=clipbridge
+app=moonpassword
 relhub="${RELHUB_BIN:-$(command -v relhub || echo "$HOME/.local/bin/relhub")}"
 [ -x "$relhub" ] || die "relhub not found (install release-publish: ~/dev/release-publish/deploy/install.sh)"
 CB_UPDATE_URL="${CB_UPDATE_URL:-https://release.moonl.cloud}"
@@ -109,9 +109,10 @@ if [ "$platform" = android ] || [ "$platform" = all ]; then
   [ -n "$apksigner" ] || die "apksigner not found under \$ANDROID_HOME/build-tools"
   cert="$("$apksigner" verify --print-certs "$apk" | tr -d '\r' | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
   [ -n "$cert" ] || die "APK signature does not verify"
-  pin="${CLIPBRIDGE_SIGNER_PIN:-$HOME/.config/clipbridge/android-signer.sha256}"
-  legacy_pin="$HOME/.local/share/clipbridge/releases/android-signer.sha256" # where the cbdist flow kept it
-  if [ ! -f "$pin" ] && [ -f "$legacy_pin" ]; then cp "$legacy_pin" "$pin"; fi
+  pin="${MOONPASSWORD_SIGNER_PIN:-$HOME/.config/moonpassword/android-signer.sha256}"
+  # Machines set up before the rename keep the key and the pin in ~/.config/clipbridge: same key, same pin.
+  legacy_pin="$HOME/.config/clipbridge/android-signer.sha256"
+  if [ ! -f "$pin" ] && [ -f "$legacy_pin" ]; then mkdir -p "$(dirname "$pin")"; cp "$legacy_pin" "$pin"; fi
   if [ -f "$pin" ] && [ "$(cat "$pin")" != "$cert" ]; then
     die "APK signer changed (pinned $(cat "$pin")): installed apps would refuse this update"
   fi
@@ -130,7 +131,7 @@ fi
 
 if [ "$platform" = windows ] || [ "$platform" = all ]; then
   [ "$build" = 1 ] && make dist-windows
-  zip="$root/core/dist/clipbridge-windows.zip"
+  zip="$root/core/dist/moonpassword-windows.zip"
   [ -f "$zip" ] || die "package not found: $zip"
   publish windows "$zip"
 fi
@@ -138,7 +139,7 @@ fi
 if [ "$platform" = macos ] || [ "$platform" = all ]; then
   # Built on Linux too (docs/plan-macos.md): zig links the Go core, rcodesign signs the bundle ad hoc.
   [ "$build" = 1 ] && make dist-macos
-  zip="$root/core/dist/clipbridge-macos.zip"
+  zip="$root/core/dist/moonpassword-macos.zip"
   [ -f "$zip" ] || die "package not found: $zip"
   publish macos "$zip"
 fi
@@ -153,7 +154,7 @@ for p in android windows macos; do
   if [ "$platform" = all ] || [ "$platform" = "$p" ]; then
     case "$p" in
       android) src="$root/android/app/build/outputs/apk/release/app-release.apk" ;;
-      *) src="$root/core/dist/clipbridge-$p.zip" ;;
+      *) src="$root/core/dist/moonpassword-$p.zip" ;;
     esac
     read -r _ got_code _ got_size got_sha _ < <(scripts/probe-update.sh -u "$CB_UPDATE_URL" -c "$((CB_VERSION_CODE - 1))" -p "$p" -o "$tmp") \
       || die "$p: an installed app would not accept what the service offers (see the probe output above)"

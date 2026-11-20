@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"nightclip/core/proto"
+	"moonpassword/core/proto"
 	"relhub/pkg/relclient"
 	"relhub/pkg/relproto"
 )

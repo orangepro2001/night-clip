@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Asks an update service the way an installed ClipBridge does: with the real core code
+# Asks an update service the way an installed MoonPassword does: with the real core code
 # (core/update.Client), the public key compiled into this checkout (core/update/keys.go),
 # the app id and the platform names. It checks as if `--code` were installed, downloads the
 # offered package completely (resume, size and SHA-256 checks included) and prints
@@ -52,11 +52,11 @@ module probe
 go $gover
 
 require (
-	nightclip/core v0.0.0
+	moonpassword/core v0.0.0
 	relhub v0.0.0
 )
 
-replace nightclip/core => $groot/core
+replace moonpassword/core => $groot/core
 
 replace relhub => $groot/core/third_party/relhub
 
@@ -75,7 +75,7 @@ import (
 	"strconv"
 	"time"
 
-	"nightclip/core/update"
+	"moonpassword/core/update"
 )
 
 func main() {
@@ -89,7 +89,7 @@ func main() {
 		platforms = []string{os.Args[3]}
 	}
 	for _, p := range platforms {
-		c := &update.Client{BaseURL: base, Platform: p, Keys: update.TrustedKeys(), UserAgent: "clipbridge-probe/1"}
+		c := &update.Client{BaseURL: base, Platform: p, Keys: update.TrustedKeys(), UserAgent: "moonpassword-probe/1"}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		m, err := c.Check(ctx, installed)
 		if err != nil {

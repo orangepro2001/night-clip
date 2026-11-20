@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "night-clip-android"
+rootProject.name = "moonpassword-android"
 include(":app")

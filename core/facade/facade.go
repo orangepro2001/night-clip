@@ -18,9 +18,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"nightclip/core/proto"
-	"nightclip/core/store"
-	"nightclip/core/update"
+	"moonpassword/core/proto"
+	"moonpassword/core/store"
+	"moonpassword/core/update"
 )
 
 // Version is the core version reported by the "version" method.

@@ -1,7 +1,7 @@
 # 计划：集成密码/凭证管理（Vault）
 
 > 状态：**V1–V3 已实现并合并（2026-10-27）；真机验证与发布验证待完成**。
-> 目标：在 ClipBridge 内集成一个类似 KeePassXC 的本地加密密码库，覆盖安全、备份/恢复、多设备同步和自动填充，不另开应用。  
+> 目标：在 MoonPassword 内集成一个类似 KeePassXC 的本地加密密码库，覆盖安全、备份/恢复、多设备同步和自动填充，不另开应用。  
 > 前提不变：Windows + Android，同一 tailnet，无服务端（[ADR-005](adr/005-go-core-and-tailnet-p2p.md)）。  
 > 标注约定：**[已查证]** = 读了本仓库代码、官方页面或实测；**[待验证]** = 凭记忆或推断，必须在 PoC 或评审里确认。  
 > 与 [plan-auto-broadcast.md](plan-auto-broadcast.md) 的关系：两者有一个必须同时处理的交叉点（§6.4：密码库复制出来的内容绝不能被剪贴板自动广播）。
@@ -25,7 +25,7 @@
 | 事件通道 | 事件种类只有 `clipboard`/`file`/`control`；事件有 TTL（最长 7 天），发件箱按链路序号补发；帧是 WebSocket JSON（`core/peer/frames.go`） | 密码库同步是"状态一致性"问题，不是"一次性事件"：不能走带 TTL 的发件箱，需要新的同步通道（§5） |
 | 文件传输 | `xfer`：HTTP Range 续传、SHA-256、监听方服务字节 | 可复用来搬运整库密文 |
 | 命名管道 | 白名单 `Allowed`，测试里列出绝不能开放的方法 | 新增测试：所有 `vault.*` 永不在白名单里 |
-| 更新 | 自托管签名清单；发布密钥与 Android 签名密钥在开发机 `~/.config/clipbridge/`（HANDOFF §8） | 最大的系统性风险，见 §9 R1 |
+| 更新 | 自托管签名清单；发布密钥与 Android 签名密钥在开发机 `~/.config/moonpassword/`（HANDOFF §8） | 最大的系统性风险，见 §9 R1 |
 | 云备份 | Android `allowBackup="false"` | 保持；密码库明确排除在系统云备份之外 |
 | 真机验证 | **两端壳都还没在真机上跑过**（HANDOFF §4） | 密码库不能先于真机验证放行，见 §10 |
 | 仓库许可 | 仓库里**没有** LICENSE 文件 | KeePassXC 是 GPL-2/3：**不得**拷贝或移植其代码，只参考公开的格式规范和协议文档；开放仓库前需要选定许可 |

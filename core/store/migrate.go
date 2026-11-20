@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"nightclip/core/proto"
+	"moonpassword/core/proto"
 )
 
 // migrations holds one entry per schema version. Entry i upgrades the database

@@ -11,10 +11,10 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"nightclip/core/proto"
-	"nightclip/core/sshagent"
-	"nightclip/core/sshkey"
-	"nightclip/core/vault"
+	"moonpassword/core/proto"
+	"moonpassword/core/sshagent"
+	"moonpassword/core/sshkey"
+	"moonpassword/core/vault"
 )
 
 // SSH keys in the vault (docs/adr/009-ssh-agent.md, docs/vault-api.md §3.9).

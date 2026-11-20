@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"nightclip/core/proto"
-	"nightclip/core/update/updatetest"
+	"moonpassword/core/proto"
+	"moonpassword/core/update/updatetest"
 )
 
 func TestFakeServesTheSameAppAsTheClient(t *testing.T) {

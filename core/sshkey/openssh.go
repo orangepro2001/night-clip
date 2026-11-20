@@ -13,7 +13,7 @@ import (
 	"golang.org/x/crypto/poly1305" //nolint:staticcheck // the OpenSSH construction needs raw Poly1305
 	"golang.org/x/crypto/ssh"
 
-	"nightclip/core/sshkey/internal/bcryptpbkdf"
+	"moonpassword/core/sshkey/internal/bcryptpbkdf"
 )
 
 const opensshMagic = "openssh-key-v1\x00"

@@ -25,7 +25,7 @@ type MergeStats struct {
 // Changed reports whether anything happened.
 func (s MergeStats) Changed() bool { return s != MergeStats{} }
 
-// The merge follows KeePass's own rules so that a file edited in KeePassXC and in ClipBridge on
+// The merge follows KeePass's own rules so that a file edited in KeePassXC and in MoonPassword on
 // different devices comes together without losing either side (docs/plan-vault.md §5.3):
 //
 //   - objects are matched by UUID;
@@ -390,7 +390,7 @@ func contentHash(db *g.Database, e *g.Entry) string {
 	h.Write([]byte("\x02" + e.Tags + "\x02" + strconv.FormatBool(e.Times.Expires.Bool) + strconv.FormatInt(unix(e.Times.ExpiryTime), 10)))
 	cds := make([]string, 0)
 	for _, cd := range e.CustomData {
-		if cd.Key == cdPrevGroup {
+		if isCustomKey(cd.Key, cdPrevGroup) {
 			continue
 		}
 		cds = append(cds, cd.Key+"\x00"+cd.Value)

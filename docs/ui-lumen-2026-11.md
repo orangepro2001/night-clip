@@ -8,7 +8,7 @@
 
 | 部分 | 现在 |
 | --- | --- |
-| 项目 | `windows/ClipBridge.Windows/ClipBridge.Windows.csproj`：`net10.0-windows`，`Avalonia.Win32` + `Avalonia.Skia` + `Avalonia.HarfBuzz` 12.1.6 + `Lumen.UI` 0.1.0（nuget.org）。只带 Windows 后端（不用 `Avalonia.Desktop`，省掉 X11 / macOS / D-Bus 的库）。仍开 `UseWindowsForms`，只为托盘的 `NotifyIcon`。 |
+| 项目 | `windows/MoonPassword.Windows/MoonPassword.Windows.csproj`：`net10.0-windows`，`Avalonia.Win32` + `Avalonia.Skia` + `Avalonia.HarfBuzz` 12.1.6 + `Lumen.UI` 0.1.0（nuget.org）。只带 Windows 后端（不用 `Avalonia.Desktop`，省掉 X11 / macOS / D-Bus 的库）。仍开 `UseWindowsForms`，只为托盘的 `NotifyIcon`。 |
 | 启动 | `Program.cs`：先处理更新器参数（`--apply…`，不启动 Avalonia），再做单实例检查，然后 `StartWithClassicDesktopLifetime(OnExplicitShutdown)`。`App.axaml(.cs)`：`LumenTheme` + 应用样式；恢复主题与强调色；启动核心；致命错误用系统消息框（`Services/NativeDialogs.cs`）。 |
 | 主窗口 | `MainWindow.axaml(.cs)`：Lumen 的 `AppShell`。侧栏分组（同步 / 工具 / 系统），收件箱、传输、诊断有实时角标（`Views/NavPage.cs` + `App.axaml` 里覆盖 `NavList` 的条目模板——Lumen 的 `NavItem` 不会通知变化）；侧栏可折叠并记住状态。顶栏：同步状态（点击可暂停 15 分钟 / 1 小时 / 4 小时或关闭同步）、“配对新设备”、深浅色切换。侧栏底部：本机名和在线设备数。 |
 | 提示 | 底部状态栏改为右下角 Toast（成功 / 警告 / 错误分色）。核心警告和可用更新改为每页顶部的提示条（`Views/PageFrame.cs`），更新提示条上可直接下载 / 安装，可关闭到下一个版本。 |
@@ -39,12 +39,12 @@
 
 ## 开发辅助
 
-- **独立开发实例**：设置环境变量 `CLIPBRIDGE_DATA_DIR` 为一个绝对路径，就用该目录作为数据目录，并使用独立的单实例名，可以和已安装的 ClipBridge 同时运行；开发实例不修改开机自启，错误日志带调用栈。
-- **截图**：`ClipBridge.exe --snapshot <目录>`（仅开发实例）把每个页面、主要对话框、小窗口和托盘菜单在浅色与深色下各渲染一张 PNG 后退出。为了有内容可看，它会在开发数据目录里通过正常的核心调用写入几条密码库条目和笔记，并只在内存里填充示例设备、收件箱和传输（不进核心）。
+- **独立开发实例**：设置环境变量 `MOONPASSWORD_DATA_DIR` 为一个绝对路径，就用该目录作为数据目录，并使用独立的单实例名，可以和已安装的 MoonPassword 同时运行；开发实例不修改开机自启，错误日志带调用栈。
+- **截图**：`MoonPassword.exe --snapshot <目录>`（仅开发实例）把每个页面、主要对话框、小窗口和托盘菜单在浅色与深色下各渲染一张 PNG 后退出。为了有内容可看，它会在开发数据目录里通过正常的核心调用写入几条密码库条目和笔记，并只在内存里填充示例设备、收件箱和传输（不进核心）。
 
 ```powershell
-$env:CLIPBRIDGE_DATA_DIR = "$env:TEMP\cb-dev"
-.\windows\ClipBridge.Windows\bin\Debug\net10.0-windows\win-x64\ClipBridge.exe --snapshot "$env:TEMP\cb-shots"
+$env:MOONPASSWORD_DATA_DIR = "$env:TEMP\cb-dev"
+.\windows\MoonPassword.Windows\bin\Debug\net10.0-windows\win-x64\MoonPassword.exe --snapshot "$env:TEMP\cb-shots"
 ```
 
 ## 验证情况（2026-11-20，Windows 11）
@@ -52,8 +52,8 @@ $env:CLIPBRIDGE_DATA_DIR = "$env:TEMP\cb-dev"
 | 项目 | 结果 |
 | --- | --- |
 | `dotnet build`（Debug / Release） | 0 警告 0 错误 |
-| `dotnet test windows/ClipBridge.Windows.Tests` | 945 通过 |
-| `dotnet build macos/ClipBridge.Mac`（共用 Logic） | 0 警告 0 错误 |
+| `dotnet test windows/MoonPassword.Windows.Tests` | 945 通过 |
+| `dotnet build macos/MoonPassword.Mac`（共用 Logic） | 0 警告 0 错误 |
 | `dotnet publish -r win-x64 --self-contained false`（发布参数同 `make dist-windows`） | 43 MB（其中核心 DLL 15 MB），不含 .pdb |
 | 开发实例启动真实核心、显示主窗口、渲染全部页面 / 对话框 / 小窗口 / 托盘菜单（浅色 + 深色）、正常退出 | 通过，日志无错误 |
 | 两台设备之间的配对、剪贴板收发、文件传输、托盘气泡点击 | **未在本次验证**（需要另一台设备） |

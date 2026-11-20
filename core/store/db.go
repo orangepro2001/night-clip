@@ -19,7 +19,7 @@ import (
 
 	_ "modernc.org/sqlite" // pure-Go driver: no cgo, cross-compiles to Windows/Android
 
-	"nightclip/core/proto"
+	"moonpassword/core/proto"
 )
 
 const (

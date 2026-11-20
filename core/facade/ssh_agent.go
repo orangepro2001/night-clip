@@ -16,10 +16,10 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	"nightclip/core/pipe"
-	"nightclip/core/proto"
-	"nightclip/core/sshagent"
-	"nightclip/core/sshkey"
+	"moonpassword/core/pipe"
+	"moonpassword/core/proto"
+	"moonpassword/core/sshagent"
+	"moonpassword/core/sshkey"
 )
 
 // The SSH agent (docs/adr/009-ssh-agent.md). It listens on a pipe only the

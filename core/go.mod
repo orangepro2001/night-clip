@@ -1,4 +1,4 @@
-module nightclip/core
+module moonpassword/core
 
 go 1.27
 

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"nightclip/core/proto"
-	"nightclip/core/store"
-	"nightclip/core/update"
+	"moonpassword/core/proto"
+	"moonpassword/core/store"
+	"moonpassword/core/update"
 )
 
 // updateKeys supplies the trusted release keys; tests replace it.
@@ -66,7 +66,7 @@ func newUpdateClient(cfg Config, rawURL string) *update.Client {
 	}
 	return &update.Client{
 		BaseURL: base, Platform: cfg.Platform, Keys: updateKeys(),
-		UserAgent: "clipbridge/" + cfg.AppVersionName, // shows up in the service's access log
+		UserAgent: "moonpassword/" + cfg.AppVersionName, // shows up in the service's access log
 	}
 }
 

@@ -23,7 +23,7 @@
     <!-- Create -->
     <string name="vault_create_title">新建密码库</string>
     <string name="vault_forgot_warning_title">忘记主密码就永远打不开密码库</string>
-    <string name="vault_forgot_warning">没有任何找回方式，开发者和 ClipBridge 都帮不上忙，也不存在“重置密码”。请把主密码记在安全的地方；建档后请立刻导出一份加密备份。</string>
+    <string name="vault_forgot_warning">没有任何找回方式，开发者和 MoonPassword 都帮不上忙，也不存在“重置密码”。请把主密码记在安全的地方；建档后请立刻导出一份加密备份。</string>
     <string name="vault_understood">我明白：忘记主密码后，里面的内容无法找回。</string>
     <string name="vault_create">创建密码库</string>
     <string name="vault_creating">正在创建…</string>

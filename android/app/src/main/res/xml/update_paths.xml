@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- What the app's FileProvider may share, and nothing else: the update package, which the Go core downloads to
-     <filesDir>/clipbridge/updates (CoreHost passes <filesDir>/clipbridge as data_dir). -->
+     <filesDir>/moonpassword/updates (CoreHost passes <filesDir>/moonpassword as data_dir). -->
 <paths>
-    <files-path name="updates" path="clipbridge/updates/" />
+    <files-path name="updates" path="moonpassword/updates/" />
 </paths>

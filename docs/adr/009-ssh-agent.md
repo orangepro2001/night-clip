@@ -16,10 +16,10 @@
 2. **只给同一用户，只能签名。** Windows 默认监听 `\\.\pipe\openssh-ssh-agent`（Windows ssh 在没设 `SSH_AUTH_SOCK` 时的默认地址），沿用 `core/pipe` 的写法：只允许本人访问的 DACL `D:P(A;;GA;;;OW)`、`FILE_FLAG_FIRST_PIPE_INSTANCE`（名字被占用就报“冲突”，绝不抢占）、拒绝远程客户端。密码库的 `vault.*` 和新的 `ssh.*` 方法仍然**不在**控制管道上（`core/pipe` 的测试固定这一点）。
 3. **不确认，只通知。** 签名前不弹窗（用户的选择）；每次签名发 `ssh.used` 事件，壳按“每个程序首次使用”节流后弹气泡，并保留最近 100 次记录。经 `ssh -A` 转发来的请求（session-bind 标记 `is_forwarding`）默认拒绝，设置 `ssh_allow_forwarding` 才放行。
 4. **钥匙圈独立于密码库。** 密码库解锁时、以及每次保存后（`Vault.SetOnSaved`）加载钥匙；签名不碰密码库，也不重置空闲计时。密码库因空闲自动锁定后，钥匙在 Agent 里再保留 `ssh_key_ttl_s`（默认 4 小时，从“本应锁定的时刻”算起，0 = 一起锁）；手动锁定、锁屏/注销/切换用户、睡眠、退出时立即清除。`vault.lock` 因此带 `reason`（user / session / suspend），且即使密码库已经锁着也会清除钥匙。
-5. **存放方式与 KeePassXC 互通。** 条目 kind 为 `ssh`；私钥统一转成**不加密**的 OpenSSH 格式存为附件（密码库本身就是加密层）；同时写 `KeeAgent.settings`（KeePassXC/KeeAgent 的格式，UTF-16LE），`AddAtDatabaseOpen` 即“提供给 Agent”的开关。没有 `ClipBridge.Kind` 但带 `KeeAgent.settings` 的条目读作 `ssh`；旧客户端把它改成 `login` 时核心保持 `ssh`。能否进 Agent 看 `KeeAgent.settings`，不看 kind。
+5. **存放方式与 KeePassXC 互通。** 条目 kind 为 `ssh`；私钥统一转成**不加密**的 OpenSSH 格式存为附件（密码库本身就是加密层）；同时写 `KeeAgent.settings`（KeePassXC/KeeAgent 的格式，UTF-16LE），`AddAtDatabaseOpen` 即“提供给 Agent”的开关。没有 `MoonPassword.Kind` 但带 `KeeAgent.settings` 的条目读作 `ssh`；旧客户端把它改成 `login` 时核心保持 `ssh`。能否进 Agent 看 `KeeAgent.settings`，不看 kind。
 6. **格式识别在核心。** 新包 `core/sshkey` 按内容（不看文件名）识别并解密：OpenSSH（none、aes128/192/256-ctr/cbc、aes128/256-gcm、chacha20-poly1305、3des-cbc）、PEM PKCS#1/SEC1（含旧式 Proc-Type 加密）、PKCS#8（明文与 PBES2：PBKDF2-HMAC-SHA1/224/256/384/512 或 scrypt，AES-CBC 或 3DES）、裸 DER、PuTTY PPK v2/v3（Argon2i/d/id）。能识别但拒绝并说明原因：DSA、FIDO（sk-*）、ssh.com 格式、PPK v1、PBES1、公钥/证书、RSA < 2048、其它曲线、一文件多钥。每条解密路径都有成本上限（bcrypt 轮数、PBKDF2 次数、scrypt/Argon2 内存），解密在锁外进行。
 7. **私钥只经 `ssh.export` 离开核心**，且要求再次输入主密码，文件以独占方式新建（不覆盖）。
-8. **主机绑定**（2026-11-20 补充）：钥匙可以限定服务器（主机名模式或主机钥匙指纹，存在 CustomData `ClipBridge.SSH.Hosts`）。有 session-bind 的连接只列出与目标服务器相符的钥匙，并拒绝发往别处的登录签名；本地用途（没有 session-bind）和非登录签名不受限制。主机名靠用户的 `known_hosts` 识别。
+8. **主机绑定**（2026-11-20 补充）：钥匙可以限定服务器（主机名模式或主机钥匙指纹，存在 CustomData `MoonPassword.SSH.Hosts`）。有 session-bind 的连接只列出与目标服务器相符的钥匙，并拒绝发往别处的登录签名；本地用途（没有 session-bind）和非登录签名不受限制。主机名靠用户的 `known_hosts` 识别。
 9. **迁移 `~/.ssh` 默认不删文件。** 扫描只读元数据，从不返回文件内容。ssh 在私钥文件不存在、只有 `<路径>.pub` 时会改用 Agent 里的同一把钥匙（本机 Windows OpenSSH 9.5 实测），所以迁移只需补 `.pub`，`~/.ssh/config` 不用改。只有指纹一致、`.pub` 正确、Agent 已列出、且同目录脚本没有直接引用这个文件时，才提供（默认不勾选）移到回收站。
 
 ## 后果
@@ -28,7 +28,7 @@
 - 负面与风险：
   1. **没有确认环节。** 钥匙加载期间，同一用户下的任何进程都能用它们登录，这和系统自带的 ssh-agent 相同；宽限期把这个窗口延长到了密码库空闲锁定之后。
   2. Go 无法可靠擦除内存：RSA/ECDSA 私钥在 `big.Int` 里，只有 Ed25519 种子能清零；口令以 JSON 字符串传入。
-  3. ClipBridge 不运行时 ssh 用不了这些钥匙。直接读私钥文件的工具（SSHFS-Win、未设 `core.sshCommand` 的 Git 自带 ssh、WSL、PuTTY/WinSCP、带 `-i` 的脚本）连不上 Agent，所以文件默认保留；Git 由设置页提供一键改用 Windows OpenSSH（先显示完整命令并确认，只撤销自己写的值）。
+  3. MoonPassword 不运行时 ssh 用不了这些钥匙。直接读私钥文件的工具（SSHFS-Win、未设 `core.sshCommand` 的 Git 自带 ssh、WSL、PuTTY/WinSCP、带 `-i` 的脚本）连不上 Agent，所以文件默认保留；Git 由设置页提供一键改用 Windows OpenSSH（先显示完整命令并确认，只撤销自己写的值）。
   4. 来自同步或 KDBX 导入、且 `AddAtDatabaseOpen` 为真的钥匙会直接进 Agent，`ssh.keys` 事件和列表会显示出来。
   5. `ssh.*` 事件限速（约每秒 10 个），避免本机进程刷请求挤掉其它事件。
   6. 历史版本恢复不恢复附件，因此 SSH 条目不提供“恢复历史版本”。

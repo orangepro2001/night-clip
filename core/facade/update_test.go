@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"nightclip/core/update"
-	"nightclip/core/update/updatetest"
+	"moonpassword/core/update"
+	"moonpassword/core/update/updatetest"
 	"relhub/pkg/relproto"
 )
 
@@ -132,7 +132,7 @@ func TestUpdateCheckDownloadReadyThroughFacade(t *testing.T) {
 	if got := fx.srv.Checks(); len(got) == 0 || got[0] != 5 {
 		t.Fatalf("installed versionCode sent to the service = %v, want 5 first", got)
 	}
-	if got := fx.srv.Agents(); len(got) == 0 || got[0] != "clipbridge/0.1.5" {
+	if got := fx.srv.Agents(); len(got) == 0 || got[0] != "moonpassword/0.1.5" {
 		t.Fatalf("User-Agent = %v", got)
 	}
 

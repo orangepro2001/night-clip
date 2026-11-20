@@ -10,7 +10,7 @@ rewritten to their `*at()` equivalents (`shim_syscall_amd64.go`). The repository
 real module cache are not modified. Never ship this AAR; use `make aar` for releases.
 
 ```sh
-tools/android-x86_64-emulator/build-aar.sh        # writes android/app/libs/clipbridge-core.aar
+tools/android-x86_64-emulator/build-aar.sh        # writes android/app/libs/moonpassword-core.aar
 cd android && CB_VERSION_CODE=... ./gradlew :app:assembleDebug   # use scripts/version.sh for the code
 ```
 

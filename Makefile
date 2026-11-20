@@ -1,16 +1,16 @@
-# night-clip build entry points. Run from the repository root.
+# MoonPassword build entry points. Run from the repository root.
 #
 #   make test        Go unit tests (race detector on)
 #   make vet         go vet + gofmt check
-#   make dll         Windows x64 clipbridge_core.dll + header (needs mingw-w64)
+#   make dll         Windows x64 moonpassword_core.dll + header (needs mingw-w64)
 #   make dll-smoke   build the Linux .so and run the C ABI smoke test
 #   make dll-wine    run the Windows DLL under Wine (needs wine64)
 #   make test-interop  C# interop tests against the Linux .so (needs a .NET SDK)
 #   make build-windows-app  compile the Windows app (Avalonia + Lumen.UI) on Linux (EnableWindowsTargeting)
 #   make apk         debug APK (needs JDK 17, Android SDK, make aar first)
 #   make aar         Android AAR (needs gomobile + Android NDK, see below)
-#   make dist-windows  update-ready zip of the Windows app (core/dist/clipbridge-windows.zip)
-#   make dist-android  release APK signed with the key in ~/.config/clipbridge
+#   make dist-windows  update-ready zip of the Windows app (core/dist/moonpassword-windows.zip)
+#   make dist-android  release APK signed with the key in ~/.config/moonpassword (or ~/.config/clipbridge)
 #   scripts/release-local.sh   build + publish to the local release-publish service (see docs/update.md)
 #   make clean
 
@@ -20,7 +20,7 @@ MINGW_CC  ?= x86_64-w64-mingw32-gcc
 # Ubuntu 22.04 ships `wine64`; 24.04 and later only `wine` (it runs 64-bit programs too).
 WINE      ?= $(shell command -v wine64 || command -v wine || echo wine64)
 DIST      := core/dist
-JAVAPKG   ?= com.nightclip.core
+JAVAPKG   ?= cloud.moonl.password.core
 ANDROIDAPI ?= 26
 
 # Android toolchain locations (override on other machines).
@@ -53,27 +53,27 @@ dll:
 	mkdir -p $(DIST)/windows-amd64
 	cd core && CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=$(MINGW_CC) \
 		$(GO) build -buildmode=c-shared -trimpath -ldflags="-s -w" \
-		-o dist/windows-amd64/clipbridge_core.dll ./cmd/cbcore-dll
+		-o dist/windows-amd64/moonpassword_core.dll ./cmd/cbcore-dll
 
 dll-smoke:
 	mkdir -p $(DIST)/linux-amd64
 	cd core && CGO_ENABLED=1 $(GO) build -buildmode=c-shared \
-		-o dist/linux-amd64/libclipbridge_core.so ./cmd/cbcore-dll
+		-o dist/linux-amd64/libmoonpassword_core.so ./cmd/cbcore-dll
 	gcc -Wall -Wextra -o $(DIST)/linux-amd64/smoke core/test/abi/smoke.c \
-		-I$(DIST)/linux-amd64 -L$(DIST)/linux-amd64 -lclipbridge_core \
+		-I$(DIST)/linux-amd64 -L$(DIST)/linux-amd64 -lmoonpassword_core \
 		-Wl,-rpath,'$$ORIGIN'
 	$(DIST)/linux-amd64/smoke
 
 dll-wine: dll
 	$(MINGW_CC) -Wall -Wextra -Wno-cast-function-type -o $(DIST)/windows-amd64/smoke_win.exe core/test/abi/smoke_win.c
-	cd $(DIST)/windows-amd64 && WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml=" WINEPREFIX=$${WINEPREFIX:-$$HOME/.wine-clipbridge} \
-		$(WINE) smoke_win.exe clipbridge_core.dll
+	cd $(DIST)/windows-amd64 && WINEDEBUG=-all WINEDLLOVERRIDES="mscoree,mshtml=" WINEPREFIX=$${WINEPREFIX:-$$HOME/.wine-moonpassword} \
+		$(WINE) smoke_win.exe moonpassword_core.dll
 
 test-interop: dll-smoke
-	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) test windows/ClipBridge.Windows.Tests
+	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) test windows/MoonPassword.Windows.Tests
 
 build-windows-app: dll
-	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) build windows/ClipBridge.Windows \
+	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) build windows/MoonPassword.Windows \
 		-p:EnableWindowsTargeting=true -c Release
 
 # Prerequisites (not installed by this repo):
@@ -84,23 +84,23 @@ aar:
 	@command -v gomobile >/dev/null || { echo "gomobile not found; see comment above"; exit 1; }
 	mkdir -p android/app/libs
 	cd core && gomobile bind -target=android/arm64,android/amd64 -androidapi $(ANDROIDAPI) \
-		-javapkg $(JAVAPKG) -o ../android/app/libs/clipbridge-core.aar ./mobile
+		-javapkg $(JAVAPKG) -o ../android/app/libs/moonpassword-core.aar ./mobile
 
 apk: aar
 	cd android && ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
 
 # Windows release package: the published Avalonia app with its libraries (framework-dependent, win-x64) plus
-# clipbridge_core.dll, zipped flat so the updater can copy it over the install folder.
+# moonpassword_core.dll, zipped flat so the updater can copy it over the install folder.
 dist-windows: dll
 	rm -rf $(DIST)/publish-win
-	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) publish windows/ClipBridge.Windows -c Release -r win-x64 \
+	DOTNET_CLI_TELEMETRY_OPTOUT=1 $(DOTNET) publish windows/MoonPassword.Windows -c Release -r win-x64 \
 		--self-contained false -p:EnableWindowsTargeting=true -p:DebugType=None -p:DebugSymbols=false \
 		-p:CbVersionCode=$(CB_VERSION_CODE) -p:CbVersionName=$(CB_VERSION_NAME) -p:CbUpdateUrl=$(CB_UPDATE_URL) \
 		-o $(DIST)/publish-win
-	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/clipbridge-windows.zip ClipBridge.exe clipbridge_core.dll
+	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/moonpassword-windows.zip MoonPassword.exe moonpassword_core.dll
 
 # macOS package (Apple Silicon), built on Linux: zig links the Go core, rcodesign signs ad hoc
-# (docs/plan-macos.md). Output: core/dist/clipbridge-macos.zip holding ClipBridge.app.
+# (docs/plan-macos.md). Output: core/dist/moonpassword-macos.zip holding MoonPassword.app.
 dist-macos:
 	DOTNET=$(DOTNET) macos/build-app.sh
 
@@ -108,7 +108,7 @@ dist-macos:
 dist-android: aar
 	cd android && ./gradlew --no-daemon :app:assembleRelease
 	@test -f android/app/build/outputs/apk/release/app-release.apk || { \
-		echo "release APK is unsigned: create ~/.config/clipbridge/android-signing.properties (docs/update.md)"; exit 1; }
+		echo "release APK is unsigned: create ~/.config/moonpassword/android-signing.properties (docs/update.md)"; exit 1; }
 
 # Everything that can be verified on a Linux machine without a device.
 check: vet test dll-smoke dll-wine test-interop build-windows-app aar apk

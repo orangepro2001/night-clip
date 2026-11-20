@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"nightclip/core/proto"
+	"moonpassword/core/proto"
 )
 
 // State is the update state machine's position.

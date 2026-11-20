@@ -40,5 +40,5 @@ cp "$here/shim_syscall_amd64.go" "$patched/zz_emulator_shim_amd64.go"
 export GOPATH="$fake" GOMODCACHE="$fake/pkg/mod"
 mkdir -p "$repo/android/app/libs"
 gomobile bind -target=android/amd64 -androidapi "${ANDROIDAPI:-26}" \
-  -javapkg "${JAVAPKG:-com.nightclip.core}" -o "$repo/android/app/libs/clipbridge-core.aar" ./mobile
-echo "built x86_64-only AAR for emulator testing: android/app/libs/clipbridge-core.aar"
+  -javapkg "${JAVAPKG:-cloud.moonl.password.core}" -o "$repo/android/app/libs/moonpassword-core.aar" ./mobile
+echo "built x86_64-only AAR for emulator testing: android/app/libs/moonpassword-core.aar"

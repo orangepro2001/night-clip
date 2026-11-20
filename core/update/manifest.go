@@ -1,4 +1,4 @@
-// Package update implements ClipBridge's self-update against the local
+// Package update implements MoonPassword's self-update against the local
 // release-publish service: a client that checks, watches and downloads with
 // resume and verification (the signed manifest and the wire protocol belong to
 // release-publish's SDK, vendored in third_party/relhub), and the background
@@ -7,8 +7,8 @@ package update
 
 import "relhub/pkg/relproto"
 
-// AppID is the id ClipBridge is registered under in release-publish.
-const AppID = "clipbridge"
+// AppID is the id MoonPassword is registered under in release-publish.
+const AppID = "moonpassword"
 
 // Platforms that can be updated. They are the platform names used in
 // release-publish (`relhub publish -platform ...`) and the values of the

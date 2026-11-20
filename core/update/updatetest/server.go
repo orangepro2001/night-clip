@@ -28,7 +28,7 @@ import (
 
 // AppID is the app the fake serves (update.AppID; a test in package update
 // keeps the two equal).
-const AppID = "clipbridge"
+const AppID = "moonpassword"
 
 // Server is the fake service. Use Handler with httptest.NewServer.
 type Server struct {

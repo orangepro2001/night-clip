@@ -14,21 +14,26 @@ val cbVersionName = System.getenv("CB_VERSION_NAME") ?: "0.0.0-dev"
 val cbUpdateUrl = System.getenv("CB_UPDATE_URL") ?: ""
 
 // Release builds are signed with a key kept outside the repository: storeFile, storePassword,
-// keyAlias, keyPassword in $CLIPBRIDGE_SIGNING or ~/.config/clipbridge/android-signing.properties.
+// keyAlias, keyPassword in $MOONPASSWORD_SIGNING or ~/.config/moonpassword/android-signing.properties
+// (~/.config/clipbridge/ is still read on machines set up before the rename).
 // Without it the release APK stays unsigned instead of silently using the debug key. Every
 // release must use the same key, otherwise Android refuses to install it over the old one.
 val signingProps = Properties().apply {
-    val f = file(System.getenv("CLIPBRIDGE_SIGNING")
-        ?: "${System.getProperty("user.home")}/.config/clipbridge/android-signing.properties")
-    if (f.isFile) f.inputStream().use { load(it) }
+    val home = System.getProperty("user.home")
+    val f = listOfNotNull(
+        System.getenv("MOONPASSWORD_SIGNING"),
+        "$home/.config/moonpassword/android-signing.properties",
+        "$home/.config/clipbridge/android-signing.properties",
+    ).map { file(it) }.firstOrNull { it.isFile }
+    f?.inputStream()?.use { load(it) }
 }
 
 android {
-    namespace = "com.nightclip.app"
+    namespace = "cloud.moonl.password"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.nightclip.app"
+        applicationId = "cloud.moonl.password"
         minSdk = 26
         targetSdk = 35
         versionCode = maxOf(cbVersionCode, 1L).toInt()

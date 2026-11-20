@@ -1,4 +1,4 @@
-// Command cbcore-dll builds clipbridge_core.dll (Windows) or a shared object
+// Command cbcore-dll builds moonpassword_core.dll (Windows) or a shared object
 // (Linux, used only by the C smoke test). It exports the five-function C ABI
 // from docs/architecture.md §2.2.
 //
@@ -19,8 +19,8 @@ import "C"
 import (
 	"unsafe"
 
-	"nightclip/core/facade"
-	"nightclip/core/proto"
+	"moonpassword/core/facade"
+	"moonpassword/core/proto"
 )
 
 var core = facade.New()

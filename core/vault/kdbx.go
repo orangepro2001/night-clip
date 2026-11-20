@@ -111,7 +111,7 @@ func newDatabase(c Creds, kdf KDF, name string) (*g.Database, error) {
 	root.Name = name
 	db.Content.Root = &g.RootData{Groups: []g.Group{root}}
 	db.Content.Meta.DatabaseName = name
-	db.Content.Meta.Generator = "ClipBridge"
+	db.Content.Meta.Generator = "MoonPassword"
 	db.Content.Meta.RecycleBinEnabled = w.NewBoolWrapper(true)
 	return db, nil
 }
@@ -376,7 +376,7 @@ func adoptContent(nd, old *g.Database) {
 	}
 	meta := old.Content.Meta
 	meta.Binaries = nil
-	meta.Generator = "ClipBridge"
+	meta.Generator = "MoonPassword"
 	nd.Content.Meta = meta
 	nd.Content.Root = old.Content.Root
 }

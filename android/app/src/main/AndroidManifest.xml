@@ -13,13 +13,13 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
-        android:name=".ClipBridgeApp"
+        android:name=".MoonPasswordApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.ClipBridge">
+        android:theme="@style/Theme.MoonPassword">
 
         <activity
             android:name=".MainActivity"
@@ -67,7 +67,7 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:taskAffinity=""
-            android:theme="@style/Theme.ClipBridge.AutofillSheet"
+            android:theme="@style/Theme.MoonPassword.AutofillSheet"
             android:windowSoftInputMode="adjustResize" />
 
         <!-- "Save to vault" screen, started by the system (API 28+: from the save prompt) or by our service. -->
@@ -77,7 +77,7 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:taskAffinity=""
-            android:theme="@style/Theme.ClipBridge.AutofillSheet"
+            android:theme="@style/Theme.MoonPassword.AutofillSheet"
             android:windowSoftInputMode="adjustResize" />
 
         <!-- Shares the verified update APK with the package installer (res/xml/update_paths.xml; nothing else is shared). -->

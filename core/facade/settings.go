@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"nightclip/core/proto"
+	"moonpassword/core/proto"
 )
 
 // parseParams parses method parameters; empty params mean "{}".

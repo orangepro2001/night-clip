@@ -1,6 +1,6 @@
 # 接入本机 release-publish 服务：可复用的经验与方法
 
-> 来源：2026-10-28，night-clip（ClipBridge）把自己写的更新分发服务 `cbdist` 换成本机共用的 **release-publish**（`relhub`）。这份文档把那次迁移里的**决定、代价、坑和检查清单**抽出来，写给下一个要接入的应用（或下一次换更新服务的自己）。ClipBridge 的落地细节在 [update.md](update.md)；这次任务的交接与现状在 [handoff-2026-10-28-release-publish.md](handoff-2026-10-28-release-publish.md)。
+> 来源：2026-10-28，moonpassword（MoonPassword）把自己写的更新分发服务 `cbdist` 换成本机共用的 **release-publish**（`relhub`）。这份文档把那次迁移里的**决定、代价、坑和检查清单**抽出来，写给下一个要接入的应用（或下一次换更新服务的自己）。MoonPassword 的落地细节在 [update.md](update.md)；这次任务的交接与现状在 [handoff-2026-10-28-release-publish.md](handoff-2026-10-28-release-publish.md)。
 > release-publish 自己的文档（权威来源，不在这里重复）：`~/dev/release-publish/docs/` 下的 `USAGE.md`（运维）、`SDK.md`（Go SDK）、`CSHARP.md`（.NET SDK）、`API.md`（协议与签名字节）。
 
 ## 0. 一页纸结论
@@ -24,11 +24,11 @@
 | 读 / 写 | 读取（检查、下载）不需要 token，边界是 tailnet；写入需要 Bearer token。本机 CLI 自动读管理员 token（`~/.local/share/release-publish/admin.token`）；CI 或别的机器用**按应用限定**的 token：`relhub token create -name ci-<app> -app <app>` |
 | 共用 | 同一个服务托管多个应用。接入时 `relhub list` 已经能看到别的项目（例如 `go-nx`）。**只创建、导入、发布、撤回你自己的应用**；服务的 `serve` 路径属于 release-publish 项目，你的应用不新增路径 |
 
-接入前你要为自己的应用定下五个标识（ClipBridge 的选择和理由放在右边，新应用照此思路定）：
+接入前你要为自己的应用定下五个标识（MoonPassword 的选择和理由放在右边，新应用照此思路定）：
 
-| 标识 | 规则 | ClipBridge 的选择与理由 |
+| 标识 | 规则 | MoonPassword 的选择与理由 |
 | --- | --- | --- |
-| app id | `^[a-z][a-z0-9-]{1,31}$`，一旦发布就不改 | `clipbridge`（与工作名一致） |
+| app id | `^[a-z][a-z0-9-]{1,31}$`，一旦发布就不改 | `moonpassword`（与工作名一致） |
 | platform | 自由命名 `^[a-z0-9][a-z0-9_-]{0,23}$`；服务文档约定用 `android`、`win-x64`…；**每个平台一条独立的版本序列** | `android`、`windows`。没有跟约定用 `win-x64`，因为 `windows` 已经写在核心的 `platform` 设置、测试、旧发布目录和导入工具里，改名只会带来一次没有收益的迁移。**没有历史包袱的新应用请直接用约定名**，这样 `relhub list` 里各应用一致 |
 | versionCode | 整数，同一平台内严格递增，发布后号码永久占用（撤回也不释放）；**Android 必须等于 APK 自己的 `versionCode`** | 沿用 `git rev-list --count HEAD`（提交数）：单调、不用手工改、新旧服务共用同一序列，桥接版在两边是同一个号码（§5） |
 | channel | 渠道是「客户端能看到哪个版本」的指针，默认 `stable` | 只用 `stable`。灰度要用 `beta` 时，客户端得新增一个渠道设置，现在没有 |
@@ -45,7 +45,7 @@
 | 5 | 受信任公钥只留 release-publish 的这一把，不再信任旧的 `cbdist` 密钥 | 新旧并存 | 旧密钥再没有东西用它签名；多一个信任根就多一个攻击面。轮换时才需要列表里放两把 |
 | 6 | 旧设备走**桥接版**过渡 | 客户端双栈（同时会说新旧两种协议）| 双栈是永久多出来的代码和测试；桥接是一次发布 |
 | 7 | 发布脚本做**预检**和**按 App 视角的验证** | 只调用 `relhub publish` | 发布不可逆，且最重的事故（构建不信任服务的密钥）在发布成功后才会暴露——到那时设备已经装上了 |
-| 8 | 导入旧版本历史（`relhub import clipbridge`） | 只发新的 | 保留回滚目标和下载页的历史，且可用 SHA-256 与旧源逐个核对 |
+| 8 | 导入旧版本历史（`relhub import moonpassword`） | 只发新的 | 保留回滚目标和下载页的历史，且可用 SHA-256 与旧源逐个核对 |
 
 ## 3. 客户端接入（Go）
 
@@ -55,13 +55,13 @@
 2. 在更新包里写一个薄的 `Client`，内部每次调用现建一个 `relclient.Client`（很便宜），把应用 id、平台、公钥、HTTP 客户端配进去。`Manifest` 用别名。
 3. `Check(ctx, installedVersionCode)`、`Watch(ctx, known, wait)`、`Download(ctx, manifest, dir, progress)` 三个方法，原样替换旧客户端的同名方法，`Manager` 只改一行（`Latest(ctx)` → `Check(ctx, 已装版本)`）。
 4. 把受信任公钥列表（`trustedKeysB64`）换成服务的公钥。
-5. 门面层（facade）传入 `User-Agent: clipbridge/<版本名>`。
+5. 门面层（facade）传入 `User-Agent: moonpassword/<版本名>`。
 6. 删掉不再需要的：自带的清单签名/验签、分发服务器、发布器、`cbdist` 命令、安装 `cbdist` 服务的脚本和 unit。
 7. 测试（§6）。
 
 ### 3.2 SDK 没有、必须自己补的（每一条都有测试，改传输层时别丢）
 
-| SDK 的实际行为 | 风险 | ClipBridge 的补法 | 对应测试 |
+| SDK 的实际行为 | 风险 | MoonPassword 的补法 | 对应测试 |
 | --- | --- | --- | --- |
 | `WithTrustedKeys` 为空时，**只验清单格式，不验签** | 一次编译/配置失误（公钥解析失败得到空列表）就让所有更新变成「无签名也接受」 | `Client.rel()`：没有公钥直接返回 `UPDATE_REJECTED`，不构造 SDK 客户端 | `TestClientCheckErrors`（无公钥） |
 | `relclient.New` 接受任意 `http(s)://` | 明文传输、凭据混在 URL 里 | `ValidateBaseURL`：只允许 https，http 仅限回环；拒绝带用户名、query、fragment 的 URL | `TestValidateBaseURL` |
@@ -80,7 +80,7 @@ SDK 做得好、不用重复造的：按清单**本地重新判断**是否更新
 ### 3.3 `Manager` 里需要知道的两点
 
 - 检查流程仍是「`Check` → 比较 → `available` → 下载」；`watch` 只是让下一次 `Check` 在发布后 1 秒内发生。`Watch` 的 `known` 取「已装版本」与「已见到的最高版本」中大的，避免重复通知。
-- `update.high`（见过的最高 versionCode）是**每台设备持久化**的，换更新服务时 `SetClient` 会清零。因为 ClipBridge 在新旧两个服务上用同一条号码序列，桥接不会触发「回放」误报。如果新服务的号码序列比旧的**小**，设备会因为这条防护拒绝更新——换服务前先确认号码单调。
+- `update.high`（见过的最高 versionCode）是**每台设备持久化**的，换更新服务时 `SetClient` 会清零。因为 MoonPassword 在新旧两个服务上用同一条号码序列，桥接不会触发「回放」误报。如果新服务的号码序列比旧的**小**，设备会因为这条防护拒绝更新——换服务前先确认号码单调。
 
 ## 4. 发布侧（`scripts/release-local.sh`）
 
@@ -108,7 +108,7 @@ SDK 做得好、不用重复造的：按清单**本地重新判断**是否更新
 
 ### 5.1 为什么旧设备不会自己过来
 
-已装的 App 里编译进去两样东西：**信任根**（旧公钥）和**地址**（旧 `…/clipbridge`）。它们永远只问旧地址，也不认新服务的签名。新服务建得再好，旧设备都看不见。
+已装的 App 里编译进去两样东西：**信任根**（旧公钥）和**地址**（旧 `…/moonpassword`）。它们永远只问旧地址，也不认新服务的签名。新服务建得再好，旧设备都看不见。
 
 ### 5.2 桥接版
 
@@ -131,15 +131,15 @@ SDK 做得好、不用重复造的：按清单**本地重新判断**是否更新
 
 ### 5.4 数据迁移
 
-`relhub import clipbridge -from <旧发布目录> [-dry-run]`：把旧源的发行包复制进新服务（旧源不被改动，可重复运行）。要点：
+`relhub import moonpassword -from <旧发布目录> [-dry-run]`：把旧源的发行包复制进新服务（旧源不被改动，可重复运行）。要点：
 - 「正在提供」的版本进 `stable`，更旧的进历史（不上线）；平台名取自旧目录名，**原样保留**。
 - SHA-256 保持不变，可与旧源 `latest.json` 逐个核对（这次 0.1.79 的哈希一致）。
-- 导入后的 `publishedAt` 是**导入时间**，不是当初发布的时间；包文件名由服务重新生成（`clipbridge-0.1.79-android.apk` 而不是 `clipbridge-android-0.1.79-79.apk`）——先确认客户端和壳不依赖文件名格式（ClipBridge 只看扩展名和核心给出的路径）。
+- 导入后的 `publishedAt` 是**导入时间**，不是当初发布的时间；包文件名由服务重新生成（`moonpassword-0.1.79-android.apk` 而不是 `moonpassword-android-0.1.79-79.apk`）——先确认客户端和壳不依赖文件名格式（MoonPassword 只看扩展名和核心给出的路径）。
 - 号码序列必须连续：新服务里已有 79，下一次发布 ≥ 80。
 
 ### 5.5 容易漏的几处
 
-- **持久化的覆盖设置**：如果设备把「更新地址」存进了本地设置（用户或测试时设置过），它会盖过编译进去的地址，桥接后仍指向旧源。迁移前检查有没有这类入口（ClipBridge 的 `update.url` 只能通过 `update.config` 调用写入，两个壳都没有界面入口，所以设备上不会有）。
+- **持久化的覆盖设置**：如果设备把「更新地址」存进了本地设置（用户或测试时设置过），它会盖过编译进去的地址，桥接后仍指向旧源。迁移前检查有没有这类入口（MoonPassword 的 `update.url` 只能通过 `update.config` 调用写入，两个壳都没有界面入口，所以设备上不会有）。
 - **签名密钥的备份责任变了**：清单签名私钥现在在 release-publish 里，不再在项目里；项目只剩 Android 的 JKS。更新备份清单和 `scripts/backup-keys.sh`。
 - **「之后」的计划被牵连**：把清单签名交给服务之后，CI 不能用同一把私钥给 GitHub 上的包签名（私钥不能给 CI）。GitHub `nightly` 因此只能是对外下载渠道，应用内更新仍走本机服务（见 update.md §10）。
 - **旧源没有访问日志**（`cbdist` 不记请求），所以**无法证明还有没有设备在用它**。只能反过来：新服务的 `relhub stats -app <id>` 会出现「来自新版本的检查」；设备数很少时，以设备上显示的版本号为准再退役。教训：分发服务一开始就要记请求日志（release-publish 每个请求一行，`journalctl --user -u release-publish`）。
@@ -215,7 +215,7 @@ SDK 做得好、不用重复造的：按清单**本地重新判断**是否更新
 - [ ] 桥接版：同一份包、同一个号码，同时在新旧两边
 - [ ] 确认设备都已升级，再退役旧源（§5.5）
 
-## 9. ClipBridge 中对应的文件
+## 9. MoonPassword 中对应的文件
 
 | 文件 | 作用 |
 | --- | --- |
@@ -230,4 +230,4 @@ SDK 做得好、不用重复造的：按清单**本地重新判断**是否更新
 | `scripts/release-local.sh` | 预检 → 构建 → 发布 → 验证 |
 | `scripts/probe-update.sh` | 线上只读探测 |
 | `release.local.env.example` | 本地配置模板（`CB_UPDATE_URL`） |
-| [update.md](update.md) | ClipBridge 的更新机制、发布流程、迁移步骤、测试矩阵 |
+| [update.md](update.md) | MoonPassword 的更新机制、发布流程、迁移步骤、测试矩阵 |

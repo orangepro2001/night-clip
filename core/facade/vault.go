@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"nightclip/core/proto"
-	"nightclip/core/vault"
+	"moonpassword/core/proto"
+	"moonpassword/core/vault"
 )
 
 // The password vault methods (docs/plan-vault.md §11). They are reachable only through Call() from the

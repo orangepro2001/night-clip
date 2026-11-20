@@ -1,4 +1,4 @@
-/* Windows ABI smoke test. Loads clipbridge_core.dll at run time with
+/* Windows ABI smoke test. Loads moonpassword_core.dll at run time with
  * LoadLibrary (no import library needed) and exercises the five exports.
  * Cross-compiled with mingw-w64 and run under Wine by `make dll-wine`. */
 #include <windows.h>
@@ -18,9 +18,9 @@ typedef void  (*free_fn)(char *);
 #define CHECK(cond, msg) do { if (!(cond)) { fprintf(stderr, "FAIL: %s\n", msg); return 1; } } while (0)
 
 int main(int argc, char **argv) {
-    const char *path = argc > 1 ? argv[1] : "clipbridge_core.dll";
+    const char *path = argc > 1 ? argv[1] : "moonpassword_core.dll";
     HMODULE h = LoadLibraryA(path);
-    CHECK(h, "LoadLibrary clipbridge_core.dll");
+    CHECK(h, "LoadLibrary moonpassword_core.dll");
 
     init_fn cb_init = (init_fn)GetProcAddress(h, "cb_init");
     call_fn cb_call = (call_fn)GetProcAddress(h, "cb_call");
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
     char tmp[MAX_PATH], dir[MAX_PATH + 40], jsonDir[2 * MAX_PATH + 80];
     DWORD n = GetTempPathA(sizeof tmp, tmp);
     CHECK(n > 0 && n < sizeof tmp, "GetTempPath");
-    snprintf(dir, sizeof dir, "%sclipbridge-smoke-%lu", tmp, (unsigned long)GetCurrentProcessId());
+    snprintf(dir, sizeof dir, "%smoonpassword-smoke-%lu", tmp, (unsigned long)GetCurrentProcessId());
     CHECK(_mkdir(dir) == 0 || GetFileAttributesA(dir) != INVALID_FILE_ATTRIBUTES, "create data dir");
     size_t j = 0;
     for (size_t i = 0; dir[i] && j + 2 < sizeof jsonDir; i++) {
@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
 
     /* Best effort: the DLL has closed the database, so the files can go. */
     char file[MAX_PATH + 80];
-    const char *leftovers[] = {"clipbridge.db", "clipbridge.db-wal", "clipbridge.db-shm"};
+    const char *leftovers[] = {"moonpassword.db", "moonpassword.db-wal", "moonpassword.db-shm"};
     for (size_t i = 0; i < sizeof leftovers / sizeof leftovers[0]; i++) {
         snprintf(file, sizeof file, "%s\\%s", dir, leftovers[i]);
         DeleteFileA(file);

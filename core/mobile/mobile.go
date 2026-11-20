@@ -5,7 +5,7 @@
 // Build: see Makefile target "aar".
 package mobile
 
-import "nightclip/core/facade"
+import "moonpassword/core/facade"
 
 // Core wraps one core instance.
 type Core struct{ c *facade.Core }
