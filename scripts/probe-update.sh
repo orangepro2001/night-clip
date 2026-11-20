@@ -36,6 +36,9 @@ done
 case "$platform" in android|windows|macos|all) ;; *) echo "-p must be android, windows, macos or all" >&2; exit 2 ;; esac
 
 work="$(mktemp -d)"
+# Go on Windows cannot resolve Git Bash paths (/c/...) in replace directives.
+gopath() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+groot="$(gopath "$root")"
 trap 'rm -rf "$work"' EXIT
 [ -n "$out" ] || out="$work/packages"
 mkdir -p "$out"
@@ -53,11 +56,11 @@ require (
 	relhub v0.0.0
 )
 
-replace nightclip/core => $root/core
+replace nightclip/core => $groot/core
 
-replace relhub => $root/core/third_party/relhub
+replace relhub => $groot/core/third_party/relhub
 
-replace github.com/tobischo/gokeepasslib/v3 => $root/core/third_party/gokeepasslib
+replace github.com/tobischo/gokeepasslib/v3 => $groot/core/third_party/gokeepasslib
 EOF
 cat > "$work/main.go" <<'EOF'
 package main

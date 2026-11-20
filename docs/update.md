@@ -177,6 +177,13 @@ scripts/release-local.sh --notes "更新说明"           # 预检 → 构建两
   | macOS | `https://release.moonl.cloud/v1/apps/clipbridge/macos/latest/download` |
 
   装好之后它们只问 `release.moonl.cloud`，以后自动更新。下载页：`https://release.moonl.cloud/`。
+- **在 Windows 开发机上构建和发布**（0.1.113 起；不再用 `AI` 构建）。一次性准备：
+  - `scoop install make mingw-winlibs zig`；`go install golang.org/x/mobile/cmd/gomobile@<go.mod 里的版本>`（gobind 同）。
+  - Android SDK 里装 NDK `28.2.13676358`（gomobile）和 `27.0.12077973`（AGP 8.7.3 只用它剥离 `.so` 的调试符号，否则 APK 大约 68 MB）；`android/local.properties` 写 `sdk.dir=C:/Users/<你>/AppData/Local/Android/Sdk`。
+  - `rcodesign` 0.29.0 的 Windows 版放进 PATH；`relhub.exe` 从 release-publish 源码 `go build ./cmd/relhub`。
+  - `%USERPROFILE%\.config\clipbridge\` 放 Android 签名密钥、`android-signing.properties`（`storeFile` 用本机路径）和 `android-signer.sha256`；仓库根目录的 `release.local.env` 加 `RELHUB_BIN=…/relhub.exe`、`ANDROID_HOME=…`。两处都只允许本人读取。
+  - 构建：`make dist-windows dist-android dist-macos MINGW_CC=gcc DOTNET=dotnet`，`JAVA_HOME` 指向 JDK，`ANDROID_NDK_HOME` 指向 28.2；然后 `scripts/release-local.sh --no-build --notes "…"`。
+  - Windows 特有的坑（脚本已处理）：Go 交叉链接 macOS 时改写 UUID 的重命名在 Windows 上失败，`macos/build-app.sh` 改用 `-B none` 加一个去掉 `-no_uuid` 的 zig 包装；Windows 没有执行位，没有 `zip` 时由 `scripts/zipapp.py` 给 Mach-O 文件写 0755；`apksigner.bat`/`aapt2.exe`、Go 不认 `/c/...` 路径也都已兼容。
 - **egg**（`https://release.521985.xyz`）是另一台独立的公开分发服务器，上面停在 0.1.110；不要把它当作这个项目的后备地址。
 
 ## 7. 从旧分发服务（cbdist）迁移

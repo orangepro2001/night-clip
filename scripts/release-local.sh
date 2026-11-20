@@ -103,9 +103,11 @@ if [ "$platform" = android ] || [ "$platform" = all ]; then
   [ -f "$apk" ] || die "APK not found: $apk"
 
   # Installed apps only accept an update signed with the same key: pin the signer.
-  apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+  # apksigner.bat and aapt2.exe on Windows
+  # (ls fails when one of the patterns has no match; with pipefail that would end the script silently)
+  apksigner="$( (ls -d "$ANDROID_HOME"/build-tools/*/apksigner "$ANDROID_HOME"/build-tools/*/apksigner.bat 2>/dev/null || true) | sort -V | tail -1)"
   [ -n "$apksigner" ] || die "apksigner not found under \$ANDROID_HOME/build-tools"
-  cert="$("$apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+  cert="$("$apksigner" verify --print-certs "$apk" | tr -d '\r' | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
   [ -n "$cert" ] || die "APK signature does not verify"
   pin="${CLIPBRIDGE_SIGNER_PIN:-$HOME/.config/clipbridge/android-signer.sha256}"
   legacy_pin="$HOME/.local/share/clipbridge/releases/android-signer.sha256" # where the cbdist flow kept it
@@ -116,9 +118,9 @@ if [ "$platform" = android ] || [ "$platform" = all ]; then
 
   # release-publish needs the Android versionCode to be the APK's own (the system installer
   # compares them); a mismatch would offer an update that can never install.
-  aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1)"
+  aapt2="$( (ls -d "$ANDROID_HOME"/build-tools/*/aapt2 "$ANDROID_HOME"/build-tools/*/aapt2.exe 2>/dev/null || true) | sort -V | tail -1)"
   if [ -n "$aapt2" ]; then
-    apk_code="$("$aapt2" dump badging "$apk" | sed -n "s/^package: .*versionCode='\([0-9]*\)'.*/\1/p")"
+    apk_code="$("$aapt2" dump badging "$apk" | tr -d '\r' | sed -n "s/^package: .*versionCode='\([0-9]*\)'.*/\1/p")"
     [ "$apk_code" = "$CB_VERSION_CODE" ] || die "the APK says versionCode '$apk_code', this release is $CB_VERSION_CODE"
   fi
   publish android "$apk"
