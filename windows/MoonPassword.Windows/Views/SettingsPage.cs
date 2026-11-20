@@ -103,7 +103,7 @@ internal sealed class SettingsPage : UserControl
                 Classes = { "page" },
                 MaxWidth = 820,
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Children = { intro, appearance, general, new SshSettingsCard(shell), updates, about },
+                Children = { intro, new AccountSettingsCard(shell), appearance, general, new SshSettingsCard(shell), updates, about },
             },
         };
 

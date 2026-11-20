@@ -52,6 +52,7 @@ type Core struct {
 	upd     *update.Manager
 	vs      vaultState
 	ssh     sshState
+	account *accountState
 	started bool
 	closed  bool
 
@@ -106,6 +107,8 @@ func (c *Core) Init(configJSON string) (err error) {
 		return err
 	}
 	c.cfg, c.db, c.upd, c.started = cfg, db, upd, true
+	c.account = newAccountState(accountStore{db}, accountIssuer, accountClientID,
+		func() { c.emit(map[string]any{"type": "account.changed"}) })
 	c.sshInit()
 	upd.Run()
 	c.emit(map[string]any{"type": "core.started"})
@@ -152,11 +155,14 @@ func (c *Core) Shutdown() {
 	}
 	c.closed = true
 	close(c.done)
-	upd, db := c.upd, c.db
+	upd, db, account := c.upd, c.db, c.account
 	c.mu.Unlock()
 
 	c.sshShutdown() // first: no new outside requests, and no signatures after this point
 	c.closeVault()
+	if account != nil {
+		account.close()
+	}
 	if upd != nil {
 		upd.Close()
 	}
@@ -218,6 +224,8 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		return c.settingsCall(method, paramsJSON)
 	case "update.status", "update.check", "update.download", "update.config":
 		return c.updateCall(method, paramsJSON)
+	case "account.status", "account.login", "account.cancel", "account.logout":
+		return c.accountCall(method)
 	case "vault.status", "vault.create", "vault.unlock", "vault.lock", "vault.verify_master", "vault.change_master",
 		"vault.generate", "vault.strength", "vault.backup_list", "vault.backup_verify", "vault.backup_now",
 		"vault.list", "vault.get", "vault.reveal", "vault.copy", "vault.totp", "vault.add", "vault.update", "vault.delete",

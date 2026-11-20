@@ -237,6 +237,9 @@ internal sealed partial class ShellController : IDisposable
 
     public bool VaultUnlocked => _vaultUnlocked;
 
+    public Task<System.Text.Json.JsonElement> AccountCallAsync(string method) =>
+        Task.Run(() => _core.Call(method));
+
     private void UpdateTray()
     {
         var state = TrayModel.Compute(CoreRunning);
