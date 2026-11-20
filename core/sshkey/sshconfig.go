@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -25,9 +27,41 @@ type configScan struct {
 	remaining  int
 	bytesLeft  int64
 	partial    bool
+	rules      []configRule
 }
 
-func (c *configScan) read(path, dir, home string, depth int, patterns []string, host int) {
+type configScope struct {
+	patterns []string
+	outer    *configScope
+}
+
+type configRule struct {
+	key, value string
+	scope      *configScope
+}
+
+// ConfigTarget is a named Host and its literal known_hosts lookup identity.
+// An empty KnownHost means the config cannot be resolved statically.
+type ConfigTarget struct {
+	Alias     string `json:"alias"`
+	HostName  string `json:"host_name,omitempty"`
+	Port      int    `json:"port,omitempty"`
+	KnownHost string `json:"known_host,omitempty"`
+}
+
+// ConfigTargets reads host definitions without opening private key files or
+// invoking OpenSSH. includeDir is the base for relative Include expressions.
+func ConfigTargets(file, includeDir, home string) ([]ConfigTarget, bool) {
+	cfg := newConfigScan()
+	cfg.read(file, includeDir, home, 0, []string{"*"}, -1, nil)
+	return cfg.targets(), cfg.partial
+}
+
+func newConfigScan() configScan {
+	return configScan{hosts: []ConfigHost{}, identities: map[string][]string{}, remaining: 64, bytesLeft: 1 << 20}
+}
+
+func (c *configScan) read(path, dir, home string, depth int, patterns []string, host int, outer *configScope) {
 	if depth > 8 || c.remaining == 0 || !filepath.IsLocal(filepath.Base(path)) {
 		c.partial = true
 		return
@@ -47,10 +81,10 @@ func (c *configScan) read(path, dir, home string, depth int, patterns []string, 
 		return
 	}
 	c.bytesLeft -= int64(len(data))
-	c.parse(string(data), dir, home, depth, patterns, host)
+	c.parse(string(data), dir, home, depth, patterns, host, outer)
 }
 
-func (c *configScan) parse(text, dir, home string, depth int, patterns []string, host int) {
+func (c *configScan) parse(text, dir, home string, depth int, patterns []string, host int, outer *configScope) {
 	sc := bufio.NewScanner(strings.NewReader(strings.TrimPrefix(text, "\uFEFF")))
 	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
 	for sc.Scan() {
@@ -61,11 +95,21 @@ func (c *configScan) parse(text, dir, home string, depth int, patterns []string,
 		key, val := splitConfigLine(line)
 		key = strings.ToLower(key)
 		switch key {
-		case "host", "match", "include", "hostname", "user", "port", "identityfile":
+		case "host", "match", "include", "hostname", "user", "port", "identityfile", "hostkeyalias", "canonicalizehostname":
 		default:
 			continue
 		}
 		args := configArgs(val)
+		switch key {
+		case "hostname", "port", "hostkeyalias", "canonicalizehostname":
+			if len(args) == 1 {
+				if len(c.rules) < 4096 {
+					c.rules = append(c.rules, configRule{key, args[0], &configScope{patterns, outer}})
+				} else {
+					c.partial = true
+				}
+			}
+		}
 		switch key {
 		case "host":
 			patterns, host = args, -1
@@ -81,6 +125,9 @@ func (c *configScan) parse(text, dir, home string, depth int, patterns []string,
 			}
 		case "match":
 			patterns, host = []string{"Match " + val}, -1
+			if len(args) == 1 && strings.EqualFold(args[0], "all") {
+				patterns = []string{"*"}
+			}
 		case "include":
 			for _, arg := range args {
 				if c.remaining == 0 || depth == 8 {
@@ -103,7 +150,7 @@ func (c *configScan) parse(text, dir, home string, depth int, patterns []string,
 						c.partial = true
 						break
 					}
-					c.read(match, dir, home, depth+1, patterns, host)
+					c.read(match, dir, home, depth+1, patterns, host, &configScope{patterns, outer})
 				}
 			}
 		case "hostname", "user", "port":
@@ -141,6 +188,99 @@ func (c *configScan) parse(text, dir, home string, depth int, patterns []string,
 		}
 	}
 	c.partial = c.partial || sc.Err() != nil
+}
+
+func (c *configScan) targets() []ConfigTarget {
+	targets := []ConfigTarget{}
+	seen := map[string]bool{}
+	for _, entry := range c.hosts {
+		for _, alias := range entry.Aliases {
+			name := strings.ToLower(alias)
+			if !seen[name] {
+				if len(targets) == 512 {
+					c.partial = true
+					return targets
+				}
+				seen[name] = true
+				targets = append(targets, c.target(alias))
+			}
+		}
+	}
+	return targets
+}
+
+func (c *configScan) target(alias string) ConfigTarget {
+	out := ConfigTarget{Alias: alias}
+	if c.partial {
+		return out
+	}
+	values := map[string]string{}
+	for _, r := range c.rules {
+		if _, seen := values[r.key]; seen {
+			continue
+		}
+		match, known := r.scope.matches(alias)
+		if !known {
+			// A Match clause may supply the first value. Do not guess which
+			// server this alias will identify.
+			values[r.key] = ""
+		} else if match {
+			values[r.key] = r.value
+		}
+	}
+	get := func(key, fallback string) string {
+		if value, ok := values[key]; ok {
+			return value
+		}
+		return fallback
+	}
+	host := get("hostname", alias)
+	host = strings.NewReplacer("%%", "%", "%h", alias).Replace(host)
+	host = strings.ToLower(host)
+	port, err := strconv.Atoi(get("port", "22"))
+	if host == "" || strings.ContainsAny(host, "%*?[]") || err != nil || port < 1 || port > 65535 {
+		return out
+	}
+	out.HostName, out.Port = host, port
+	if keyAlias, set := values["hostkeyalias"]; set {
+		out.KnownHost = keyAlias
+	} else if strings.EqualFold(get("canonicalizehostname", "no"), "no") {
+		out.KnownHost = host
+		if port != 22 {
+			out.KnownHost = "[" + host + "]:" + strconv.Itoa(port)
+		}
+	}
+	return out
+}
+
+// matches honours Host's positive and negated patterns in each enclosing
+// Include. Match predicates are left to OpenSSH.
+func (s *configScope) matches(alias string) (match, known bool) {
+	known = true
+	name := strings.ToLower(alias)
+	for scope := s; scope != nil; scope = scope.outer {
+		if len(scope.patterns) == 1 && strings.HasPrefix(scope.patterns[0], "Match ") {
+			known = false
+			continue
+		}
+		positive := false
+		for _, pattern := range scope.patterns {
+			pattern, negated := strings.CutPrefix(strings.ToLower(pattern), "!")
+			if strings.ContainsAny(pattern, `\[]`) {
+				pattern = strings.NewReplacer(`\`, `\\`, "[", `\[`, "]", `\]`).Replace(pattern)
+			}
+			if ok, _ := path.Match(pattern, name); ok {
+				if negated {
+					return false, true
+				}
+				positive = true
+			}
+		}
+		if !positive {
+			return false, true
+		}
+	}
+	return known, known
 }
 
 func splitConfigLine(line string) (string, string) {

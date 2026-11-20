@@ -136,7 +136,15 @@ public static partial class Strings
     public const string SshHostsHint = "只在 ssh 连接这些服务器时提供这把钥匙；钥匙多时可避免服务器因尝试次数过多而拒绝登录。";
     public const string SshHostsEdit = "设置…";
     public const string SshHostsPromptTitle = "限定这把钥匙用于哪些主机";
-    public const string SshHostsPromptLabel = "每行一个：主机名（可用 * 和 ?）、[主机]:端口，或服务器主机钥匙的指纹 SHA256:…。主机名按 known_hosts 识别；留空表示任何主机。";
+    public const string SshHostsPromptLabel = "手动添加规则";
+    public const string SshHostsManualHint = "每行一个主机名（可用 * 和 ?）、[主机]:端口或 SHA256 指纹。未选主机且规则为空时允许任何主机。";
+    public const string SshHostsConfigHeading = "SSH 配置里的主机";
+    public const string SshHostsConfigLoading = "正在读取 SSH 配置…";
+    public const string SshHostsConfigEmpty = "没有找到命名的 Host 条目。";
+    public const string SshHostsConfigChoose = "选择配置文件…";
+    public const string SshHostsConfigFilter = "搜索别名或地址";
+    public const string SshHostsConfigUnknown = "无法从配置确定服务器标识，可手动填写主机密钥指纹。";
+    public const string SshHostsConfigHint = "代理会用 known_hosts 中对应的服务器主机密钥识别所选主机。";
     public static string SshHostsInvalid(string host) => $"“{host}”不是主机名、[主机]:端口或 SHA256 指纹。";
     public const string SshHostsInvalidAny = "有一行不是主机名、[主机]:端口或 SHA256 指纹，或者超过了 32 个。";
     public const string SshHostsSaved = "已更新限定主机";

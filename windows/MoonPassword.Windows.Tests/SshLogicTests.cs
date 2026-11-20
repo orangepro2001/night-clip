@@ -437,6 +437,9 @@ public class SshHostBindingTests
     [InlineData("github.com", true)]
     [InlineData("10.0.0.*", true)]
     [InlineData("[git.example.com]:2222", true)]
+    [InlineData("known_hosts:[git.example.com]:2222", true)]
+    [InlineData("known_hosts:*.example.com", false)]
+    [InlineData("known_hosts:", false)]
     [InlineData("my_host-1", true)]
     [InlineData("two words", false)]
     [InlineData("a,b", false)]
@@ -474,5 +477,19 @@ public class SshHostBindingTests
         Assert.Equal("github.com", Assert.Single(stored));
         Assert.Equal("github.com", core.ParamsOf("ssh.set_hosts").Single().GetProperty("hosts")[0].GetString());
         Assert.Contains("限定了主机", Strings.SshRefusedText(new SshUse(0, "", "", "", Array.Empty<SshProc>(), "", "", "", "userauth", "", false, "refused", "host")));
+    }
+
+    [Fact]
+    public void ConfigTarget_BindsTheKnownHostsNameInsteadOfTheAlias()
+    {
+        var core = new ScriptedCore().On("ssh.config_targets", """
+            {"targets":[{"alias":"office","host_name":"server.example","port":2222,"known_host":"[server.example]:2222"},
+                        {"alias":"dynamic"}],"partial":false}
+            """);
+        var targets = new SshApi(core).ConfigTargets(@"C:\Users\desk\.ssh\config").Targets;
+        Assert.Equal("office", targets[0].Alias);
+        Assert.Equal("known_hosts:[server.example]:2222", targets[0].Binding);
+        Assert.Equal("[server.example]:2222", SshHosts.Display(targets[0].Binding));
+        Assert.Equal("", targets[1].Binding);
     }
 }

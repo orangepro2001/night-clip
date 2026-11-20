@@ -168,6 +168,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `ssh.normalize` | `id`、`passphrase?`（缺省用条目的 Password） | `{fingerprint}`；附件改成不加密的 OpenSSH 格式 |
 | `ssh.set_hosts` | `id`、`hosts:[…]`（最多 32 个；空 = 任何主机） | `{hosts}`（去掉首尾空白和重复后实际保存的）。每项是主机名（可用 `*`、`?`）、`[主机]:端口`，或服务器主机钥匙的指纹 `SHA256:…`；格式不对时 `INVALID`（`details.host`）。保存在条目的 CustomData `MoonPassword.SSH.Hosts`（KeePassXC 会保留但不执行），不产生历史版本 |
 | `ssh.scan` | `dir?`（默认 `~/.ssh`） | `{dir, items:[{path, format, encrypted, algo, bits, fingerprint, comment, pub_path, pub_state, config_hosts, referenced_by:[{file,line}], problem, in_vault}], skipped, vault_unlocked, config_hosts:[{aliases,host_name?,user?,port?,identity_files}], config_partial}`。在目录内按内容识别私钥，每个候选文件最多读 64 KiB，响应只含元数据。`pub_state` 为 `ok`/`missing`/`mismatch`/`unverified`。密钥条目的 `config_hosts` 来自声明该 `IdentityFile` 的配置段，`referenced_by` 来自同目录脚本。 |
+| `ssh.config_targets` | `path?`（默认 `~/.ssh/config`） | `{targets:[{alias,host_name?,port?,known_host?}],partial}`。仅解析配置及其 `Include` 文件。可确定的条目返回按 `HostName`、`Port` 或 `HostKeyAlias` 得到的查找名，供主机绑定选择器使用。 |
 | `ssh.write_pub` | `path`（必须以 `.pub` 结尾）、`id` 或 `fingerprint` | `{pub_path, state}`：`created`/`same`/`mismatch`；从不覆盖 |
 | `ssh.status` | — | `{supported, enabled, state, pipe, error, keys_loaded, keys_state, expires_at, vault_unlocked, ttl_s, allow_forwarding, connections}`；`state`：`listening`/`stopped`/`conflict`（管道名已被别的程序占用）/`error`/`unsupported`；`keys_state`：`empty`/`loaded`/`grace` |
 | `ssh.keys` | — | `{vault_unlocked, keys:[…]}`：库解锁时为全部 SSH 条目（同 `vault.get` 的 `ssh` 块，外加 `group_path`）；锁着时只有 Agent 里已加载的钥匙 |
@@ -177,6 +178,8 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 除 `ssh.import/generate/export/set_agent/normalize/set_hosts` 外都可以在库锁着时调用。
 
 Windows 的「查看 SSH 主机和迁移密钥」读取 `~/.ssh/config` 和 `Include` 文件。顶层 `config_hosts` 按声明列出实际命名的 `Host` 条目，即使目录内没有私钥也会返回。显示值来自对应配置段，全局默认值、通配规则和 `Match` 的生效结果由 OpenSSH 在连接时计算。读取失败或达到扫描上限时，`config_partial` 为真。
+
+Windows 的「限定主机 → 设置」还可勾选配置里的主机，保存为 `known_hosts:<查找名>`。这种规则精确匹配 `known_hosts`（包括哈希条目），不会匹配同一地址的其他端口。无法静态确定的动态配置可手动绑定主机密钥指纹。
 
 将对应私钥导入密码库并开启代理后，可继续用 `ssh 主机别名`。使用 `IdentitiesOnly yes` 时，OpenSSH 可用 `IdentityFile` 指定的公钥或原路径旁保留的匹配 `.pub` 选择代理里的私钥。迁移窗口会检查或补写公钥。指向其他代理或设为 `none` 的 `IdentityAgent` 仍按 OpenSSH 配置生效。
 

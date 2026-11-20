@@ -19,6 +19,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 
 	"moonpassword/core/pipe"
+	"moonpassword/core/sshagent"
 	"moonpassword/core/sshkey"
 )
 
@@ -492,6 +493,9 @@ func TestSSHAgentWithOpenSSH(t *testing.T) {
 	}
 	sshAdd, keygen := tool("ssh-add"), tool("ssh-keygen")
 	n := startNode(t, "Desk", "windows")
+	dir := t.TempDir()
+	knownHosts := filepath.Join(dir, "kh")
+	n.c.ssh.known = sshagent.NewKnownHosts(knownHosts)
 	name := enableAgent(t, n)
 	vcreate(t, n)
 	gen := n.call("ssh.generate", map[string]any{"type": "ed25519", "title": "e2e"})
@@ -502,7 +506,6 @@ func TestSSHAgentWithOpenSSH(t *testing.T) {
 	if err != nil || !strings.Contains(string(out), gen["fingerprint"].(string)) {
 		t.Fatalf("ssh-add -l: %v\n%s", err, out)
 	}
-	dir := t.TempDir()
 	pubPath := filepath.Join(dir, "id.pub")
 	n.call("ssh.write_pub", map[string]any{"path": pubPath, "id": gen["id"]})
 	msg := filepath.Join(dir, "msg.txt")
@@ -535,7 +538,7 @@ func TestSSHAgentWithOpenSSH(t *testing.T) {
 	id := filepath.Join(dir, "id") // id does not exist, id.pub does
 	configPath := filepath.Join(dir, "config")
 	config := "Host e2e-office\n  HostName " + addr.host + "\n  Port " + addr.port +
-		"\n  User tester\n  IdentitiesOnly yes\n  IdentityFile \"" + filepath.ToSlash(id) + "\"\n"
+		"\n  HostKeyAlias e2e-office-key\n  User tester\n  IdentitiesOnly yes\n  IdentityFile \"" + filepath.ToSlash(id) + "\"\n"
 	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -545,7 +548,7 @@ func TestSSHAgentWithOpenSSH(t *testing.T) {
 		t.Fatalf("scan with only a public key on disk: %v", scan)
 	}
 	login := &exec.Cmd{Path: sshExe, Env: env, Args: []string{sshExe, "-F", configPath, "-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=" + filepath.Join(dir, "kh"), "e2e-office", "true"}}
+		"-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=" + knownHosts, "e2e-office", "true"}}
 	if out, err := login.CombinedOutput(); err != nil {
 		t.Fatalf("ssh login through the agent: %v\n%s", err, out)
 	}
@@ -555,7 +558,7 @@ func TestSSHAgentWithOpenSSH(t *testing.T) {
 	}
 
 	// Host binding with the real client: bound to some other server, the key is not offered and
-	// the login fails; bound to this server's host key, it works again.
+	// the login fails; bound using the imported alias's lookup name, it works again.
 	other, _ := sshkey.Generate("ed25519", 0, "elsewhere")
 	otherPub, _ := ssh.NewPublicKey(other.Signer.Public())
 	n.call("ssh.set_hosts", map[string]any{"id": gen["id"], "hosts": []string{ssh.FingerprintSHA256(otherPub)}})
@@ -564,7 +567,11 @@ func TestSSHAgentWithOpenSSH(t *testing.T) {
 	if out, err := again.CombinedOutput(); err == nil {
 		t.Fatalf("login with a key bound to another host succeeded:\n%s", out)
 	}
-	n.call("ssh.set_hosts", map[string]any{"id": gen["id"], "hosts": []string{ssh.FingerprintSHA256(host)}})
+	targets := n.call("ssh.config_targets", map[string]any{"path": configPath})["targets"].([]any)
+	if len(targets) != 1 || targets[0].(map[string]any)["known_host"] != "e2e-office-key" {
+		t.Fatalf("config targets: %v", targets)
+	}
+	n.call("ssh.set_hosts", map[string]any{"id": gen["id"], "hosts": []string{"known_hosts:e2e-office-key"}})
 	time.Sleep(600 * time.Millisecond)
 	third := &exec.Cmd{Path: sshExe, Env: env, Args: login.Args}
 	if out, err := third.CombinedOutput(); err != nil {

@@ -458,7 +458,9 @@ internal sealed class EntryDetailPane : Border
         }
         panel.Children.Add(chips);
 
-        var used = SshHosts.Suggestions(_sshRecent, k.Fingerprint).Where(h => !k.Hosts.Contains(h)).ToList();
+        var used = SshHosts.Suggestions(_sshRecent, k.Fingerprint)
+            .Where(h => !k.Hosts.Contains(h) && !k.Hosts.Contains(SshHosts.ExactHostPrefix + h, StringComparer.OrdinalIgnoreCase))
+            .ToList();
         if (used.Count > 0)
         {
             var hosts = k.Hosts.Count == 0 ? used : k.Hosts.Concat(used).ToList();
@@ -472,15 +474,8 @@ internal sealed class EntryDetailPane : Border
 
     private async Task EditHostsAsync(SshKeyInfo k)
     {
-        var text = await Ui.PromptAsync(this, Strings.SshHostsPromptTitle, Strings.SshHostsPromptLabel, string.Join("\n", k.Hosts),
-            v =>
-            {
-                var hosts = SshHosts.Parse(v);
-                return hosts.Count <= SshHosts.Max && SshHosts.FirstInvalid(hosts) is null ? string.Join("\n", hosts) : null;
-            },
-            Strings.SshHostsInvalidAny, Strings.BtnSave, multiline: true);
-        if (text is null) return;
-        await SaveHostsAsync(k, SshHosts.Parse(text));
+        var hosts = await SshHostsWindow.ShowAsync(VaultUi.OwnerOf(this), _shell, k.Hosts);
+        if (hosts is not null) await SaveHostsAsync(k, hosts);
     }
 
     private async Task SaveHostsAsync(SshKeyInfo k, IReadOnlyList<string> hosts)

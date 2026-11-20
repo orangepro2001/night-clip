@@ -601,6 +601,32 @@ func TestScanConfigWithoutPrivateKeys(t *testing.T) {
 	}
 }
 
+func TestConfigTargetsResolveKnownHostsNames(t *testing.T) {
+	dir := t.TempDir()
+	config := filepath.Join(dir, "config")
+	for name, content := range map[string]string{
+		"config":       "Include aliases.conf\nHost office maintenance\n  HostName office.example\n  Port 2222\nHost lab !office\n  HostName %h.example\nHost office\n  Port 9999\nHost *\n  Port 22\nHost dynamic\nMatch exec \"exit 1\"\n  HostName dynamic.example\n",
+		"aliases.conf": "Host maintenance\n  HostKeyAlias office-keys\nHost ipv6\n  HostName 2001:db8::1\n  Port 2200\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	targets, partial := ConfigTargets(config, dir, filepath.Dir(dir))
+	want := map[string]string{
+		"maintenance": "office-keys", "ipv6": "[2001:db8::1]:2200",
+		"office": "[office.example]:2222", "lab": "lab.example", "dynamic": "",
+	}
+	if partial || len(targets) != len(want) {
+		t.Fatalf("targets: %+v, partial: %v", targets, partial)
+	}
+	for _, target := range targets {
+		if name, ok := want[target.Alias]; !ok || target.KnownHost != name {
+			t.Fatalf("unexpected target %+v", target)
+		}
+	}
+}
+
 func TestConfigIdentities(t *testing.T) {
 	home := filepath.FromSlash("/home/u")
 	cfg := `# comment
@@ -613,7 +639,7 @@ Host *
     IdentityFile none
 `
 	scan := configScan{identities: map[string][]string{}}
-	scan.parse(cfg, "", home, 0, []string{"*"}, -1)
+	scan.parse(cfg, "", home, 0, []string{"*"}, -1, nil)
 	got := scan.identities
 	want := map[string][]string{
 		pathKey(filepath.Join(home, ".ssh", "global")): {"*"},

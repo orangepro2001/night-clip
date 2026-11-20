@@ -276,6 +276,8 @@ func (c *Core) sshDispatch(method, params string) (any, error) {
 		return c.sshInspect(params)
 	case "ssh.scan":
 		return c.sshScan(params)
+	case "ssh.config_targets":
+		return c.sshConfigTargets(params)
 	case "ssh.keys":
 		return c.sshKeys()
 	case "ssh.public_key":
@@ -610,7 +612,7 @@ func (c *Core) sshSetHosts(v *vault.Vault, params string) (any, error) {
 			continue
 		}
 		if !sshagent.ValidHostPattern(h) {
-			e := proto.Errorf(proto.CodeInvalid, "not a host name, [host]:port or SHA256 fingerprint: %q", h)
+			e := proto.Errorf(proto.CodeInvalid, "not a host pattern, exact known_hosts name or SHA256 fingerprint: %q", h)
 			e.Details = map[string]any{"host": h}
 			return nil, e
 		}
@@ -705,6 +707,33 @@ func (c *Core) sshPublicKey(params string) (any, error) {
 		"public_key": sshkey.AuthorizedLine(pub, comment), "fingerprint": ssh.FingerprintSHA256(pub),
 		"algo": pub.Type(), "title": title,
 	}, nil
+}
+
+func (c *Core) sshConfigTargets(params string) (any, error) {
+	var p struct {
+		Path string `json:"path"`
+	}
+	if err := parseParams(params, &p); err != nil {
+		return nil, err
+	}
+	home, _ := os.UserHomeDir()
+	dir := filepath.Join(home, ".ssh")
+	if p.Path == "" {
+		if home == "" {
+			return nil, proto.Errorf(proto.CodeInvalid, "no home directory")
+		}
+		p.Path = filepath.Join(dir, "config")
+	}
+	if !filepath.IsAbs(p.Path) {
+		return nil, proto.Errorf(proto.CodeInvalid, "config path must be absolute")
+	}
+	targets, partial := sshkey.ConfigTargets(p.Path, dir, home)
+	for i := range targets {
+		if !sshagent.ValidHostPattern(sshagent.ExactHostPrefix + targets[i].KnownHost) {
+			targets[i].KnownHost = ""
+		}
+	}
+	return map[string]any{"targets": targets, "partial": partial}, nil
 }
 
 func (c *Core) sshScan(params string) (any, error) {

@@ -89,6 +89,20 @@ public sealed record SshConfigHost(
         JsonRead.Str(e, "port"), JsonRead.StrArr(e, "identity_files"));
 }
 
+public sealed record SshConfigTarget(string Alias, string HostName, int Port, string KnownHost)
+{
+    public string Binding => KnownHost.Length == 0 ? "" : SshHosts.ExactHostPrefix + KnownHost;
+
+    public static SshConfigTarget FromJson(JsonElement e) => new(
+        JsonRead.Str(e, "alias"), JsonRead.Str(e, "host_name"), (int)JsonRead.Long(e, "port"), JsonRead.Str(e, "known_host"));
+}
+
+public sealed record SshConfigTargets(IReadOnlyList<SshConfigTarget> Targets, bool Partial)
+{
+    public static SshConfigTargets FromJson(JsonElement r) => new(
+        JsonRead.Arr(r, "targets").Select(SshConfigTarget.FromJson).ToList(), JsonRead.Bool(r, "partial"));
+}
+
 public sealed record SshScan(string Dir, IReadOnlyList<SshScanItem> Items, int Skipped, bool VaultUnlocked)
 {
     public IReadOnlyList<SshConfigHost> ConfigHosts { get; init; } = Array.Empty<SshConfigHost>();
@@ -209,6 +223,7 @@ public static class SshText
 public static class SshHosts
 {
     public const int Max = 32;
+    public const string ExactHostPrefix = "known_hosts:";
 
     /// <summary>Splits what the user typed (one per line, or separated by commas / spaces), trimmed and without duplicates.</summary>
     public static IReadOnlyList<string> Parse(string? text)
@@ -232,6 +247,11 @@ public static class SshHosts
             if (b64.Length != 43) return false;
             try { return Convert.FromBase64String(b64 + "=").Length == 32; }
             catch (FormatException) { return false; }
+        }
+        if (p.StartsWith(ExactHostPrefix, StringComparison.Ordinal))
+        {
+            p = p[ExactHostPrefix.Length..];
+            if (p.Length == 0 || p.Contains('*') || p.Contains('?')) return false;
         }
         foreach (var c in p)
         {
@@ -261,5 +281,9 @@ public static class SshHosts
     }
 
     /// <summary>How a pattern is shown: fingerprints shortened.</summary>
-    public static string Display(string p) => p.StartsWith("SHA256:", StringComparison.Ordinal) ? SshText.ShortFingerprint(p) : p;
+    public static string Display(string p)
+    {
+        if (p.StartsWith(ExactHostPrefix, StringComparison.Ordinal)) return p[ExactHostPrefix.Length..];
+        return p.StartsWith("SHA256:", StringComparison.Ordinal) ? SshText.ShortFingerprint(p) : p;
+    }
 }

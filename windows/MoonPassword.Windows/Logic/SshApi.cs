@@ -71,6 +71,9 @@ public sealed class SshApi
     public SshScan Scan(string dir = "") =>
         SshScan.FromJson(dir.Length > 0 ? _core.Call("ssh.scan", new { dir }) : _core.Call("ssh.scan"));
 
+    public SshConfigTargets ConfigTargets(string path = "") =>
+        SshConfigTargets.FromJson(_core.Call("ssh.config_targets", new { path }));
+
     /// <summary>Writes the public half next to a key file. Returns created, same or mismatch; never overwrites.</summary>
     public string WritePub(string path, string id) => JsonRead.Str(_core.Call("ssh.write_pub", new { path, id }), "state");
 }

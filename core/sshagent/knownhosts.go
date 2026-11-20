@@ -42,6 +42,10 @@ type hashedName struct {
 
 const maxKnownHosts = 4 << 20
 
+// ExactHostPrefix distinguishes an OpenSSH lookup name from a manual host
+// pattern. It never falls back to the unqualified name of another port.
+const ExactHostPrefix = "known_hosts:"
+
 // NewKnownHosts reads the given files lazily; missing files are ignored.
 func NewKnownHosts(paths ...string) *KnownHosts {
 	var ps []string
@@ -117,6 +121,17 @@ func (k *KnownHosts) Matches(hk ssh.PublicKey, patterns []string) bool {
 		if names == nil {
 			names = append(k.Names(hk), "") // non-nil even when empty
 		}
+		if exact, ok := strings.CutPrefix(p, ExactHostPrefix); ok {
+			for _, name := range names {
+				if name != "" && strings.EqualFold(name, exact) {
+					return true
+				}
+			}
+			if k.hashedMatch(hk, exact) {
+				return true
+			}
+			continue
+		}
 		for _, n := range names {
 			if n != "" && (hostPatternMatch(p, n) || hostPatternMatch(p, bareHost(n))) {
 				return true
@@ -137,7 +152,7 @@ func (k *KnownHosts) hashedMatch(hk ssh.PublicKey, name string) bool {
 	defer k.mu.Unlock()
 	blob := string(hk.Marshal())
 	candidates := []string{strings.ToLower(name)}
-	if !strings.HasPrefix(name, "[") {
+	if name != candidates[0] {
 		candidates = append(candidates, name)
 	}
 	for _, f := range k.load() {
@@ -255,6 +270,12 @@ func ValidHostPattern(p string) bool {
 	if strings.HasPrefix(p, "SHA256:") {
 		b, err := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(p, "SHA256:"))
 		return err == nil && len(b) == 32
+	}
+	if exact, ok := strings.CutPrefix(p, ExactHostPrefix); ok {
+		if exact == "" || strings.ContainsAny(exact, "*?") {
+			return false
+		}
+		p = exact
 	}
 	for _, r := range p {
 		switch {

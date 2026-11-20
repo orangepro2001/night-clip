@@ -99,8 +99,8 @@ func Scan(dir, home string) (ScanResult, error) {
 		res.Items = append(res.Items, item)
 	}
 
-	cfg := configScan{hosts: res.ConfigHosts, identities: map[string][]string{}, remaining: 64, bytesLeft: 1 << 20}
-	cfg.read(filepath.Join(dir, "config"), dir, home, 0, []string{"*"}, -1)
+	cfg := newConfigScan()
+	cfg.read(filepath.Join(dir, "config"), dir, home, 0, []string{"*"}, -1, nil)
 	res.ConfigHosts, res.ConfigPartial = cfg.hosts, cfg.partial
 	for i := range res.Items {
 		it := &res.Items[i]

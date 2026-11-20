@@ -68,6 +68,150 @@ internal static class SshUi
     }
 }
 
+internal sealed class SshHostsWindow
+{
+    private readonly ShellController _shell;
+    private readonly VaultWindow _window;
+    private readonly TextBox _search = new() { PlaceholderText = Strings.SshHostsConfigFilter };
+    private readonly TextBox _manual = new() { AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 64, MaxHeight = 120 };
+    private readonly StackPanel _list = new() { Spacing = 4 };
+    private readonly TextBlock _source = new() { TextTrimming = TextTrimming.CharacterEllipsis };
+    private readonly TextBlock _note = Ui.Text(Strings.SshHostsConfigLoading, "caption");
+    private readonly FormField _field;
+    private readonly Button _save;
+    private readonly Button _choose;
+    private readonly List<(CheckBox Check, string Binding, string Search)> _rows = new();
+    private IReadOnlyList<string>? _result;
+
+    private SshHostsWindow(ShellController shell, IReadOnlyList<string> hosts)
+    {
+        _shell = shell;
+        _manual.Text = string.Join("\n", hosts);
+        _field = new FormField { Label = Strings.SshHostsPromptLabel, Content = _manual };
+        _manual.TextChanged += (_, _) => _field.Error = null;
+        _search.TextChanged += (_, _) => Filter();
+        _choose = Ui.TextButton(Strings.SshHostsConfigChoose, () => _ = ChooseAsync(), "soft", "sm");
+        _save = DialogKit.Btn(Strings.BtnSave, 88, "primary");
+        _save.Click += (_, _) => Save();
+        var cancel = DialogKit.Btn(Strings.BtnCancel, 88);
+        cancel.IsCancel = true;
+
+        var file = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 8 };
+        _source.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(_source, 1);
+        file.Children.Add(_choose);
+        file.Children.Add(_source);
+
+        var body = new StackPanel
+        {
+            Spacing = 8,
+            Children =
+            {
+                Ui.Text(Strings.SshHostsConfigHeading, "subtitle"),
+                file,
+                Ui.Text(Strings.SshHostsConfigHint, "caption", "secondary").With(t => t.TextWrapping = TextWrapping.Wrap),
+                _search,
+                _note.With(t => t.TextWrapping = TextWrapping.Wrap),
+                new ScrollViewer { Content = _list, MaxHeight = 240 },
+                _field,
+                Ui.Text(Strings.SshHostsManualHint, "caption", "secondary").With(t => t.TextWrapping = TextWrapping.Wrap),
+            },
+        };
+        var buttons = DialogKit.ButtonRow(cancel, _save);
+        var root = new DockPanel();
+        DockPanel.SetDock(buttons, Dock.Bottom);
+        root.Children.Add(buttons);
+        root.Children.Add(new ScrollViewer { Content = body });
+        _window = DialogKit.Create(shell, Strings.SshHostsPromptTitle, 580, root, height: 630);
+        cancel.Click += (_, _) => _window.Close();
+        _window.Opened += (_, _) => _ = LoadAsync("");
+    }
+
+    public static async Task<IReadOnlyList<string>?> ShowAsync(Window? owner, ShellController shell, IReadOnlyList<string> hosts)
+    {
+        var dialog = new SshHostsWindow(shell, hosts);
+        await dialog._window.ShowModalAsync(owner);
+        return dialog._result;
+    }
+
+    private async Task ChooseAsync()
+    {
+        if (_window.StorageProvider is not { } storage) return;
+        var start = Directory.Exists(SshUi.SshDir) ? await storage.TryGetFolderFromPathAsync(SshUi.SshDir) : null;
+        var picked = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = Strings.SshHostsConfigChoose,
+            SuggestedStartLocation = start,
+        });
+        if (picked.FirstOrDefault()?.TryGetLocalPath() is { } path) await LoadAsync(path);
+    }
+
+    private async Task LoadAsync(string path)
+    {
+        _choose.IsEnabled = _save.IsEnabled = false;
+        _note.Text = Strings.SshHostsConfigLoading;
+        var result = await _shell.SshCallAsync(a => a.ConfigTargets(path));
+        _choose.IsEnabled = _save.IsEnabled = true;
+        if (!result.Ok) { _note.Text = result.Error; return; }
+
+        var remaining = Selected().ToList();
+        _rows.Clear();
+        _list.Children.Clear();
+        _source.Text = path.Length == 0 ? "~/.ssh/config" : Path.GetFileName(path);
+        ToolTip.SetTip(_source, path.Length == 0 ? Path.Combine(SshUi.SshDir, "config") : path);
+        var config = result.Value!;
+        foreach (var group in config.Targets.GroupBy(t => t.Binding.Length > 0 ? t.Binding : t.Alias))
+        {
+            var target = group.First();
+            var aliases = string.Join("、", group.Select(t => t.Alias));
+            var binding = target.Binding;
+            var detail = binding.Length > 0 ? target.KnownHost : Strings.SshHostsConfigUnknown;
+            var check = new CheckBox
+            {
+                Content = new StackPanel
+                {
+                    Children =
+                    {
+                        Ui.Text(aliases, "medium").With(t => t.TextWrapping = TextWrapping.Wrap),
+                        Ui.Text(detail, "caption", "secondary").With(t => t.TextWrapping = TextWrapping.Wrap),
+                    },
+                },
+                IsEnabled = binding.Length > 0,
+                IsChecked = binding.Length > 0 && remaining.Remove(binding),
+            };
+            if (target.HostName.Length > 0) ToolTip.SetTip(check, $"{target.HostName} · {target.Port}");
+            _rows.Add((check, binding, aliases + " " + target.HostName + " " + target.KnownHost));
+            _list.Children.Add(check);
+        }
+        _manual.Text = string.Join("\n", remaining);
+        _note.Text = config.Partial ? Strings.SshConfigPartial
+            : _rows.Count == 0 ? Strings.SshHostsConfigEmpty : "";
+        Filter();
+    }
+
+    private void Filter()
+    {
+        var query = _search.Text?.Trim() ?? "";
+        foreach (var row in _rows)
+            row.Check.IsVisible = row.Search.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private IEnumerable<string> Selected() => _rows.Where(r => r.Check.IsChecked == true).Select(r => r.Binding)
+        .Concat(SshHosts.Parse(_manual.Text)).Distinct(StringComparer.Ordinal);
+
+    private void Save()
+    {
+        var hosts = Selected().ToList();
+        if (hosts.Count > SshHosts.Max || SshHosts.FirstInvalid(hosts) is not null)
+        {
+            _field.Error = Strings.SshHostsInvalidAny;
+            return;
+        }
+        _result = hosts;
+        _window.Close();
+    }
+}
+
 /// <summary>
 /// Import one or more private keys (files or pasted text). Each key is looked at with ssh.inspect first, so
 /// the user sees its type, fingerprint and whether it needs a passphrase before anything is stored.

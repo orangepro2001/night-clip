@@ -56,12 +56,12 @@ func TestHostPatternMatch(t *testing.T) {
 
 func TestValidHostPattern(t *testing.T) {
 	fp := ssh.FingerprintSHA256(hostSigner(t).PublicKey())
-	for _, ok := range []string{"github.com", "*.corp.example", "10.0.0.*", "[host]:2222", "my_host-1", fp} {
+	for _, ok := range []string{"github.com", "*.corp.example", "10.0.0.*", "[host]:2222", "my_host-1", fp, "known_hosts:[host]:2222"} {
 		if !ValidHostPattern(ok) {
 			t.Errorf("%q refused", ok)
 		}
 	}
-	for _, bad := range []string{"", "two words", "a,b", "SHA256:short", "host\n", strings.Repeat("a", 256), "!neg"} {
+	for _, bad := range []string{"", "two words", "a,b", "SHA256:short", "host\n", strings.Repeat("a", 256), "!neg", "known_hosts:", "known_hosts:*.example"} {
 		if ValidHostPattern(bad) {
 			t.Errorf("%q accepted", bad)
 		}
@@ -87,6 +87,11 @@ func TestKnownHostsMatches(t *testing.T) {
 	}
 	if !k.Matches(box.PublicKey(), []string{"box.lan"}) || !k.Matches(box.PublicKey(), []string{"[box.lan]:2222"}) {
 		t.Fatal("[host]:port")
+	}
+	if k.Matches(box.PublicKey(), []string{"known_hosts:box.lan"}) ||
+		!k.Matches(box.PublicKey(), []string{"known_hosts:[box.lan]:2222"}) ||
+		!k.Matches(hidden.PublicKey(), []string{"known_hosts:secret.lan"}) {
+		t.Fatal("exact config rules match the port and support hashed names")
 	}
 	if !k.Matches(hidden.PublicKey(), []string{"secret.lan"}) || k.Matches(hidden.PublicKey(), []string{"secret.*"}) {
 		t.Fatal("hashed entries match literal names only")
