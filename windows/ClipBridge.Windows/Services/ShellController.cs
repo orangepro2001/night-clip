@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
-using System.Windows;
-using System.Windows.Threading;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
 using ClipBridge.Windows.Interop;
 using ClipBridge.Windows.Logic;
 using ClipBridge.Windows.Update;
@@ -9,6 +11,9 @@ using ClipBridge.Windows.Views;
 namespace ClipBridge.Windows.Services;
 
 public enum MainPage { Devices, Inbox, Transfers, Vault, Notes, Settings, Diagnostics }
+
+/// <summary>How a status message is shown (toast colour).</summary>
+public enum StatusKind { Info, Success, Warning, Error }
 
 internal enum ApplyOutcome { Written, Downgraded, Failed }
 
@@ -39,6 +44,7 @@ internal sealed partial class ShellController : IDisposable
     private volatile bool _captureOn;
     private bool _disposed;
     private bool _exiting;
+    private volatile bool _uiShutdown;
     private string _lastUpdateNotice = "";
 
     public CoreApi Api { get; }
@@ -62,12 +68,13 @@ internal sealed partial class ShellController : IDisposable
     public event Action? StateChanged;
 
     /// <summary>A short message for the main window's status line.</summary>
-    public event Action<string>? StatusMessage;
+    public event Action<string, StatusKind>? StatusMessage;
 
     public ShellController(Dispatcher ui)
     {
         Current = this;
         _ui = ui;
+        _ui.ShutdownStarted += (_, _) => _uiShutdown = true;
         Api = new CoreApi(_core);
         Prefs = ShellPrefs.Load(App.DataDir);
         Settings = new SettingsValues(true, "auto", SettingsValues.DefaultTtl, SettingsValues.DefaultHistory, true,
@@ -77,7 +84,7 @@ internal sealed partial class ShellController : IDisposable
         _transfersReload = new Coalescer(LoadTransfersAsync);
         _updateProgressReload = new Coalescer(RefreshUpdateAsync);
         _clipQueue = new SerialQueue("clipbridge-clipboard", ex => AppLog.Error("clipboard worker", ex));
-        _monitor = new ClipboardMonitor(ui);
+        _monitor = new ClipboardMonitor();
         _monitor.Changed += () => _clipQueue.Post(ReadAndSendLocalClipboard);
 
         _tray = new TrayService();
@@ -161,10 +168,13 @@ internal sealed partial class ShellController : IDisposable
 
     public MainWindow? Main => MainWindow.Instance;
 
+    /// <summary>The tray, for the development snapshots only.</summary>
+    internal TrayService TrayForSnapshot => _tray;
+
     public void ShowMainWindow(MainPage? page = null)
     {
         if (_disposed) return;
-        var w = Main ?? new MainWindow();
+        var w = Main ?? new MainWindow(this);
         if (!w.IsVisible) w.Show();
         if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
         if (page is { } p) w.ShowPage(p);
@@ -184,12 +194,13 @@ internal sealed partial class ShellController : IDisposable
     {
         if (_exiting) return;
         _exiting = true;
-        Application.Current.Shutdown();
+        (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
     }
 
-    public void ShowStatus(string text)
+    /// <summary>A short message for the user: a toast in the main window while it is shown.</summary>
+    public void ShowStatus(string text, StatusKind kind = StatusKind.Info)
     {
-        if (!_disposed) StatusMessage?.Invoke(text);
+        if (!_disposed && text.Length > 0) StatusMessage?.Invoke(text, kind);
     }
 
     public void Balloon(string title, string text, Action? onClick = null)
@@ -199,12 +210,12 @@ internal sealed partial class ShellController : IDisposable
 
     private void UiPost(Action action)
     {
-        if (_disposed || _ui.HasShutdownStarted) return;
-        _ui.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+        if (_disposed || _uiShutdown) return;
+        _ui.Post(() =>
         {
             try { action(); }
             catch (Exception ex) { AppLog.Error("ui callback", ex); }
-        }));
+        }, DispatcherPriority.Normal);
     }
 
     // ---- core events ---------------------------------------------------------------------
@@ -291,9 +302,9 @@ internal sealed partial class ShellController : IDisposable
 
     // ---- pairing -------------------------------------------------------------------------
 
-    public void ShowPairListen() => PairListenWindow.ShowOrActivate();
+    public void ShowPairListen() => PairDialogs.ShowListen(this);
 
-    public void ShowPairJoin() => PairJoinWindow.ShowOrActivate();
+    public void ShowPairJoin() => PairDialogs.ShowJoin(this);
 
     private readonly Dictionary<string, PairRequestWindow> _pairRequestWindows = new();
 
@@ -305,7 +316,7 @@ internal sealed partial class ShellController : IDisposable
         window.Closed += (_, _) => _pairRequestWindows.Remove(p.PairId);
         Balloon(Strings.PairRequestBalloonTitle, Strings.PairRequestBalloon(p.Name),
             () => { if (_pairRequestWindows.TryGetValue(p.PairId, out var w)) w.Activate(); });
-        window.Show();
+        window.ShowRequest();
         if (Main is { IsVisible: true } m) TaskbarFlash.Flash(m);
     }
 
@@ -342,7 +353,7 @@ internal sealed partial class ShellController : IDisposable
                     _openOfferDialogs++;
                     var window = new FileOfferWindow(o);
                     window.Closed += (_, _) => _openOfferDialogs--;
-                    window.Show();
+                    window.ShowOffer();
                 }
                 if (Main is { IsVisible: true } m) TaskbarFlash.Flash(m);
                 break;

@@ -1,6 +1,6 @@
 # 壳层开发指南（Windows / Android）
 
-> 读者：写 Windows 壳（C# WPF）和 Android 壳（Kotlin Compose）的人。
+> 读者：写 Windows 壳（C#，Avalonia 12 + Lumen.UI）和 Android 壳（Kotlin Compose）的人。
 > 唯一的接口依据：[api-spec.md](api-spec.md) §7（方法与事件）+ 本文 §2（文件传输契约）。
 > 架构边界见 [architecture.md](architecture.md) §2.2/§2.3：**壳不做协议、重试、去重、加密、网络、序号**，这些都在 Go 核心里。壳只做三件事：把平台能力（剪贴板、文件、通知、托盘、权限）接到核心，把核心的状态显示出来，把用户的操作变成方法调用。
 
@@ -12,7 +12,7 @@
 - **错误**：核心错误只依赖 `error.code`（api-spec §1.4）。每个 code 要有一条人话提示（如 `NO_TAILNET` →“没有检测到 Tailscale 网络，请确认 Tailscale 已登录并连接”）。未知 code 显示通用提示 + code。
 - **敏感内容**：`clip.received.sensitive == true` 时，通知和列表默认不显示正文（显示“敏感内容（已隐藏）”，点击后才展开）；永不自动写入剪贴板（核心已保证 `decision != auto`，壳也要再检查一次）。核心的启发式可由设置 `sensitive_detection`（默认 `on`）关闭；关闭后本机不隐藏、不因启发式降级自动写入，但密码库复制仍永不自动发送。
 - **日志**：不得记录剪贴板文本、psk、数据库密钥、私钥。事件日志只记 `type` 和 `event_id`。
-- **不新增不必要的依赖**。Windows 不引入 NuGet 包（用 `UseWindowsForms` 的 `NotifyIcon`、P/Invoke 实现 DPAPI 与剪贴板）。Android 允许的新增依赖：`com.journeyapps:zxing-android-embedded`（扫码）、AndroidX 官方库；其余先问。
+- **不新增不必要的依赖**。Windows 的界面用 Avalonia 12 + 用户自己的组件库 Lumen.UI（`Avalonia.Win32`、`Avalonia.Skia`、`Avalonia.HarfBuzz`、`Lumen.UI` 四个包，2026-11 迁移，见 [ui-lumen-2026-11.md](ui-lumen-2026-11.md)）；除此之外不引入 NuGet 包（托盘用 `UseWindowsForms` 的 `NotifyIcon`，DPAPI 与剪贴板用 P/Invoke）。Android 允许的新增依赖：`com.journeyapps:zxing-android-embedded`（扫码）、AndroidX 官方库；其余先问。
 - **测试**：纯逻辑（解析、状态映射、策略判断、文本处理、文件名清洗）写单元测试并放进 `make check`；UI 本身无法在这台机器上运行，所以把逻辑从界面里分出来，界面只做绑定。
 - **不要**修改 `core/`、`docs/`（本文件除外）、`Makefile` 里与你无关的部分。不要 `git commit` / `git push`。
 
@@ -68,7 +68,7 @@
 
 核心设置键（加到 `settings.*`）：`download_dir`（Windows 默认路径，字符串）、`max_file_bytes`（默认 4294967296）。
 
-## 3. Windows 壳（`windows/ClipBridge.Windows/`，`net10.0-windows`，WPF + WinForms NotifyIcon）
+## 3. Windows 壳（`windows/ClipBridge.Windows/`，`net10.0-windows`，Avalonia 12 + Lumen.UI + WinForms NotifyIcon）
 
 必须实现：
 
@@ -164,7 +164,7 @@
 
 ## 7. Windows：密码库页面（`vault.*`，接口见 [vault-api.md](vault-api.md)）
 
-文件：`windows/ClipBridge.Windows/` 下的 `Views/Vault*.xaml(.cs)`、`Views/EntryDetailPane.cs`、`Views/EntryEditorWindow.*`、`Views/PasswordGeneratorWindow.*`、`Views/VaultDialogs.cs`、`Views/VaultBackupDialogs.cs`、`Views/VaultControls.cs`（`SecretBox`、`CredsBox`、`StrengthBar`、`TotpRing`）、`Services/ShellController.Vault.cs`、`Services/DisplayAffinity.cs`；纯逻辑（无 WPF 依赖，有单元测试）在 `Logic/Vault*.cs`、`Logic/EntryDraft.cs`。
+文件：`windows/ClipBridge.Windows/` 下的 `Views/VaultPage.cs`、`Views/VaultMainPanel.cs`、`Views/EntryDetailPane.cs`、`Views/EntryEditorWindow.cs`（含密码生成器）、`Views/VaultDialogs.cs`、`Views/VaultBackupDialogs.cs`、`Views/VaultControls.cs`（`SecretBox`、`CredsBox`、`StrengthBar`、`TotpRing`）、`Services/ShellController.Vault.cs`、`Services/DisplayAffinity.cs`；纯逻辑（无界面框架依赖，有单元测试）在 `Logic/Vault*.cs`、`Logic/EntryDraft.cs`。
 
 结构与规则：
 

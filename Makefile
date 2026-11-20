@@ -6,11 +6,11 @@
 #   make dll-smoke   build the Linux .so and run the C ABI smoke test
 #   make dll-wine    run the Windows DLL under Wine (needs wine64)
 #   make test-interop  C# interop tests against the Linux .so (needs a .NET SDK)
-#   make build-windows-app  compile the WPF app on Linux (EnableWindowsTargeting)
+#   make build-windows-app  compile the Windows app (Avalonia + Lumen.UI) on Linux (EnableWindowsTargeting)
 #   make apk         debug APK (needs JDK 17, Android SDK, make aar first)
 #   make cli         cbridge.exe (Windows) and cbridge (host)
 #   make aar         Android AAR (needs gomobile + Android NDK, see below)
-#   make dist-windows  update-ready zip of the WPF app (core/dist/clipbridge-windows.zip)
+#   make dist-windows  update-ready zip of the Windows app (core/dist/clipbridge-windows.zip)
 #   make dist-android  release APK signed with the key in ~/.config/clipbridge
 #   scripts/release-local.sh   build + publish to the local release-publish service (see docs/update.md)
 #   make notes-check  the notes module only: Go (vet, gofmt, race tests) and the notes tests of both shells
@@ -95,7 +95,7 @@ aar:
 apk: aar
 	cd android && ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
 
-# Windows release package: the published WPF app (framework-dependent, win-x64) plus
+# Windows release package: the published Avalonia app with its libraries (framework-dependent, win-x64) plus
 # clipbridge_core.dll and the cbridge.exe command line, zipped flat so the updater can copy it over the install folder.
 dist-windows: dll cli
 	rm -rf $(DIST)/publish-win

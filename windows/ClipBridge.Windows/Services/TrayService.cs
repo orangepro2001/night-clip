@@ -24,6 +24,7 @@ internal sealed class TrayService : IDisposable
     private readonly Dictionary<TrayState, Drawing.Icon> _icons = new();
     private readonly List<IntPtr> _iconHandles = new();
 
+    private readonly TrayMenuRenderer _renderer = TrayMenuRenderer.Create();
     private Action? _balloonAction;
     private DateTime _balloonShownAt = DateTime.MinValue;
     private bool _disposed;
@@ -74,6 +75,7 @@ internal sealed class TrayService : IDisposable
         _menu.Items.Add(Item(Strings.TrayCheckUpdate, () => CheckUpdateRequested?.Invoke()));
         _menu.Items.Add(new WinForms.ToolStripSeparator());
         _menu.Items.Add(Item(Strings.TrayExit, () => ExitRequested?.Invoke()));
+        StyleMenu();
 
         _icon = new WinForms.NotifyIcon
         {
@@ -88,6 +90,39 @@ internal sealed class TrayService : IDisposable
         };
         _icon.BalloonTipClicked += OnBalloonClicked;
     }
+
+    /// <summary>The flat Lumen-like look (TrayMenuRenderer): roomier rows, the app's light / dark and accent, rounded corners.</summary>
+    private void StyleMenu()
+    {
+        _menu.Renderer = _renderer;
+        _pauseItem.DropDown.Renderer = _renderer;
+        _menu.Padding = new WinForms.Padding(2, 6, 2, 6);
+        _pauseItem.DropDown.Padding = new WinForms.Padding(2, 6, 2, 6);
+        foreach (var item in _menu.Items.OfType<WinForms.ToolStripMenuItem>().Concat(_pauseItem.DropDownItems.OfType<WinForms.ToolStripMenuItem>()))
+            item.Padding = new WinForms.Padding(4, 5, 12, 5);
+        _menu.Opening += (_, _) => ApplyLook(_menu);
+        _pauseItem.DropDown.Opening += (_, _) => ApplyLook(_pauseItem.DropDown);
+    }
+
+    private void ApplyLook(WinForms.ToolStripDropDown dropDown)
+    {
+        var accent = Lumen.UI.Services.ThemeManager.Accent;
+        _renderer.Apply(Lumen.UI.Services.ThemeManager.IsDark, Drawing.Color.FromArgb(accent.A, accent.R, accent.G, accent.B));
+        TrayMenuRenderer.RoundCorners(dropDown.Handle);
+        dropDown.Invalidate();
+    }
+
+    /// <summary>Development snapshots: opens the menu at a screen point and returns its bounds (screen pixels).</summary>
+    internal Drawing.Rectangle ShowMenuForSnapshot(Drawing.Point at)
+    {
+        _menu.Show(at);
+        return _menu.Bounds;
+    }
+
+    internal void HideMenu() => _menu.Close();
+
+    /// <summary>Development snapshots: paints the open menu into a bitmap of its size.</summary>
+    internal void DrawMenu(Drawing.Bitmap target) => _menu.DrawToBitmap(target, new Drawing.Rectangle(0, 0, target.Width, target.Height));
 
     private static WinForms.ToolStripMenuItem Item(string text, Action onClick)
     {

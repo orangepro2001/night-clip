@@ -1,9 +1,10 @@
 using System.Diagnostics;
-using System.Windows;
-using System.Windows.Threading;
+using Avalonia;
+using Avalonia.Threading;
 using ClipBridge.Windows.Interop;
 using ClipBridge.Windows.Logic;
 using ClipBridge.Windows.Update;
+using Lumen.UI.Controls;
 
 namespace ClipBridge.Windows.Services;
 
@@ -58,7 +59,7 @@ internal sealed partial class ShellController
                 if (outcome == ApplyOutcome.Written)
                 {
                     Inbox.FirstOrDefault(r => r.EventId == eventId)?.SetState("applied");
-                    if (user) ShowStatus(Strings.AppliedToast);
+                    if (user) ShowStatus(Strings.AppliedToast, StatusKind.Success);
                     else if (!sensitive)
                         Balloon(Strings.ReceivedTitle(fromName), ClipText.Preview(coreText) + "\n" + Strings.AppliedToast);
                 }
@@ -79,7 +80,7 @@ internal sealed partial class ShellController
     /// </summary>
     private ApplyOutcome ApplyOnWorker(string coreText, string eventId, bool sensitive, uint seqAtArrival, bool user)
     {
-        if (_disposed || _ui.HasShutdownStarted) return ApplyOutcome.Failed;
+        if (_disposed || _uiShutdown) return ApplyOutcome.Failed;
         var text = ClipText.ToClipboard(coreText);
         var outcome = ApplyOutcome.Failed;
 
@@ -231,15 +232,15 @@ internal sealed partial class ShellController
         var read = _clip.ReadText();
         if (read.Status != ClipReadStatus.Ok)
         {
-            UiPost(() => ShowStatus(Strings.SendNowNothing));
+            UiPost(() => ShowStatus(Strings.SendNowNothing, StatusKind.Warning));
             return;
         }
         try
         {
             Api.ClipSendTo(ClipText.ToCore(read.Text), new[] { peer.DeviceId });
-            UiPost(() => ShowStatus(Strings.SentTo(1)));
+            UiPost(() => ShowStatus(Strings.SentTo(1), StatusKind.Success));
         }
-        catch (CoreException ex) { UiPost(() => ShowStatus(ErrorMessages.ForCode(ex.Code))); }
+        catch (CoreException ex) { UiPost(() => ShowStatus(ErrorMessages.ForCode(ex.Code), StatusKind.Error)); }
     });
 
     public void SetNotifications(bool on)
@@ -324,7 +325,7 @@ internal sealed partial class ShellController
         _undoText = previous;
         _tray.SetUndoAvailable(true);
         _undoTimer?.Stop();
-        _undoTimer = new DispatcherTimer(UndoWindow, DispatcherPriority.Background, (_, _) => ForgetUndo(), _ui);
+        _undoTimer = UiTimer.Start(UndoWindow, ForgetUndo);
     }
 
     private void ForgetUndo()
@@ -388,7 +389,7 @@ internal sealed partial class ShellController
             return;
         }
         _tray.SetPaused(until.LocalDateTime);
-        _pauseTimer = new DispatcherTimer(remaining + TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => ApplyPauseUi(), _ui);
+        _pauseTimer = UiTimer.Start(remaining + TimeSpan.FromSeconds(1), ApplyPauseUi);
     }
 
     public async Task<string?> SetPeerModeAsync(PeerItem peer, string mode)
@@ -484,6 +485,8 @@ internal sealed partial class ShellController
 
     public async Task<string?> SetAutoStartAsync(bool on)
     {
+        // A development instance (own data folder) must not take over the installed app's Run entry.
+        if (App.IsDevInstance) return Strings.DevInstanceNoAutoStart;
         var ok = await Task.Run(() => AutoStartRegistry.Set(on));
         _tray.SetAutoStartChecked(AutoStartRegistry.IsEnabled());
         StateChanged?.Invoke();
@@ -581,7 +584,7 @@ internal sealed partial class ShellController
             }
         });
         await ReloadTransfersAsync();
-        if (started > 0) ShowStatus(files.Count == 1 ? Strings.FileSendStarted : Strings.FileSendStartedN(started));
+        if (started > 0) ShowStatus(files.Count == 1 ? Strings.FileSendStarted : Strings.FileSendStartedN(started), StatusKind.Success);
         if (skippedFolders) errors.Add(Strings.DropNoFiles);
         return errors.Count == 0 ? null : string.Join("\n", errors);
     }
@@ -620,15 +623,14 @@ internal sealed partial class ShellController
     }
 
     /// <summary>Opens a received file with its default program; executables ask for confirmation first.</summary>
-    public string? OpenTransferFile(TransferRow row, Window? owner)
+    public async Task<string?> OpenTransferFileAsync(TransferRow row, Visual? anchor)
     {
         if (!File.Exists(row.Path)) return Strings.FileMissing;
         if (FileDisplay.IsExecutable(row.Path) || FileDisplay.IsExecutable(row.Name))
         {
-            var answer = owner is null
-                ? MessageBox.Show(Strings.FileDangerText(FileDisplay.Shorten(row.Name, 60)), Strings.FileDangerTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
-                : MessageBox.Show(owner, Strings.FileDangerText(FileDisplay.Shorten(row.Name, 60)), Strings.FileDangerTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-            if (answer != MessageBoxResult.Yes) return null;
+            var run = await Dialog.ConfirmAsync(Strings.FileDangerTitle, Strings.FileDangerText(FileDisplay.Shorten(row.Name, 60)),
+                Strings.BtnOpenAnyway, Strings.BtnCancel, isDanger: true, anchor: anchor);
+            if (!run) return null;
         }
         return Launch(new ProcessStartInfo(row.Path) { UseShellExecute = true });
     }

@@ -6,8 +6,16 @@ namespace ClipBridge.Windows.Services;
 /// </summary>
 internal sealed class SingleInstance : IDisposable
 {
-    private const string MutexName = @"Local\ClipBridge.SingleInstance.6b1f6d1e";
-    private const string EventName = @"Local\ClipBridge.Activate.6b1f6d1e";
+    private readonly string _mutexName;
+    private readonly string _eventName;
+
+    /// <param name="suffix">Empty for the normal installation; a development instance with its own data folder
+    /// (<see cref="App.InstanceSuffix"/>) gets its own names so that it can run next to the installed one.</param>
+    public SingleInstance(string suffix = "")
+    {
+        _mutexName = @"Local\ClipBridge.SingleInstance.6b1f6d1e" + suffix;
+        _eventName = @"Local\ClipBridge.Activate.6b1f6d1e" + suffix;
+    }
 
     private Mutex? _mutex;
     private EventWaitHandle? _activate;
@@ -21,8 +29,8 @@ internal sealed class SingleInstance : IDisposable
     public bool TryAcquire()
     {
         // Created (or opened) before the mutex decision so a racing second start can always signal it.
-        _activate = new EventWaitHandle(false, EventResetMode.AutoReset, EventName);
-        _mutex = new Mutex(true, MutexName, out var createdNew);
+        _activate = new EventWaitHandle(false, EventResetMode.AutoReset, _eventName);
+        _mutex = new Mutex(true, _mutexName, out var createdNew);
         if (!createdNew)
         {
             _mutex.Dispose();

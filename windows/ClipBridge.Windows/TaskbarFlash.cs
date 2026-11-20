@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Interop;
+using Avalonia.Controls;
 
 namespace ClipBridge.Windows;
 
@@ -26,7 +25,7 @@ internal static class TaskbarFlash
     public static void Flash(Window window)
     {
         if (window.IsActive) return;
-        var hwnd = new WindowInteropHelper(window).Handle;
+        var hwnd = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
         if (hwnd == IntPtr.Zero) return;
         var info = new FLASHWINFO
         {

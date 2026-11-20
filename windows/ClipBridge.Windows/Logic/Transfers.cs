@@ -68,6 +68,9 @@ public sealed class TransferRow : INotifyPropertyChanged
     public bool CanReject => Incoming && State == "offered";
     public bool CanCancel => !IsTerminal && !CanAccept;
     public bool CanOpen => State == "done" && Path.Length > 0;
+    public bool IsDone => State == "done";
+    public bool IsFailed => State is "failed" or "rejected" or "cancelled" or "expired";
+    public bool IsActive => !IsTerminal;
 
     // ---- updates ------------------------------------------------------------------------
     internal void Set(string? peerId = null, string? peerName = null, bool? incoming = null, string? name = null,

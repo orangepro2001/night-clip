@@ -23,6 +23,27 @@ public sealed class ShellPrefs
     /// <summary>The panes of the notes editor (source / split / preview), remembered between runs.</summary>
     public NotesViewMode NotesView { get; set; } = NotesViewModes.Default;
 
+    /// <summary>Appearance of the window: "system" (follow Windows, the default), "light" or "dark".</summary>
+    public string Theme { get; set; } = "system";
+
+    /// <summary>Accent colour as #RRGGBB, or null for the shell's default.</summary>
+    public string? Accent { get; set; }
+
+    /// <summary>Whether the sidebar of the main window is expanded (default) or collapsed to icons.</summary>
+    public bool SidebarOpen { get; set; } = true;
+
+    /// <summary>"system", "light" or "dark"; anything else reads as "system".</summary>
+    public static string NormalizeTheme(string? value) => value is "light" or "dark" ? value : "system";
+
+    /// <summary>A #RRGGBB colour, or null when <paramref name="value"/> is not one.</summary>
+    public static string? NormalizeAccent(string? value)
+    {
+        if (value is not { Length: 7 } || value[0] != '#') return null;
+        for (var i = 1; i < 7; i++)
+            if (!Uri.IsHexDigit(value[i])) return null;
+        return value.ToUpperInvariant();
+    }
+
     public static ShellPrefs Load(string dataDir)
     {
         try
@@ -37,6 +58,9 @@ public sealed class ShellPrefs
                 PreventCapture = JsonRead.Bool(doc.RootElement, "prevent_capture", true),
                 Notifications = JsonRead.Bool(doc.RootElement, "notifications", true),
                 NotesView = NotesViewModes.Parse(JsonRead.Str(doc.RootElement, "notes_view")),
+                Theme = NormalizeTheme(JsonRead.Str(doc.RootElement, "theme")),
+                Accent = NormalizeAccent(JsonRead.Str(doc.RootElement, "accent")),
+                SidebarOpen = JsonRead.Bool(doc.RootElement, "sidebar_open", true),
             };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -57,6 +81,9 @@ public sealed class ShellPrefs
                 ["prevent_capture"] = PreventCapture,
                 ["notifications"] = Notifications,
                 ["notes_view"] = NotesViewModes.Key(NotesView),
+                ["theme"] = NormalizeTheme(Theme),
+                ["accent"] = NormalizeAccent(Accent),
+                ["sidebar_open"] = SidebarOpen,
             });
             var path = Path.Combine(dataDir, FileName);
             var tmp = path + ".tmp";

@@ -18,7 +18,7 @@ night-clip/
 │   ├── peer/ pairing/ clip/ xfer/                                                 [implemented; tests]
 │   ├── vault/ vsync/                                                              [KDBX 4 vault + device sync]
 │   └── test/abi/smoke.c     C ABI smoke test (run via `make dll-smoke`)
-├── windows/ClipBridge.Windows/   WPF shell: P/Invoke + event pump + status window [compiles on Linux]
+├── windows/ClipBridge.Windows/   Windows shell (Avalonia 12 + Lumen.UI): P/Invoke + event pump + windows [compiles on Linux]
 ├── windows/ClipBridge.Windows.Tests/   xUnit tests of the C# interop layer against the real native core
 ├── android/                      Kotlin/Compose shell: AAR wrapper + foreground service [debug/release APK build]
 ├── .github/workflows/ci.yml      CI (runs on push to origin/main)
@@ -36,7 +36,7 @@ runs everything below and passes on the dev machine (Ubuntu 26.04, no KVM, no Wi
 | C ABI | all 5 exports, UTF-8, timeout, prompt wake on shutdown | `make dll-smoke` (Linux `.so`) |
 | Windows DLL | cross-compiled PE DLL loads and works in Windows userland | `make dll-wine` (mingw `smoke_win.exe` under Wine) |
 | C# interop | `CoreHost`: P/Invoke marshaling, UTF-8 round trip, event pump thread, `Dispose` stops the pump | `make test-interop` (xUnit against the Linux `.so`) |
-| WPF app | compiles (XAML included) for `net10.0-windows` | `make build-windows-app` |
+| Windows app (Avalonia + Lumen.UI) | compiles (XAML included) for `net10.0-windows` | `make build-windows-app` |
 | Android | gomobile AAR builds (arm64-v8a, x86_64); debug and release (R8) APKs build; lint runs | `make apk` |
 | `store` + persistent identity | schema v1 + migrations, AES-256-GCM field sealing, identity persistence, data-layer CRUD; 40 `store` + 15 `facade` tests. `device_id` is stable across restarts for the same `data_dir` + key. Shells keep a temporary plaintext `devkey.b64` (DPAPI/Keystore later) | `make check` (see [HANDOFF-STORE.md](HANDOFF-STORE.md)) |
 | Self-update | signed manifest, resumable verified download, Windows swap-with-rollback, Android installer hand-off, distributed by the local release-publish service (signed manifests, `watch` push, `scripts/probe-update.sh` read-only probe); see [docs/update.md](docs/update.md) and [docs/release-publish-integration.md](docs/release-publish-integration.md) | `make check`, `scripts/release-local.sh` |
@@ -47,7 +47,7 @@ runs everything below and passes on the dev machine (Ubuntu 26.04, no KVM, no Wi
 These need a real Windows PC or Android phone (or the prepared Windows CI job) and are
 tracked as Phase 0 PoC items in `docs/development-plan.md` §3.3:
 
-- WPF window actually rendering, tray, `WM_CLIPBOARDUPDATE`, DPAPI, firewall rule, Tailscale interface appearing late.
+- The Windows app on a real desktop: tray, `WM_CLIPBOARDUPDATE`, DPAPI, firewall rule, Tailscale interface appearing late (pages can be rendered to PNG with `--snapshot`, see [docs/ui-lumen-2026-11.md](docs/ui-lumen-2026-11.md)).
 - The core running inside an Android process under a real Tailscale VPN (P-A), foreground-service survival on OEM builds (P-C), Doze.
 - Android background auto send: whether `ClipboardService` logs the denial line, whether `adb shell pm grant … READ_LOGS` works on the phone, whether a 1×1 overlay gets focus, and how much it disturbs the keyboard. See [docs/plan-android-background-read.md](docs/plan-android-background-read.md).
 - The password vault: Windows and Android vault UI, biometric quick unlock, screen protection, clipboard auto-clear, Android AutofillService, and device-to-device sync all compile and have logic/interop tests, but none has run on a real device. Treat it as experimental; see [docs/adr/007-password-vault.md](docs/adr/007-password-vault.md).

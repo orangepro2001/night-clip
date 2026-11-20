@@ -1,10 +1,15 @@
 using System.Runtime.InteropServices;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using ClipBridge.Windows.Logic;
 using ClipBridge.Windows.Services;
+using Lumen.UI.Controls;
+using Lumen.UI.Icons;
+using Drawing = System.Drawing;
+using WinForms = System.Windows.Forms;
 
 namespace ClipBridge.Windows.Views;
 
@@ -12,9 +17,9 @@ namespace ClipBridge.Windows.Views;
 /// A received image: a preview and "复制到剪贴板" (the full image as a bitmap). A <em>held</em> image
 /// (ReceivedImages: not saved yet) offers "保存到…" — a save dialog, then Explorer shows the saved file — and
 /// is deleted when the window closes without saving. An image saved into a folder the user chose offers
-/// "保存到本地" (show it in Explorer). At most a few windows at once.
+/// "在文件夹中显示". At most a few windows at once.
 /// </summary>
-public sealed class ImagePreviewWindow : Window
+internal sealed class ImagePreviewWindow : SmallWindow
 {
     private const int MaxOpen = 3;
     private const int PreviewPixels = 1280; // decode width: enough for the window, bounded memory
@@ -37,84 +42,100 @@ public sealed class ImagePreviewWindow : Window
     private readonly string _path;
     private readonly string _name;
     private readonly bool _held;
-    private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
+    private readonly PairDialogs.StatusLine _status = new();
 
-    private ImagePreviewWindow(string path, string name, string from, bool held)
+    private ImagePreviewWindow(string path, string name, string from, bool held) : base(720, resizable: true)
     {
         _path = path;
         _name = name;
         _held = held;
         Title = Strings.ImagePreviewTitle(from) + " — " + FileDisplay.Shorten(name, 40);
-        Width = 680;
-        Height = 600;
-        MinWidth = 420;
-        MinHeight = 360;
-        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        Height = 620;
+        MinWidth = 440;
+        MinHeight = 380;
 
         var image = new Image { Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly };
         try { image.Source = Load(path, PreviewPixels); }
         catch (Exception ex) when (ex is IOException or NotSupportedException or ArgumentException or InvalidOperationException
-                                       or UnauthorizedAccessException or COMException or FileFormatException)
+                                       or UnauthorizedAccessException)
         {
             AppLog.Error("image preview", ex);
-            _status.Text = Strings.ImageLoadFailed;
+            _status.Error(Strings.ImageLoadFailed);
         }
 
-        var copy = new Button { Content = Strings.BtnCopyImage, Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
-        copy.Click += (_, _) => Copy();
+        var copy = Ui.Button(AppIcons.Of(IconKind.Copy), Strings.BtnCopyImage, Copy, "primary");
+        copy.IsDefault = true;
         var save = held
-            ? new Button { Content = Strings.BtnSaveAs, Margin = new Thickness(0, 0, 8, 0) }
-            : new Button { Content = Strings.BtnSaveLocal, ToolTip = Strings.BtnSaveLocalTip, Margin = new Thickness(0, 0, 8, 0) };
-        save.Click += (_, _) =>
-        {
-            if (_held) { SaveAs(); return; }
-            if (_shell.OpenContainingFolder(_path) is { } error) _status.Text = error;
-            else Close();
-        };
+            ? Ui.Button(AppIcons.Save, Strings.BtnSaveAs, () => _ = SaveAsAsync())
+            : Ui.Button(AppIcons.FolderOpen, Strings.BtnShowInFolder, () =>
+            {
+                if (_shell.OpenContainingFolder(_path) is { } error) _status.Error(error);
+                else Close();
+            });
+        if (!held) ToolTip.SetTip(save, Strings.BtnSaveLocalTip);
         var close = new Button { Content = Strings.Close, IsCancel = true };
+        close.Classes.Add("ghost");
         close.Click += (_, _) => Close();
 
-        var bottom = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
-        bottom.Children.Add(new TextBlock { Text = held ? Strings.ImageNotSavedYet : Strings.ImageSavedAt(path), TextWrapping = TextWrapping.Wrap, Opacity = 0.7 });
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
-        buttons.Children.Add(copy);
-        buttons.Children.Add(save);
-        buttons.Children.Add(close);
-        bottom.Children.Add(buttons);
-        bottom.Children.Add(_status);
+        var header = new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                Ui.Text(FileDisplay.Shorten(name, 60), "subtitle"),
+                Ui.Text(held ? Strings.ImageNotSavedYet : Strings.ImageSavedAt(path), "caption", "tertiary"),
+            },
+        };
+        var frame = new Border
+        {
+            CornerRadius = new CornerRadius(12),
+            ClipToBounds = true,
+            Padding = new Thickness(8),
+            Child = image,
+        };
+        frame[!Border.BackgroundProperty] = frame.GetResourceObservable("Lumen.Brush.SurfaceSubtle").ToBinding();
 
-        var root = new DockPanel { Margin = new Thickness(16) };
-        DockPanel.SetDock(bottom, Dock.Bottom);
-        root.Children.Add(bottom);
-        root.Children.Add(new Border { Child = image, Background = new SolidColorBrush(Color.FromArgb(16, 128, 128, 128)) });
-        Content = root;
+        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto"), Margin = new Thickness(0, 14, 0, 0) };
+        footer.Children.Add(_status);
+        Grid.SetColumn(close, 1);
+        footer.Children.Add(close);
+        save.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(save, 2);
+        footer.Children.Add(save);
+        copy.Margin = new Thickness(8, 0, 0, 0);
+        Grid.SetColumn(copy, 3);
+        footer.Children.Add(copy);
+        _status.Clear();
+
+        var root = new DockPanel();
+        DockPanel.SetDock(header, Dock.Top);
+        header.Margin = new Thickness(0, 0, 0, 12);
+        DockPanel.SetDock(footer, Dock.Bottom);
+        root.Children.Add(header);
+        root.Children.Add(footer);
+        root.Children.Add(frame);
+        SetBody(root, new Thickness(20, 18));
         Closed += (_, _) => DiscardIfUnsaved();
     }
 
     /// <summary>The save dialog (download folder, original name), then Explorer with the saved file selected.</summary>
-    private void SaveAs()
+    private async Task SaveAsAsync()
     {
         var dir = _shell.Settings.DownloadDir;
-        var dialog = new Microsoft.Win32.SaveFileDialog
-        {
-            Title = Strings.BtnSaveAs,
-            FileName = ReceivedImages.UniqueName(_name, n => File.Exists(Path.Combine(dir, n))),
-            InitialDirectory = Directory.Exists(dir) ? dir : null,
-            Filter = $"{FileDisplay.Extension(_name).TrimStart('.').ToUpperInvariant()}|*{FileDisplay.Extension(_name)}|*.*|*.*",
-            OverwritePrompt = true,
-        };
-        if (dialog.ShowDialog(this) != true) return;
+        var suggested = ReceivedImages.UniqueName(_name, n => File.Exists(Path.Combine(dir, n)));
+        var target = await Ui.PickSaveFileAsync(this, Strings.BtnSaveAs, suggested, dir, FileDisplay.Extension(_name));
+        if (target is null) return;
         try
         {
-            File.Copy(_path, dialog.FileName, overwrite: true);
+            File.Copy(_path, target, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         {
             AppLog.Error("image save", ex);
-            _status.Text = Strings.ImageSaveFailed(ex.Message);
+            _status.Error(Strings.ImageSaveFailed(ex.Message));
             return;
         }
-        _shell.OpenContainingFolder(dialog.FileName); // "已保存的路径" in Explorer, file selected
+        _shell.OpenContainingFolder(target); // the saved file in Explorer, selected
         Close();
     }
 
@@ -130,28 +151,18 @@ public sealed class ImagePreviewWindow : Window
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { AppLog.Error("image discard", ex); }
     }
 
-    /// <summary>Decodes into memory (no file lock left behind); <paramref name="maxWidth"/> 0 = full size.</summary>
-    private static BitmapSource Load(string path, int maxWidth)
+    /// <summary>Decodes from memory (no file lock left behind), at most <paramref name="maxWidth"/> pixels wide.</summary>
+    private static Bitmap Load(string path, int maxWidth)
     {
-        var bmp = new BitmapImage();
-        bmp.BeginInit();
-        bmp.CacheOption = BitmapCacheOption.OnLoad;
-        bmp.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-        bmp.UriSource = new Uri(path);
-        if (maxWidth > 0) bmp.DecodePixelWidth = maxWidth;
-        bmp.EndInit();
-        if (maxWidth > 0 && bmp.PixelWidth < maxWidth)
+        var bytes = File.ReadAllBytes(path);
+        using (var probe = new MemoryStream(bytes))
         {
-            // Smaller than the decode width: decode again at its own size instead of scaling it up.
-            bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
-            bmp.UriSource = new Uri(path);
-            bmp.EndInit();
+            var full = new Bitmap(probe);
+            if (full.PixelSize.Width <= maxWidth) return full;
+            full.Dispose();
         }
-        bmp.Freeze();
-        return bmp;
+        using var stream = new MemoryStream(bytes);
+        return Bitmap.DecodeToWidth(stream, maxWidth, BitmapInterpolationMode.HighQuality);
     }
 
     /// <summary>The full-size image as a bitmap on the clipboard (the monitor only reads text, so it is not synced on).</summary>
@@ -159,26 +170,26 @@ public sealed class ImagePreviewWindow : Window
     {
         try
         {
-            var full = Load(_path, 0);
+            using var image = Drawing.Image.FromStream(new MemoryStream(File.ReadAllBytes(_path)));
             for (var attempt = 0; ; attempt++)
             {
                 try
                 {
-                    Clipboard.SetImage(full);
+                    WinForms.Clipboard.SetImage(image);
                     break;
                 }
-                catch (COMException) when (attempt < 4)
+                catch (ExternalException) when (attempt < 4)
                 {
                     Thread.Sleep(60); // another program holds the clipboard for a moment
                 }
             }
-            _status.Text = Strings.ImageCopied;
+            Toast.Success(Strings.ImageCopied, anchor: this);
         }
         catch (Exception ex) when (ex is IOException or NotSupportedException or ArgumentException or InvalidOperationException
-                                       or UnauthorizedAccessException or COMException or FileFormatException or ExternalException)
+                                       or UnauthorizedAccessException or ExternalException or OutOfMemoryException)
         {
             AppLog.Error("image copy", ex);
-            _status.Text = Strings.ImageCopyFailed;
+            _status.Error(Strings.ImageCopyFailed);
         }
     }
 }

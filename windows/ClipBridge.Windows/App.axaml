@@ -1,0 +1,152 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="https://github.com/HinaKalo/lumen"
+             xmlns:v="using:ClipBridge.Windows.Views"
+             x:Class="ClipBridge.Windows.App"
+             Name="ClipBridge"
+             RequestedThemeVariant="Default">
+  <Application.Styles>
+    <l:LumenTheme />
+
+    <!-- Page layout: every page is a Grid with an optional banner strip on top and a scrolling body. -->
+    <Style Selector="StackPanel.page">
+      <Setter Property="Margin" Value="28,22,28,36" />
+      <Setter Property="Spacing" Value="18" />
+      <Setter Property="MaxWidth" Value="1080" />
+    </Style>
+    <Style Selector="Grid.page">
+      <Setter Property="Margin" Value="28,22,28,22" />
+    </Style>
+
+    <!-- Rows inside cards: transparent until hovered, quiet separators between them. -->
+    <Style Selector="Border.row">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Lumen.Brush.BorderSubtle}" />
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="Padding" Value="20,13" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.row:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Lumen.Brush.SurfaceSubtle}" />
+    </Style>
+    <Style Selector="Border.row.last">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <!-- A drop target lights up while files are dragged over it. -->
+    <Style Selector="Border.row.droptarget">
+      <Setter Property="Background" Value="{DynamicResource Lumen.Brush.AccentSubtle}" />
+    </Style>
+
+    <!-- Settings rows: title + description on the left, the control on the right. -->
+    <Style Selector="Grid.setting">
+      <Setter Property="Margin" Value="0,2" />
+      <Setter Property="MinHeight" Value="40" />
+    </Style>
+
+    <!-- Icon tile at the start of a row (device, file, entry). -->
+    <Style Selector="Border.tile">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="CornerRadius" Value="{DynamicResource Lumen.Radius.Md}" />
+      <Setter Property="Background" Value="{DynamicResource Lumen.Brush.SurfaceSubtle}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Lumen.Brush.Border}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.tile.accent">
+      <Setter Property="Background" Value="{DynamicResource Lumen.Brush.AccentSubtle}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource Lumen.Brush.AccentText}" />
+    </Style>
+    <Style Selector="Border.tile.success">
+      <Setter Property="Background" Value="{DynamicResource Lumen.Brush.SuccessSubtle}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource Lumen.Brush.SuccessText}" />
+    </Style>
+    <Style Selector="Border.tile.warning">
+      <Setter Property="Background" Value="{DynamicResource Lumen.Brush.WarningSubtle}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource Lumen.Brush.WarningText}" />
+    </Style>
+    <Style Selector="Border.tile.danger">
+      <Setter Property="Background" Value="{DynamicResource Lumen.Brush.DangerSubtle}" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="TextElement.Foreground" Value="{DynamicResource Lumen.Brush.DangerText}" />
+    </Style>
+
+    <!-- Large digits (pairing numbers, countdowns). -->
+    <Style Selector="TextBlock.sas">
+      <Setter Property="FontFamily" Value="{DynamicResource Lumen.Font.Mono}" />
+      <Setter Property="FontSize" Value="44" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="LetterSpacing" Value="6" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Monospace for secrets and codes, in every text control (type selectors do not match derived types). -->
+    <Style Selector="SelectableTextBlock.mono">
+      <Setter Property="FontFamily" Value="{DynamicResource Lumen.Font.Mono}" />
+    </Style>
+    <Style Selector="TextBox.mono">
+      <Setter Property="FontFamily" Value="{DynamicResource Lumen.Font.Mono}" />
+    </Style>
+
+    <!-- Read-only monospace blocks (diagnostics, links). -->
+    <Style Selector="TextBox.code">
+      <Setter Property="FontFamily" Value="{DynamicResource Lumen.Font.Mono}" />
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
+
+    <!-- In-window dialogs: forms and pairing must not vanish on a stray click outside; room for wider content. -->
+    <Style Selector="l|DialogHost">
+      <Setter Property="CloseOnClickAway" Value="False" />
+      <Setter Property="DialogMaxWidth" Value="680" />
+    </Style>
+
+    <!-- Fluent's ToggleSwitch prints On/Off next to the switch; settings rows carry their own label. -->
+    <Style Selector="ToggleSwitch">
+      <Setter Property="OnContent" Value="" />
+      <Setter Property="OffContent" Value="" />
+      <Setter Property="MinWidth" Value="0" />
+    </Style>
+
+    <!-- Sidebar: our own item template (live badges, custom icons). Style setters win over Lumen's ControlTheme. -->
+    <Style Selector="l|NavList">
+      <Setter Property="ItemTemplate">
+        <DataTemplate x:DataType="v:NavPage">
+          <Panel>
+            <Panel IsVisible="{Binding !$parent[l:NavList].IsCompact}">
+              <TextBlock Text="{Binding Title}" IsVisible="{Binding IsHeader}" FontSize="11" FontWeight="SemiBold"
+                         LetterSpacing="0.6" Foreground="{DynamicResource Lumen.Brush.TextTertiary}" />
+            </Panel>
+            <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding !IsHeader}">
+              <Panel>
+                <l:Icon NameKey="{Binding IconKey}" Size="18" />
+                <Ellipse Width="7" Height="7" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-2,-3,0"
+                         Fill="{DynamicResource Lumen.Brush.Accent}">
+                  <Ellipse.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                      <Binding Path="HasCount" />
+                      <Binding Path="$parent[l:NavList].IsCompact" />
+                    </MultiBinding>
+                  </Ellipse.IsVisible>
+                </Ellipse>
+              </Panel>
+              <Panel Grid.Column="1" IsVisible="{Binding !$parent[l:NavList].IsCompact}">
+                <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{Binding Title}" />
+              </Panel>
+              <Panel Grid.Column="2" IsVisible="{Binding !$parent[l:NavList].IsCompact}">
+                <l:Badge Classes="accent" Margin="8,0,0,0" Padding="7,0,7,1" Content="{Binding CountText}"
+                         IsVisible="{Binding HasCount}" />
+              </Panel>
+            </Grid>
+          </Panel>
+        </DataTemplate>
+      </Setter>
+    </Style>
+  </Application.Styles>
+</Application>

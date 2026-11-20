@@ -51,6 +51,10 @@ public sealed class InboxRow : INotifyPropertyChanged
     };
 
     public bool CanDismiss => State == "received";
+    public bool IsApplied => State == "applied";
+    public bool IsError => State == "error";
+    /// <summary>The preview cuts the text short (the list offers "show all").</summary>
+    public bool IsTruncated => !IsHidden && Text.Length > 200;
     public bool CanCopy => Text.Length > 0;
     public bool CanReveal => Sensitive;
     public string RevealText => Revealed ? Strings.BtnHide : Strings.BtnReveal;

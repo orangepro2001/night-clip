@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using System.Windows;
-using System.Windows.Threading;
+using Avalonia.Controls;
+using Avalonia.Threading;
 using ClipBridge.Windows.Interop;
 using ClipBridge.Windows.Logic;
 using Microsoft.Win32;
@@ -65,7 +65,7 @@ internal sealed partial class ShellController
     private void InitVault()
     {
         _tray.LockVaultRequested += () => _ = LockVaultAsync();
-        _keepAliveTimer = new DispatcherTimer(TimeSpan.FromSeconds(5), DispatcherPriority.Background, (_, _) => KeepAliveTick(), _ui);
+        _keepAliveTimer = UiTimer.Start(TimeSpan.FromSeconds(5), KeepAliveTick);
         try
         {
             SystemEvents.SessionSwitch += OnSessionSwitch;
@@ -195,7 +195,7 @@ internal sealed partial class ShellController
     /// <summary>Clipboard worker thread. The write runs on the UI thread (it owns the clipboard window), like every other write.</summary>
     private bool WriteVaultSecretOnWorker(string value, int clearAfterSeconds, bool convertNewlines)
     {
-        if (_disposed || _ui.HasShutdownStarted) return false;
+        if (_disposed || _uiShutdown) return false;
         var text = convertNewlines ? ClipText.ToClipboard(value) : value;
         var written = false;
 
@@ -219,12 +219,12 @@ internal sealed partial class ShellController
         _vaultClipTimer?.Stop();
         _vaultClipTimer = null;
         if (seconds <= 0 || _disposed) return;
-        _vaultClipTimer = new DispatcherTimer(TimeSpan.FromSeconds(seconds), DispatcherPriority.Background, (_, _) =>
+        _vaultClipTimer = UiTimer.Start(TimeSpan.FromSeconds(seconds), () =>
         {
             _vaultClipTimer?.Stop();
             _vaultClipTimer = null;
             _clipQueue.Post(() => ClearVaultClipboardOnWorker(onLock: false));
-        }, _ui);
+        });
     }
 
     private void ClearVaultClipboardForLock()
@@ -245,7 +245,7 @@ internal sealed partial class ShellController
 
     private void ClearVaultClipboardOnWorker(bool onLock)
     {
-        if (_disposed || _ui.HasShutdownStarted) return;
+        if (_disposed || _uiShutdown) return;
         try { _ui.Invoke(() => ClearVaultClipboardNow(onLock), DispatcherPriority.Send, CancellationToken.None, TimeSpan.FromSeconds(3)); }
         catch (Exception ex) when (ex is OperationCanceledException or TimeoutException) { }
     }
@@ -271,7 +271,7 @@ internal sealed partial class ShellController
         if (cleared)
         {
             _ownWriteSeq = ClipboardAccess.SequenceNumber();
-            if (!onLock) ShowStatus(Strings.ClipboardClearedByTimer);
+            if (!onLock) ShowStatus(Strings.ClipboardClearedByTimer, StatusKind.Info);
         }
         else AppLog.Write("vault clipboard clear failed");
     }
@@ -305,7 +305,8 @@ internal sealed partial class ShellController
         ApplyCaptureExclusion();
     }
 
-    private void ApplyCaptureExclusion()
+    /// <summary>Also called by the main window once it has a native handle (the first Show).</summary>
+    public void ApplyCaptureExclusion()
     {
         if (Main is { } w) DisplayAffinity.Set(w, _vaultPageVisible && Prefs.PreventCapture);
     }
@@ -313,6 +314,6 @@ internal sealed partial class ShellController
     /// <summary>Vault dialogs show secrets too: they get the same exclusion as soon as their window exists.</summary>
     public void ProtectDialog(Window dialog)
     {
-        dialog.SourceInitialized += (_, _) => DisplayAffinity.Set(dialog, Prefs.PreventCapture);
+        dialog.Opened += (_, _) => DisplayAffinity.Set(dialog, Prefs.PreventCapture);
     }
 }

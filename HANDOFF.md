@@ -7,7 +7,7 @@
 ## 0. 一页摘要
 
 - **产品**：Windows ↔ Android 剪贴板（文本）同步 + 文件传输。设备都在同一个 Tailscale tailnet 里直连，无服务端。仓库 `git@github.com:orangepro2001/night-clip.git`（公开，`main`）。
-- **架构**：一个 Go 核心承载全部业务；Windows 用 C# WPF 壳 + Go 编译的 DLL；Android 用 Kotlin Compose 壳 + gomobile AAR。壳只通过 `Call(method, json)` / `NextEvent(timeoutMs)` 访问核心。
+- **架构**：一个 Go 核心承载全部业务；Windows 用 C# 壳 + Go 编译的 DLL（**2026-11-20 起界面从 WPF 迁到 Avalonia 12 + Lumen.UI，见 [docs/ui-lumen-2026-11.md](docs/ui-lumen-2026-11.md)**；下文提到 WPF 的地方指迁移前）；Android 用 Kotlin Compose 壳 + gomobile AAR。壳只通过 `Call(method, json)` / `NextEvent(timeoutMs)` 访问核心。
 - **现状：功能完整但未真机验收**。已按 [docs/plan-auto-broadcast.md](docs/plan-auto-broadcast.md) 把“复制即自动广播”做成默认；密码库 V1–V3（KDBX 4、备份/恢复、Android 设备同步、Android 自动填充）已合并，实验性；Android 后台自动发送（悬浮窗 + `READ_LOGS`）默认关闭。配对、文本同步、文件传输、离线补发、撤销、命名管道与命令行、自动更新与本机分发、两端界面都已实现，核心有测试。**两端壳的系统相关行为（托盘、剪贴板、通知、相机、前台服务、MediaStore、密码库、自动填充…）只编译、没在真机上跑过**——这是现在最大的未知，见 §6。
 - **验证**：`make check` 全绿（核心 `-race`、KeePassXC 互操作、541 个 C# 测试、443 个 Android JVM 测试、Wine 下 DLL）；GitHub CI（linux / windows / android）此前全绿。
 - **本机分发**：2026-10-28 起由本机共用的 **release-publish** 服务（`relhub`，`127.0.0.1:18790`，`tailscale serve` 的 `/release` 路径，属于 release-publish 项目）托管并签名；应用 id `clipbridge`，平台 `android` / `windows`。App 里的更新客户端用它的 Go SDK（`core/third_party/relhub`，原样复制）。旧的 `clipbridge-dist`（`cbdist`，`/clipbridge`）仍在运行，只为 update.md §7 的**桥接版**服务——已装的旧版本编译进了旧公钥和旧地址，不会自己过来；**迁移状态与待办见 [docs/handoff-2026-10-28-release-publish.md](docs/handoff-2026-10-28-release-publish.md)**。0.1.79 是最后一个只走旧源的版本。

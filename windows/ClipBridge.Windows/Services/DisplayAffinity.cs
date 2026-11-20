@@ -1,5 +1,4 @@
-using System.Windows;
-using System.Windows.Interop;
+using Avalonia.Controls;
 
 namespace ClipBridge.Windows.Services;
 
@@ -12,10 +11,13 @@ internal static class DisplayAffinity
 {
     private static bool _loggedFailure;
 
-    /// <summary>Sets or clears the exclusion. Returns false when the system refused both modes (only logged once).</summary>
+    /// <summary>
+    /// Sets or clears the exclusion. Returns false when the window has no handle yet (call again once it is opened)
+    /// or the system refused both modes (only logged once).
+    /// </summary>
     public static bool Set(Window window, bool exclude)
     {
-        var handle = new WindowInteropHelper(window).EnsureHandle();
+        var handle = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
         if (handle == IntPtr.Zero) return false;
         if (!exclude) return NativeMethods.SetWindowDisplayAffinity(handle, NativeMethods.WDA_NONE);
         if (NativeMethods.SetWindowDisplayAffinity(handle, NativeMethods.WDA_EXCLUDEFROMCAPTURE)) return true;

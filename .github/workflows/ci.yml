@@ -1,6 +1,6 @@
 # Linux job mirrors `make check` minus the Android toolchain; the Android job builds the
 # AAR and APKs on the runner's preinstalled SDK; the Windows job is the only place the
-# real WPF app is built and the real clipbridge_core.dll is loaded by .NET on Windows.
+# real Windows app (Avalonia + Lumen.UI) is built and the real clipbridge_core.dll is loaded by .NET on Windows.
 name: ci
 
 on:
@@ -80,5 +80,5 @@ jobs:
         working-directory: core
       - name: C# interop tests against the real DLL
         run: dotnet test windows/ClipBridge.Windows.Tests
-      - name: Build WPF app
+      - name: Build Windows app
         run: dotnet build windows/ClipBridge.Windows -c Release

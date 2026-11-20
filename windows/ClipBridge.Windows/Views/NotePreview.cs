@@ -1,15 +1,17 @@
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Documents;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using ClipBridge.Windows.Logic;
 
 namespace ClipBridge.Windows.Views;
 
 /// <summary>
-/// The preview of a note: draws the block tree of <c>notes.render</c> with plain WPF elements. It never parses Markdown and
+/// The preview of a note: draws the block tree of <c>notes.render</c> with plain Avalonia elements. It never parses Markdown and
 /// never executes anything: HTML and unknown blocks are shown as literal monospace text, web images as link text (nothing is
 /// fetched from the network), and a link only becomes clickable when <see cref="NoteLinks"/> allows its scheme;
 /// <see cref="LinkClicked"/> then reports the address and the owner decides how to open it.
@@ -20,14 +22,14 @@ namespace ClipBridge.Windows.Views;
 /// </summary>
 internal sealed class NotePreview : ScrollViewer
 {
-    private const double Gap = 8;
+    private const double Gap = 10;
     private const int PictureDecodeWidth = 1200;
     private const double PictureMaxWidth = 560;
     private const int PictureCacheSize = 24;
 
-    private readonly StackPanel _root = new() { Margin = new Thickness(14, 10, 14, 14) };
+    private readonly StackPanel _root = new() { Margin = new Thickness(18, 14, 18, 18) };
     private readonly Dictionary<string, List<Action>> _waiting = new();
-    private readonly Dictionary<string, (AttachmentView View, BitmapSource Picture)> _pictures = new();
+    private readonly Dictionary<string, (AttachmentView View, Bitmap Picture)> _pictures = new();
     private readonly Queue<string> _pictureOrder = new();
     private int _generation;
 
@@ -66,9 +68,7 @@ internal sealed class NotePreview : ScrollViewer
         if (tree is null) return;
         if (tree.Blocks.Count == 0)
         {
-            var empty = new TextBlock { Text = Strings.NotePreviewEmpty };
-            empty.SetResourceReference(TextBlock.ForegroundProperty, "AppFaint");
-            _root.Children.Add(empty);
+            _root.Children.Add(Ui.Text(Strings.NotePreviewEmpty, "tertiary"));
             return;
         }
         foreach (var block in tree.Blocks) _root.Children.Add(Build(block, 0, Gap));
@@ -76,14 +76,16 @@ internal sealed class NotePreview : ScrollViewer
 
     // ---- resources ------------------------------------------------------------------------------
 
-    private static FontFamily MonoFont =>
-        Application.Current?.TryFindResource("AppMonoFont") as FontFamily ?? new FontFamily("Consolas");
+    private static void Themed(StyledElement e, AvaloniaProperty property, string key) =>
+        e[!property] = e.GetResourceObservable(key).ToBinding();
 
-    private static void Themed(FrameworkElement e, DependencyProperty property, string key) => e.SetResourceReference(property, key);
+    private static FontFamily MonoFont =>
+        Application.Current?.TryGetResource("Lumen.Font.Mono", Application.Current.ActualThemeVariant, out var f) == true && f is FontFamily family
+            ? family : new FontFamily("Cascadia Mono, Consolas");
 
     // ---- blocks ---------------------------------------------------------------------------------
 
-    private UIElement Build(RenderBlock b, int depth, double gap) => b.Kind switch
+    private Control Build(RenderBlock b, int depth, double gap) => b.Kind switch
     {
         BlockKind.Heading => Heading(b),
         BlockKind.Paragraph => WithGap(Text(b.Inline, NotePreviewStyle.BodySize), gap),
@@ -95,7 +97,7 @@ internal sealed class NotePreview : ScrollViewer
         _ => Literal(b, gap), // html and anything this shell does not know: the original text, nothing else
     };
 
-    private static T WithGap<T>(T element, double gap) where T : FrameworkElement
+    private static T WithGap<T>(T element, double gap) where T : Control
     {
         element.Margin = new Thickness(0, 0, 0, gap);
         return element;
@@ -108,94 +110,93 @@ internal sealed class NotePreview : ScrollViewer
         return panel;
     }
 
-    private UIElement Heading(RenderBlock b)
+    private Control Heading(RenderBlock b)
     {
         var text = Text(b.Inline, NotePreviewStyle.HeadingSize(b.Level));
-        text.FontWeight = FontWeights.SemiBold;
-        if (b.Level == 6) Themed(text, TextBlock.ForegroundProperty, "AppMuted");
+        text.FontWeight = FontWeight.SemiBold;
+        if (b.Level == 6) Themed(text, TextBlock.ForegroundProperty, "Lumen.Brush.TextSecondary");
         if (b.Level > 2)
         {
-            text.Margin = new Thickness(0, 6, 0, 6);
+            text.Margin = new Thickness(0, 8, 0, 6);
             return text;
         }
-        var line = new Border { BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 0, 0, 4), Margin = new Thickness(0, 8, 0, 8), Child = text };
-        Themed(line, Border.BorderBrushProperty, "AppBorder");
+        var line = new Border { BorderThickness = new Thickness(0, 0, 0, 1), Padding = new Thickness(0, 0, 0, 6), Margin = new Thickness(0, 10, 0, 10), Child = text };
+        Themed(line, Border.BorderBrushProperty, "Lumen.Brush.Border");
         return line;
     }
 
-    private UIElement Code(RenderBlock b, double gap)
+    private Control Code(RenderBlock b, double gap)
     {
-        var code = new TextBlock { Text = b.Text, FontFamily = MonoFont, FontSize = 12, TextWrapping = TextWrapping.NoWrap };
+        var code = new SelectableTextBlock { Text = b.Text, FontFamily = MonoFont, FontSize = 12.5, TextWrapping = TextWrapping.NoWrap };
         var scroll = new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Content = code,
         };
-        ForwardWheel(scroll);
         var inner = new StackPanel();
-        if (b.Lang.Length > 0)
-        {
-            var lang = new TextBlock { Text = b.Lang, FontSize = 11, Margin = new Thickness(0, 0, 0, 4) };
-            Themed(lang, TextBlock.ForegroundProperty, "AppFaint");
-            inner.Children.Add(lang);
-        }
+        if (b.Lang.Length > 0) inner.Children.Add(Ui.Text(b.Lang, "caption", "tertiary").With(t => t.Margin = new Thickness(0, 0, 0, 6)));
         inner.Children.Add(scroll);
         return Box(inner, gap);
     }
 
-    private UIElement Literal(RenderBlock b, double gap)
+    private Control Literal(RenderBlock b, double gap)
     {
-        var text = new TextBlock
-        {
-            Text = b.LiteralText, FontFamily = MonoFont, FontSize = 12, TextWrapping = TextWrapping.Wrap, ToolTip = Strings.NoteLiteralTip,
-        };
-        Themed(text, TextBlock.ForegroundProperty, "AppMuted");
+        var text = new SelectableTextBlock { Text = b.LiteralText, FontFamily = MonoFont, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+        ToolTip.SetTip(text, Strings.NoteLiteralTip);
+        Themed(text, SelectableTextBlock.ForegroundProperty, "Lumen.Brush.TextSecondary");
         return Box(text, gap);
     }
 
     /// <summary>A sunken, bordered box for code and literal text.</summary>
-    private static Border Box(UIElement child, double gap)
+    private static Border Box(Control child, double gap)
     {
         var box = new Border
         {
-            CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), Padding = new Thickness(10, 8, 10, 8),
+            CornerRadius = new CornerRadius(8), BorderThickness = new Thickness(1), Padding = new Thickness(12, 10),
             Margin = new Thickness(0, 0, 0, gap), Child = child,
         };
-        Themed(box, Border.BackgroundProperty, "AppSurfaceSunken");
-        Themed(box, Border.BorderBrushProperty, "AppBorder");
+        Themed(box, Border.BackgroundProperty, "Lumen.Brush.SurfaceSubtle");
+        Themed(box, Border.BorderBrushProperty, "Lumen.Brush.Border");
         return box;
     }
 
-    private UIElement Quote(RenderBlock b, int depth, double gap)
+    private Control Quote(RenderBlock b, int depth, double gap)
     {
-        var bar = new Border { BorderThickness = new Thickness(3, 0, 0, 0), Padding = new Thickness(12, 0, 0, 0), Margin = new Thickness(0, 0, 0, gap), Child = Blocks(b.Children, depth + 1, gap) };
-        Themed(bar, Border.BorderBrushProperty, "AppBorderStrong");
+        var bar = new Border { BorderThickness = new Thickness(3, 0, 0, 0), Padding = new Thickness(14, 2, 0, 2), Margin = new Thickness(0, 0, 0, gap), Child = Blocks(b.Children, depth + 1, gap) };
+        Themed(bar, Border.BorderBrushProperty, "Lumen.Brush.Accent");
         return bar;
     }
 
-    private UIElement ListBlock(RenderBlock b, int depth, double gap)
+    private Control ListBlock(RenderBlock b, int depth, double gap)
     {
-        var panel = new StackPanel { Margin = new Thickness(0, 0, 0, gap) };
-        Grid.SetIsSharedSizeScope(panel, true); // the markers of one list line up ("9." above "10.")
-        var itemGap = b.Tight ? 2 : Gap - 2;
+        var panel = new Grid { Margin = new Thickness(0, 0, 0, gap), ColumnDefinitions = new ColumnDefinitions("Auto,*") };
+        var itemGap = b.Tight ? 3 : Gap - 2;
         for (var i = 0; i < b.Items.Count; i++)
         {
-            var row = new Grid { Margin = new Thickness(0, 0, 0, itemGap) };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto, MinWidth = 22, SharedSizeGroup = "ListMarker" });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            var marker = new TextBlock { Text = NotePreviewStyle.Marker(b, i, depth), Margin = new Thickness(0, 0, 8, 0), HorizontalAlignment = HorizontalAlignment.Right };
-            Themed(marker, TextBlock.ForegroundProperty, "AppMuted");
-            var content = Blocks(b.Items[i].Blocks, depth + 1, b.Tight ? 2 : Gap - 2);
+            panel.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            // One grid for the whole list: the markers line up ("9." above "10.").
+            var marker = Ui.Text(NotePreviewStyle.Marker(b, i, depth), "secondary").With(t =>
+            {
+                t.Margin = new Thickness(0, 0, 8, itemGap);
+                t.HorizontalAlignment = HorizontalAlignment.Right;
+                t.MinWidth = 18;
+                t.TextWrapping = TextWrapping.NoWrap;
+                t.FontSize = NotePreviewStyle.BodySize;
+                t.LineHeight = NotePreviewStyle.BodySize * 1.6;
+            });
+            var content = Blocks(b.Items[i].Blocks, depth + 1, b.Tight ? 3 : Gap - 2);
+            content.Margin = new Thickness(0, 0, 0, itemGap);
+            Grid.SetRow(marker, i);
+            Grid.SetRow(content, i);
             Grid.SetColumn(content, 1);
-            row.Children.Add(marker);
-            row.Children.Add(content);
-            panel.Children.Add(row);
+            panel.Children.Add(marker);
+            panel.Children.Add(content);
         }
         return panel;
     }
 
-    private UIElement Table(RenderBlock b, double gap)
+    private Control Table(RenderBlock b, double gap)
     {
         var columns = NotePreviewStyle.ColumnCount(b);
         var grid = new Grid();
@@ -205,7 +206,7 @@ internal sealed class NotePreview : ScrollViewer
         rows.AddRange(b.Rows.Select(r => (r, false)));
         for (var r = 0; r < rows.Count; r++)
         {
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
             for (var c = 0; c < columns; c++)
             {
                 var runs = c < rows[r].Cells.Count ? rows[r].Cells[c] : Array.Empty<RenderInline>();
@@ -217,55 +218,40 @@ internal sealed class NotePreview : ScrollViewer
                     ColumnAlign.Right => TextAlignment.Right,
                     _ => TextAlignment.Left,
                 };
-                if (rows[r].Header) cell.FontWeight = FontWeights.SemiBold;
-                var box = new Border { BorderThickness = new Thickness(0, 0, 1, 1), Padding = new Thickness(8, 4, 8, 4), Child = cell };
-                Themed(box, Border.BorderBrushProperty, "AppBorder");
-                if (rows[r].Header) Themed(box, Border.BackgroundProperty, "AppSurfaceSunken");
+                if (rows[r].Header) cell.FontWeight = FontWeight.SemiBold;
+                var box = new Border { BorderThickness = new Thickness(0, 0, 1, 1), Padding = new Thickness(10, 5), Child = cell };
+                Themed(box, Border.BorderBrushProperty, "Lumen.Brush.Border");
+                if (rows[r].Header) Themed(box, Border.BackgroundProperty, "Lumen.Brush.SurfaceSubtle");
                 Grid.SetRow(box, r);
                 Grid.SetColumn(box, c);
                 grid.Children.Add(box);
             }
         }
         var frame = new Border { BorderThickness = new Thickness(1, 1, 0, 0), Child = grid, HorizontalAlignment = HorizontalAlignment.Left };
-        Themed(frame, Border.BorderBrushProperty, "AppBorder");
-        var scroll = new ScrollViewer
+        Themed(frame, Border.BorderBrushProperty, "Lumen.Brush.Border");
+        return new ScrollViewer
         {
             HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
             Margin = new Thickness(0, 0, 0, gap),
             Content = frame,
         };
-        ForwardWheel(scroll);
-        return scroll;
     }
 
-    private static UIElement Rule()
+    private static Control Rule()
     {
-        var line = new Border { Height = 1, Margin = new Thickness(0, 10, 0, 12) };
-        Themed(line, Border.BackgroundProperty, "AppBorderStrong");
+        var line = new Border { Height = 1, Margin = new Thickness(0, 10, 0, 14) };
+        Themed(line, Border.BackgroundProperty, "Lumen.Brush.BorderStrong");
         return line;
-    }
-
-    /// <summary>
-    /// A ScrollViewer that only scrolls sideways would still swallow the mouse wheel and stop the page from scrolling while the
-    /// pointer is over a code block or table: hand the wheel to the parent.
-    /// </summary>
-    private static void ForwardWheel(ScrollViewer inner)
-    {
-        inner.PreviewMouseWheel += (sender, e) =>
-        {
-            if (e.Handled || inner.Parent is not UIElement parent) return;
-            e.Handled = true;
-            parent.RaiseEvent(new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta) { RoutedEvent = MouseWheelEvent, Source = sender });
-        };
     }
 
     // ---- inline text ------------------------------------------------------------------------------
 
-    private TextBlock Text(IReadOnlyList<RenderInline> runs, double size)
+    private SelectableTextBlock Text(IReadOnlyList<RenderInline> runs, double size)
     {
-        var text = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = size, LineHeight = size * 1.6 };
-        text.Inlines.AddRange(Inlines(runs));
+        var text = new SelectableTextBlock { TextWrapping = TextWrapping.Wrap, FontSize = size, LineHeight = size * 1.6 };
+        text.Inlines ??= new InlineCollection();
+        foreach (var inline in Inlines(runs)) text.Inlines.Add(inline);
         return text;
     }
 
@@ -276,42 +262,36 @@ internal sealed class NotePreview : ScrollViewer
         return list;
     }
 
+    private static Span SpanOf(Span span, IEnumerable<Inline> children)
+    {
+        foreach (var c in children) span.Inlines.Add(c);
+        return span;
+    }
+
     private IEnumerable<Inline> One(RenderInline r)
     {
         switch (r.Kind)
         {
             case InlineKind.Em:
-            {
-                var span = new Italic();
-                span.Inlines.AddRange(Inlines(r.Children));
-                return new Inline[] { span };
-            }
+                return new Inline[] { SpanOf(new Italic(), Inlines(r.Children)) };
             case InlineKind.Strong:
-            {
-                var span = new Bold();
-                span.Inlines.AddRange(Inlines(r.Children));
-                return new Inline[] { span };
-            }
+                return new Inline[] { SpanOf(new Bold(), Inlines(r.Children)) };
             case InlineKind.Del:
-            {
-                var span = new Span { TextDecorations = TextDecorations.Strikethrough };
-                span.Inlines.AddRange(Inlines(r.Children));
-                return new Inline[] { span };
-            }
+                return new Inline[] { SpanOf(new Span { TextDecorations = TextDecorations.Strikethrough }, Inlines(r.Children)) };
             case InlineKind.Code:
             {
-                var code = new Run(r.Text) { FontFamily = MonoFont, FontSize = 12 };
-                code.SetResourceReference(TextElement.BackgroundProperty, "AppSurfaceSunken");
+                var code = new Run(r.Text) { FontFamily = MonoFont, FontSize = 12.5 };
+                Themed(code, TextElement.BackgroundProperty, "Lumen.Brush.SurfaceHover");
                 return new Inline[] { code };
             }
             case InlineKind.Link:
                 if (BlobRef.TryParse(r.Href, out var fileBlob)) return new Inline[] { AttachmentChip(fileBlob, RenderInline.PlainText(r.Children)) };
-                return new Inline[] { Link(r.Href, r.Title, r.Children.Count > 0 ? Inlines(r.Children) : new List<Inline> { new Run(r.Href) }) };
+                return new Inline[] { Link(r.Href, r.Title, r.Children.Count > 0 ? RenderInline.PlainText(r.Children) : r.Href) };
             case InlineKind.Image:
                 if (BlobRef.TryParse(r.Href, out var pictureBlob)) return new Inline[] { AttachmentPicture(pictureBlob, r.Text) };
                 // Nothing is loaded from the network: the picture shows up as its description, as a link when it may be opened.
                 // (A malformed blob: address is no web address either; the guard in Link leaves it as plain text.)
-                return new Inline[] { Link(r.Href, r.Title, new List<Inline> { new Run(Strings.NoteImageText(r.Text)) }) };
+                return new Inline[] { Link(r.Href, r.Title, Strings.NoteImageText(r.Text)) };
             case var k when NotePreviewStyle.IsLineBreak(k):
                 // A line break in the source is a line break in the preview (also a soft one), as in most note apps.
                 return new Inline[] { new LineBreak() };
@@ -325,31 +305,35 @@ internal sealed class NotePreview : ScrollViewer
         }
     }
 
+    /// <summary>A link-looking text that reports clicks (Avalonia has no Hyperlink inline).</summary>
+    private static TextBlock LinkText(string text, string? tip, Action onClick)
+    {
+        var block = new TextBlock { Text = text, Cursor = new Cursor(StandardCursorType.Hand), TextDecorations = TextDecorations.Underline };
+        Themed(block, TextBlock.ForegroundProperty, "Lumen.Brush.AccentText");
+        if (tip is not null) ToolTip.SetTip(block, tip);
+        block.PointerReleased += (_, e) =>
+        {
+            if (e.InitialPressMouseButton == MouseButton.Left) onClick();
+        };
+        return block;
+    }
+
     /// <summary>A clickable link when the address may be opened, otherwise the same words as plain text with the address as tooltip.</summary>
-    private Inline Link(string href, string title, List<Inline> content)
+    private Inline Link(string href, string title, string content)
     {
         var tip = title.Length > 0 ? title + "\n" + href : href;
         if (!NoteLinks.IsOpenable(href))
         {
-            var plain = new Span { ToolTip = tip };
-            plain.Inlines.AddRange(content);
-            return plain;
+            var plain = new TextBlock { Text = content };
+            ToolTip.SetTip(plain, tip);
+            return new InlineUIContainer(plain) { BaselineAlignment = BaselineAlignment.Baseline };
         }
-        var link = new Hyperlink { ToolTip = tip };
-        link.Inlines.AddRange(content);
-        link.SetResourceReference(TextElement.ForegroundProperty, "AppAccent");
-        link.Click += (_, _) => LinkClicked?.Invoke(href);
-        return link;
+        return new InlineUIContainer(LinkText(content, tip, () => LinkClicked?.Invoke(href))) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
     // ---- attachments --------------------------------------------------------------------------------
 
-    private static TextBlock Placeholder(string text)
-    {
-        var block = new TextBlock { Text = text, FontSize = 12 };
-        block.SetResourceReference(TextBlock.ForegroundProperty, "AppFaint");
-        return block;
-    }
+    private static TextBlock Placeholder(string text) => Ui.Text(text, "caption", "tertiary");
 
     private async Task<AttachmentView> LookUpAsync(string blobId, bool wantPicture)
     {
@@ -397,9 +381,9 @@ internal sealed class NotePreview : ScrollViewer
             host.Content = ChipElement(view, view.Name); // the note says picture, the file is something else
             return;
         }
-        BitmapSource? picture;
+        Bitmap? picture;
         try { picture = await Task.Run(() => PreviewImages.Load(view.CachePath, PictureDecodeWidth)); }
-        catch (Exception) { picture = null; } // a file the decoder does not know (WebP without the system codec) or a damaged one
+        catch (Exception) { picture = null; } // a file the decoder does not know or a damaged one
         if (generation != _generation) return;
         if (picture is null)
         {
@@ -410,7 +394,7 @@ internal sealed class NotePreview : ScrollViewer
         host.Content = PictureElement(view, picture, alt);
     }
 
-    private void Remember(string blobId, AttachmentView view, BitmapSource picture)
+    private void Remember(string blobId, AttachmentView view, Bitmap picture)
     {
         if (_pictures.ContainsKey(blobId)) return;
         _pictures[blobId] = (view, picture);
@@ -418,44 +402,39 @@ internal sealed class NotePreview : ScrollViewer
         while (_pictureOrder.Count > PictureCacheSize) _pictures.Remove(_pictureOrder.Dequeue());
     }
 
-    private UIElement PictureElement(AttachmentView view, BitmapSource picture, string alt)
+    private Control PictureElement(AttachmentView view, Bitmap picture, string alt)
     {
         var image = new Image
         {
             Source = picture, Stretch = Stretch.Uniform, StretchDirection = StretchDirection.DownOnly,
-            MaxWidth = PictureMaxWidth, MaxHeight = PictureMaxWidth, Cursor = Cursors.Hand,
-            ToolTip = (alt.Length > 0 ? alt + "\n" : "") + Strings.AttachmentOpenTip,
+            MaxWidth = PictureMaxWidth, MaxHeight = PictureMaxWidth, Cursor = new Cursor(StandardCursorType.Hand),
         };
-        RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
-        image.MouseLeftButtonUp += (_, _) => AttachmentActivated?.Invoke(view);
-        return image;
+        ToolTip.SetTip(image, (alt.Length > 0 ? alt + "\n" : "") + Strings.AttachmentOpenTip);
+        RenderOptions.SetBitmapInterpolationMode(image, BitmapInterpolationMode.HighQuality);
+        image.PointerReleased += (_, e) =>
+        {
+            if (e.InitialPressMouseButton == MouseButton.Left) AttachmentActivated?.Invoke(view);
+        };
+        return new Border { CornerRadius = new CornerRadius(8), ClipToBounds = true, Child = image, Margin = new Thickness(0, 4) };
     }
 
     /// <summary>A file (or a picture that cannot be drawn) as a clickable line "📎 name (size)".</summary>
-    private UIElement ChipElement(AttachmentView view, string label)
-    {
-        var link = new Hyperlink(new Run(Strings.AttachmentChip(label.Length > 0 ? label : view.Label))) { ToolTip = Strings.AttachmentOpenTip };
-        link.SetResourceReference(TextElement.ForegroundProperty, "AppAccent");
-        link.Click += (_, _) => AttachmentActivated?.Invoke(view);
-        return new TextBlock(link) { FontSize = NotePreviewStyle.BodySize };
-    }
+    private Control ChipElement(AttachmentView view, string label) =>
+        LinkText(Strings.AttachmentChip(label.Length > 0 ? label : view.Label), Strings.AttachmentOpenTip, () => AttachmentActivated?.Invoke(view));
 
     /// <summary>A file in the text: "📎 name" at once, with the size once the core has answered; a placeholder while it is not here.</summary>
     private Inline AttachmentChip(string blobId, string linkText)
     {
-        var run = new Run(Strings.AttachmentChip(linkText.Length > 0 ? linkText : blobId[..8]));
-        var link = new Hyperlink(run);
-        link.SetResourceReference(TextElement.ForegroundProperty, "AppAccent");
         AttachmentView? current = null;
-        link.Click += (_, _) =>
+        var link = LinkText(Strings.AttachmentChip(linkText.Length > 0 ? linkText : blobId[..8]), null, () =>
         {
             if (current is not null) AttachmentActivated?.Invoke(current);
-        };
-        _ = LoadChipAsync(blobId, linkText, run, link, view => current = view, _generation);
-        return link;
+        });
+        _ = LoadChipAsync(blobId, linkText, link, view => current = view, _generation);
+        return new InlineUIContainer(link) { BaselineAlignment = BaselineAlignment.Baseline };
     }
 
-    private async Task LoadChipAsync(string blobId, string linkText, Run run, Hyperlink link, Action<AttachmentView> found, int generation)
+    private async Task LoadChipAsync(string blobId, string linkText, TextBlock link, Action<AttachmentView> found, int generation)
     {
         var view = await LookUpAsync(blobId, wantPicture: false);
         if (generation != _generation) return;
@@ -463,20 +442,17 @@ internal sealed class NotePreview : ScrollViewer
         {
             case AttachmentState.Present:
                 found(view);
-                run.Text = Strings.AttachmentChip(view.Label);
-                link.ToolTip = Strings.AttachmentOpenTip;
+                link.Text = Strings.AttachmentChip(view.Label);
+                ToolTip.SetTip(link, Strings.AttachmentOpenTip);
+                Themed(link, TextBlock.ForegroundProperty, "Lumen.Brush.AccentText");
                 break;
             case AttachmentState.Missing:
-                run.Text = Strings.AttachmentChip(linkText.Length > 0 ? linkText : blobId[..8]) + "  " + Strings.AttachmentPending;
-                link.SetResourceReference(TextElement.ForegroundProperty, "AppFaint");
-                WaitFor(blobId, () =>
-                {
-                    link.SetResourceReference(TextElement.ForegroundProperty, "AppAccent");
-                    _ = LoadChipAsync(blobId, linkText, run, link, found, _generation);
-                });
+                link.Text = Strings.AttachmentChip(linkText.Length > 0 ? linkText : blobId[..8]) + "  " + Strings.AttachmentPending;
+                Themed(link, TextBlock.ForegroundProperty, "Lumen.Brush.TextTertiary");
+                WaitFor(blobId, () => _ = LoadChipAsync(blobId, linkText, link, found, _generation));
                 break;
             default:
-                run.Text = Strings.AttachmentFailedChip;
+                link.Text = Strings.AttachmentFailedChip;
                 break;
         }
     }
@@ -487,25 +463,40 @@ internal static class PreviewImages
 {
     /// <summary>
     /// Reads the picture completely (the file is not locked afterwards) and decodes it no wider than <paramref name="maxWidth"/>
-    /// pixels, so that a huge photo does not fill the memory. The result is frozen: it can be made on any thread. Throws when the
-    /// file cannot be decoded.
+    /// pixels, so that a huge photo does not fill the memory. Safe on any thread. Throws when the file cannot be decoded.
     /// </summary>
-    public static BitmapSource Load(string path, int maxWidth)
+    public static Bitmap Load(string path, int maxWidth)
     {
-        int width;
-        using (var probe = File.OpenRead(path))
+        var bytes = File.ReadAllBytes(path);
+        using (var probe = new MemoryStream(bytes))
         {
-            var decoder = BitmapDecoder.Create(probe, BitmapCreateOptions.DelayCreation | BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.None);
-            width = decoder.Frames[0].PixelWidth;
+            var full = new Bitmap(probe);
+            if (full.PixelSize.Width <= maxWidth) return full;
+            full.Dispose();
         }
-        using var stream = File.OpenRead(path);
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.StreamSource = stream;
-        if (width > maxWidth) bitmap.DecodePixelWidth = maxWidth;
-        bitmap.EndInit();
-        bitmap.Freeze();
-        return bitmap;
+        using var stream = new MemoryStream(bytes);
+        return Bitmap.DecodeToWidth(stream, maxWidth, BitmapInterpolationMode.HighQuality);
+    }
+}
+
+/// <summary>Fills a text block with search-hit segments: the words that matched are emphasised.</summary>
+internal static class HighlightText
+{
+    public static void Set(TextBlock block, IReadOnlyList<TextSegment>? segments)
+    {
+        block.Inlines ??= new InlineCollection();
+        block.Inlines.Clear();
+        if (segments is null) return;
+        foreach (var segment in segments)
+        {
+            var run = new Run(segment.Text);
+            if (segment.Highlighted)
+            {
+                run.FontWeight = FontWeight.Bold;
+                run[!TextElement.ForegroundProperty] = block.GetResourceObservable("Lumen.Brush.AccentText").ToBinding();
+                run[!TextElement.BackgroundProperty] = block.GetResourceObservable("Lumen.Brush.AccentSubtle").ToBinding();
+            }
+            block.Inlines.Add(run);
+        }
     }
 }

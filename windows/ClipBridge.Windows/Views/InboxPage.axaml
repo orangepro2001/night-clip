@@ -1,0 +1,88 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="https://github.com/HinaKalo/lumen"
+             xmlns:logic="using:ClipBridge.Windows.Logic"
+             xmlns:cb="using:ClipBridge.Windows"
+             x:Class="ClipBridge.Windows.Views.InboxPage">
+  <Grid Classes="page" RowDefinitions="Auto,Auto,*">
+    <!-- toolbar: filter, search, clear -->
+    <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,14">
+      <l:SegmentedControl x:Name="Filter" SelectionChanged="Filter_Changed">
+        <l:SegmentedItem x:Name="FilterAll" />
+        <l:SegmentedItem x:Name="FilterNew" />
+        <l:SegmentedItem x:Name="FilterCopied" />
+      </l:SegmentedControl>
+      <l:SearchBox x:Name="Search" Grid.Column="2" Width="240" Margin="0,0,8,0" TextChanged="Search_Changed" />
+      <Button x:Name="ClearButton" Grid.Column="3" Classes="ghost" Click="Clear_Click">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <l:Icon Kind="Trash" Size="15" />
+          <TextBlock x:Name="ClearText" />
+        </StackPanel>
+      </Button>
+    </Grid>
+
+    <TextBlock x:Name="Summary" Grid.Row="1" Classes="caption tertiary" Margin="2,0,0,8" />
+
+    <Panel Grid.Row="2">
+      <l:Card x:Name="ListCard" Classes="flat" Padding="0" ClipToBounds="True" VerticalAlignment="Top">
+        <ScrollViewer x:Name="Scroller" MaxHeight="10000">
+          <ItemsControl x:Name="Items" Margin="0,0,0,-1">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="logic:InboxRow">
+                <Border Classes="row">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border Classes="tile" Classes.accent="{Binding CanDismiss}" Classes.success="{Binding IsApplied}"
+                            Classes.danger="{Binding IsError}" VerticalAlignment="Top">
+                      <Panel>
+                        <l:Icon NameKey="clipboard" Size="17" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                IsVisible="{Binding !Sensitive}" />
+                        <l:Icon NameKey="shield" Size="17" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                IsVisible="{Binding Sensitive}" />
+                      </Panel>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="14,0,12,0" Spacing="4">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Classes="medium" Text="{Binding FromText}" VerticalAlignment="Center" />
+                        <TextBlock Classes="caption tertiary" Text="{Binding TimeText}" VerticalAlignment="Center" />
+                        <l:Badge Classes="dot" Classes.accent="{Binding CanDismiss}" Classes.success="{Binding IsApplied}"
+                                 Classes.danger="{Binding IsError}" Content="{Binding StateText}" />
+                      </StackPanel>
+                      <TextBlock Text="{Binding Preview}" TextWrapping="Wrap" MaxLines="4" TextTrimming="CharacterEllipsis"
+                                 Classes.tertiary="{Binding IsHidden}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Top">
+                      <Button Classes="ghost icon sm" ToolTip.Tip="{Binding RevealText}" IsVisible="{Binding CanReveal}" Click="Reveal_Click">
+                        <Panel>
+                          <l:Icon Kind="Eye" Size="14" IsVisible="{Binding IsHidden}" />
+                          <l:Icon NameKey="eye-off" Size="14" IsVisible="{Binding !IsHidden}" />
+                        </Panel>
+                      </Button>
+                      <Button Classes="ghost icon sm" ToolTip.Tip="{x:Static cb:Strings.InboxViewAll}" IsVisible="{Binding IsTruncated}" Click="View_Click">
+                        <l:Icon Kind="FileText" Size="14" />
+                      </Button>
+                      <Button Classes="ghost icon sm" ToolTip.Tip="{x:Static cb:Strings.BtnIgnore}" IsVisible="{Binding CanDismiss}" Click="Ignore_Click">
+                        <l:Icon Kind="X" Size="14" />
+                      </Button>
+                      <Button Classes="soft sm" IsVisible="{Binding CanCopy}" Click="Copy_Click" Margin="4,0,0,0">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                          <l:Icon Kind="Copy" Size="13" />
+                          <TextBlock Text="{x:Static cb:Strings.BtnCopy}" />
+                        </StackPanel>
+                      </Button>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </l:Card>
+      <l:EmptyState x:Name="Empty" Icon="Inbox" />
+    </Panel>
+  </Grid>
+</UserControl>

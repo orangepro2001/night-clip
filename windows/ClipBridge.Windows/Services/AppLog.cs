@@ -16,7 +16,9 @@ internal static class AppLog
 
     public static void Write(string line) => _file?.Write(line);
 
-    public static void Error(string where, Exception ex) => Write($"error in {where}: {ex.GetType().Name}: {ex.Message}");
+    /// <summary>Type and message; a development instance (own data folder) also gets the stack trace (method names only, no data).</summary>
+    public static void Error(string where, Exception ex) =>
+        Write($"error in {where}: {ex.GetType().Name}: {ex.Message}" + (App.IsDevInstance ? Environment.NewLine + ex : ""));
 
     public static void Event(CoreEvent ev)
     {

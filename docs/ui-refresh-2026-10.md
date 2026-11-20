@@ -25,6 +25,9 @@ sync, pairing, vault format and background clipboard behavior are untouched.
 
 ## Windows (WPF)
 
+> Superseded on 2026-11-20: the Windows shell moved to Avalonia + Lumen.UI (dark mode included), see
+> [ui-lumen-2026-11.md](ui-lumen-2026-11.md). The notes below describe the former WPF shell.
+
 - `Themes/ClipBridgeTheme.xaml`: centralized colors, font, buttons, text boxes/password boxes,
   list items, cards, nav list and progress bars.
 - `MainWindow`: 212 px sidebar with brand block, glyph+label navigation and selection accent;
