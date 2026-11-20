@@ -42,7 +42,7 @@ func (v *Vault) Health() (Health, error) {
 			return
 		}
 		e := fromLib(v.db, le, gid, trash)
-		if e.Kind == KindNote {
+		if e.Kind == KindNote || e.Kind == KindSSH {
 			return
 		}
 		h.Total++

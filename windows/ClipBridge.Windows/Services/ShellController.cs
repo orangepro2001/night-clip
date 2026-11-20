@@ -283,6 +283,9 @@ internal sealed partial class ShellController : IDisposable
                 case NotesChangedEvent or NotesSyncUpdatedEvent or NotesSyncConflictEvent or NotesAttachmentEvent:
                     HandleNotesEvent(ev);
                     break;
+                case SshUsedEvent or SshKeysNeededEvent or SshKeysEvent or SshAgentEvent:
+                    HandleSshEvent(ev);
+                    break;
             }
         }
         catch (Exception ex) { AppLog.Error("dispatch " + ev.Type, ex); }
@@ -410,7 +413,7 @@ internal sealed partial class ShellController : IDisposable
     public async Task ReloadAllAsync()
     {
         await Task.WhenAll(RefreshStatusAsync(), ReloadSettingsAsync(), _peersReload.RunAsync(),
-            ReloadInboxAsync(), _transfersReload.RunAsync(), RefreshUpdateAsync());
+            ReloadInboxAsync(), _transfersReload.RunAsync(), RefreshUpdateAsync(), RefreshSshStatusAsync());
         UpdateTray();
         StateChanged?.Invoke();
     }

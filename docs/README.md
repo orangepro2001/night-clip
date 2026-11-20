@@ -115,6 +115,8 @@ Windows (WPF + clipbridge_core.dll)  ◄── tailnet / mTLS HTTPS + WebSocket 
 | [plan-vault.md](plan-vault.md) | **计划与实施状态**：密码/凭证管理（KDBX 4、备份/恢复、多设备同步、自动填充）；V1–V3 已合并，真机验证待做 |
 | [vault-api.md](vault-api.md) | **密码库门面接口**：`vault.*` 方法、错误码、同步协议与壳层规则 |
 | [adr/007-password-vault.md](adr/007-password-vault.md) | **密码库决策**：KDBX 4、本机加密、经 tailnet 在已配对设备间自动同步；每台完整副本 |
+| [adr/009-ssh-agent.md](adr/009-ssh-agent.md) | **SSH 密钥决策**：私钥存在密码库，核心内置 SSH Agent（只签名、只给同一用户），多种私钥格式的识别与迁移 `~/.ssh` |
+| [plan-ssh.md](plan-ssh.md) | **计划与实施状态**：SSH 密钥与 Agent；核心与 Windows 已完成，macOS/Android/主机绑定/本地 CA 为后续阶段 |
 | [plan-auto-broadcast.md](plan-auto-broadcast.md) | **计划**：复制即自动广播到所有已配对设备（可行性、Android 限制、分阶段方案）与 Syncthing 评估 |
 | [plan-macos.md](plan-macos.md) | **计划（路线 A 已实施，见 handoff-2026-10-28-macos.md）**：macOS 端——功能分级（完整/受限/难以做到）、UI 选型（SwiftUI 单独一份 vs Avalonia）、核心改动、签名与自更新、分阶段工期、待决策问题 |
 | [plan-android-background-read.md](plan-android-background-read.md) | **计划与实施记录**：Android 后台读取剪贴板（悬浮窗取焦 + `READ_LOGS`，ClipCascade 做法） |

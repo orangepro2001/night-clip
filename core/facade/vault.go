@@ -52,14 +52,24 @@ func (p vaultProvider) Current() *vault.Vault {
 }
 func (p vaultProvider) Dir() string { return p.c.vaultDir() }
 
-// afterOpen wires a freshly opened vault to the sync service. Called without vs.mu held.
+// afterOpen wires a freshly opened vault to the sync service and the SSH agent (every save may change
+// which keys the agent offers). Called without vs.mu held.
 func (c *Core) vaultAfterOpen(v *vault.Vault) {
 	n := c.net()
-	if n == nil || n.sync == nil {
-		return
+	var kick func()
+	if n != nil && n.sync != nil {
+		kick = n.sync.Kick
 	}
-	v.SetOnSaved(n.sync.Kick)
-	go n.sync.OnUnlocked()
+	v.SetOnSaved(func() {
+		if kick != nil {
+			kick()
+		}
+		c.sshScheduleLoad()
+	})
+	go c.sshLoad()
+	if kick != nil {
+		go n.sync.OnUnlocked()
+	}
 }
 
 func (c *Core) vaultIntSetting(key string, def int) int {
@@ -190,6 +200,7 @@ func (c *Core) lockLocked(reason string) bool {
 	v := c.vs.v
 	c.vs.v = nil
 	go v.Close()
+	c.sshOnLock(reason, c.vs.lastActive, time.Duration(c.vaultIntSetting(settingVaultAutoLock, defaultVaultAutoLock))*time.Second)
 	c.emit(map[string]any{"type": "vault.locked", "reason": reason})
 	return true
 }
@@ -341,10 +352,27 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 	case "vault.unlock":
 		return c.vaultUnlock(params)
 	case "vault.lock":
+		// reason: "user" (the default), "session" (screen lock, logoff, user switch) or "suspend". Any of
+		// them also drops the SSH agent's keys, even when the vault was already locked and the keys were
+		// only being kept for the grace period after an idle lock.
+		var p struct {
+			Reason string `json:"reason"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		switch p.Reason {
+		case "":
+			p.Reason = "user"
+		case "user", "session", "suspend":
+		default:
+			return nil, proto.Errorf(proto.CodeInvalid, "reason must be user, session or suspend")
+		}
+		cleared := c.sshClearKeys(p.Reason)
 		c.vs.mu.Lock()
-		was := c.lockLocked("user")
+		was := c.lockLocked(p.Reason)
 		c.vs.mu.Unlock()
-		return map[string]any{"was_unlocked": was}, nil
+		return map[string]any{"was_unlocked": was, "ssh_keys_cleared": cleared}, nil
 	case "vault.verify_master":
 		return c.vaultVerifyMaster(params)
 	case "vault.change_master":
@@ -398,7 +426,13 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 		if len(e.Notes) <= 8192 { // notes often hold secrets and are shown on screen
 			c.markSecret(e.Notes)
 		}
-		return entryView(e), nil
+		view := entryView(e)
+		if e.Kind == vault.KindSSH {
+			if cands, err := v.SSHCandidates(e.ID); err == nil && len(cands) == 1 {
+				view["ssh"] = c.sshEntryView(c.sshEvaluate(cands)[0], nil)
+			}
+		}
+		return view, nil
 	case "vault.match":
 		var p struct {
 			URL     string `json:"url"`

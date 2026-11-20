@@ -6,6 +6,8 @@ import (
 
 	g "github.com/tobischo/gokeepasslib/v3"
 	w "github.com/tobischo/gokeepasslib/v3/wrappers"
+
+	"nightclip/core/sshkey"
 )
 
 type (
@@ -270,6 +272,10 @@ func (v *Vault) UpdateEntry(id string, e Entry) error {
 	le, _, _, _ := v.findEntry(id)
 	if le == nil {
 		return ErrNotFound
+	}
+	if e.Kind == KindLogin && hasBinary(le, sshkey.SettingsAttachment) {
+		// A client that does not know the ssh kind sends "login" for it; the key stays an SSH key.
+		e.Kind = KindSSH
 	}
 	before := fromLib(v.db, le, "", false)
 	probe := g.NewEntry()

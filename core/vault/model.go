@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	g "github.com/tobischo/gokeepasslib/v3"
+
+	"nightclip/core/sshkey"
 )
 
 // Entry kinds. The kind only changes how a shell presents an entry; every kind is a normal KeePass
@@ -14,6 +16,7 @@ const (
 	KindAPIKey = "apikey" // API key or token: the key goes in Password, endpoint in URL, extras in Fields
 	KindSecret = "secret" // a single secret value (license key, recovery code, PIN)
 	KindNote   = "note"   // a secure note: only Notes
+	KindSSH    = "ssh"    // an SSH private key: the key is an attachment, KeeAgent.settings says which
 )
 
 // Reserved KeePass field names; custom fields must not use them.
@@ -113,7 +116,7 @@ func (e Entry) Summarize() Summary {
 
 func validKind(k string) bool {
 	switch k {
-	case KindLogin, KindAPIKey, KindSecret, KindNote:
+	case KindLogin, KindAPIKey, KindSecret, KindNote, KindSSH:
 		return true
 	}
 	return false
@@ -195,11 +198,7 @@ func fromLib(db *g.Database, le *g.Entry, groupID string, trash bool) Entry {
 	if le.Times.Expires.Bool {
 		e.ExpiresAt = unix(le.Times.ExpiryTime)
 	}
-	for _, cd := range le.CustomData {
-		if cd.Key == cdKind && validKind(cd.Value) {
-			e.Kind = cd.Value
-		}
-	}
+	e.Kind = entryKind(le)
 	for _, v := range le.Values {
 		switch v.Key {
 		case fTitle, fUser, fPassword, fURL, fNotes, fOTP:
@@ -220,6 +219,29 @@ func fromLib(db *g.Database, le *g.Entry, groupID string, trash bool) Entry {
 		e.History += len(h.Entries)
 	}
 	return e
+}
+
+// entryKind derives the kind of a library entry. A valid ClipBridge.Kind other than login wins.
+// Otherwise an entry carrying KeeAgent.settings is an SSH key, so entries made in KeePassXC (which
+// never write ClipBridge.Kind) and entries an older client rewrote to "login" both read as ssh.
+func entryKind(le *g.Entry) string {
+	k := getCustom(le, cdKind)
+	if validKind(k) && k != KindLogin {
+		return k
+	}
+	if hasBinary(le, sshkey.SettingsAttachment) {
+		return KindSSH
+	}
+	return KindLogin
+}
+
+func hasBinary(le *g.Entry, name string) bool {
+	for _, br := range le.Binaries {
+		if br.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func invalid(format string, a ...any) error { return wrapInvalid(format, a...) }

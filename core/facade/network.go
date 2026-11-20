@@ -332,7 +332,8 @@ func orEmpty[T any](in []T) []T {
 // ---- settings ------------------------------------------------------------------
 
 var settingKeys = []string{settingVaultAutoLock, settingVaultClipClear, clip.SettingCapture, clip.SettingTTL, clip.SettingHistoryLimit, clip.SettingSendSensitive, clip.SettingSensitiveDetection, clip.SettingApplyMode, clip.SettingPausedUntil,
-	xfer.SettingDownloadDir, xfer.SettingMaxFileBytes, intro.SettingTrustIntroductions}
+	xfer.SettingDownloadDir, xfer.SettingMaxFileBytes, intro.SettingTrustIntroductions,
+	settingSSHAgent, settingSSHAgentPipe, settingSSHKeyTTL, settingSSHForwarding}
 
 func isFileSetting(key string) bool {
 	return key == xfer.SettingDownloadDir || key == xfer.SettingMaxFileBytes
@@ -352,6 +353,9 @@ func (c *Core) settingValue(n *netState, key string) string {
 	case intro.SettingTrustIntroductions:
 		return n.intro.Setting()
 	}
+	if isSSHSetting(key) {
+		return c.sshSettingValue(key)
+	}
 	return n.clip.Setting(key)
 }
 
@@ -364,6 +368,9 @@ func validateSetting(key, value string) error {
 	}
 	if key == intro.SettingTrustIntroductions {
 		return intro.ValidateSetting(value)
+	}
+	if isSSHSetting(key) {
+		return validateSSHSetting(key, value)
 	}
 	return clip.ValidateSetting(key, value)
 }
@@ -406,6 +413,7 @@ func (c *Core) settingsSet(n *netState, params string) (any, error) {
 	if err := c.db.SetSetting(p.Key, p.Value); err != nil {
 		return nil, err
 	}
+	c.onSettingChanged(p.Key)
 	return map[string]any{"key": p.Key, "value": p.Value}, nil
 }
 
@@ -613,6 +621,7 @@ func (c *Core) diagnostics(n *netState) any {
 		"listening_addrs": addrs, "port": n.eng.ListenPort(),
 		"peers": n.eng.PeerStatuses(), "events_dropped": c.dropped.Load(),
 		"update": c.upd.Status(),
+		"ssh":    c.sshDiagnostics(),
 	}
 	if err := n.eng.ListenError(); err != nil {
 		d["listen_error"] = err.Error()

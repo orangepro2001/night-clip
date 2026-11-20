@@ -31,6 +31,7 @@ public static class ErrorMessages
         "INIT_FAILED" => Strings.ErrInitFailed,
         "NOT_FOUND" => Strings.ErrNotFound,
         "VAULT_LOCKED" or "VAULT_WRONG_CREDENTIALS" or "VAULT_NOT_FOUND" or "VAULT_EXISTS" or "VAULT_UNSUPPORTED" or "VAULT_NOT_EMPTY" or "VAULT_REVIEW" or "VAULT_BROKEN" => ForVault(code),
+        "SSH_KEY_UNSUPPORTED" or "SSH_KEY_PASSPHRASE" or "SSH_KEY_CORRUPT" or "SSH_KEY_TOO_EXPENSIVE" or "SSH_KEY_DUPLICATE" or "SSH_AGENT_UNAVAILABLE" => ForSsh(code),
         null or "" => Strings.ErrorGeneric,
         _ => Strings.ErrorUnknown(code),
     };
@@ -53,6 +54,22 @@ public static class ErrorMessages
         "TOO_LARGE" => Strings.ErrVaultTooLarge,
         "INVALID" => Strings.ErrVaultInvalid,
         _ => ForCode(code),
+    };
+
+    /// <summary>
+    /// Message for a failed ssh.* call (docs/vault-api.md §3.9). <paramref name="reason"/> is details.reason of
+    /// SSH_KEY_UNSUPPORTED; <paramref name="wrong"/> is details.wrong of SSH_KEY_PASSPHRASE.
+    /// </summary>
+    public static string ForSsh(string? code, string reason = "", bool wrong = false) => code switch
+    {
+        "SSH_KEY_UNSUPPORTED" => Strings.SshUnsupported(reason),
+        "SSH_KEY_PASSPHRASE" => wrong ? Strings.ErrSshWrongPassphrase : Strings.ErrSshNeedsPassphrase,
+        "SSH_KEY_CORRUPT" => Strings.ErrSshCorrupt,
+        "SSH_KEY_TOO_EXPENSIVE" => Strings.ErrSshTooExpensive,
+        "SSH_KEY_DUPLICATE" => Strings.ErrSshDuplicate,
+        "SSH_AGENT_UNAVAILABLE" => Strings.ErrSshAgentUnavailable,
+        "TOO_LARGE" => Strings.ErrSshTooLarge,
+        _ => ForVault(code),
     };
 
     /// <summary>

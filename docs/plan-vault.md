@@ -51,7 +51,8 @@
 | Windows Auto-Type（全局热键输入） | 做 | V4 | §7.2 |
 | 浏览器扩展 | 评估 | V4 | §7.2 |
 | 通行密钥（Passkeys） | 评估，可能不做 | V5 | §7.3 |
-| SSH Agent、YubiKey 挑战应答、Secret Service | **不做** | — | 超出范围 |
+| SSH Agent | **已改为要做**（2026-11-20） | — | 见 [ADR-009](adr/009-ssh-agent.md)、[plan-ssh.md](plan-ssh.md) |
+| YubiKey 挑战应答、Secret Service | **不做** | — | 超出范围 |
 | 紧急访问、共享库、团队权限 | **不做** | — | 单用户产品 |
 
 ## 4. 数据格式与加密

@@ -190,6 +190,37 @@ public sealed record NotesAttachmentEvent : CoreEvent
     public string BlobId { get; init; } = "";
 }
 
+/// <summary>ssh.used (signed) or ssh.refused: one request to the SSH agent. Carries no key material.</summary>
+public sealed record SshUsedEvent : CoreEvent
+{
+    public SshUse Use { get; init; } = new(0, "", "", "", Array.Empty<SshProc>(), "", "", "", "", "", false, "", "");
+    public int Suppressed { get; init; }
+}
+
+/// <summary>ssh.keys: the agent's key set changed (loaded / grace / cleared / expired).</summary>
+public sealed record SshKeysEvent : CoreEvent
+{
+    public string State { get; init; } = "";
+    public int Count { get; init; }
+    public string KeysState { get; init; } = "";
+    public string Reason { get; init; } = "";
+    public long ExpiresAt { get; init; }
+}
+
+/// <summary>ssh.keys_needed: a program asked the agent for keys while none were loaded (the vault is locked).</summary>
+public sealed record SshKeysNeededEvent : CoreEvent
+{
+    public IReadOnlyList<SshProc> Client { get; init; } = Array.Empty<SshProc>();
+}
+
+/// <summary>ssh.agent: the agent started, stopped, or could not take its pipe.</summary>
+public sealed record SshAgentEvent : CoreEvent
+{
+    public string State { get; init; } = "";
+    public string Pipe { get; init; } = "";
+    public string Error { get; init; } = "";
+}
+
 public sealed record UnknownEvent : CoreEvent;
 
 public static class CoreEventParser
@@ -318,6 +349,23 @@ public static class CoreEventParser
             case "notes.attachment":
                 ev = new NotesAttachmentEvent { BlobId = Id("blob_id") };
                 id = Id("blob_id");
+                break;
+            case "ssh.used":
+            case "ssh.refused":
+                ev = new SshUsedEvent { Use = SshUse.FromJson(e), Suppressed = (int)JsonRead.Long(e, "suppressed") };
+                break;
+            case "ssh.keys":
+                ev = new SshKeysEvent
+                {
+                    State = Id("state"), Count = (int)JsonRead.Long(e, "count"), KeysState = Id("keys_state"),
+                    Reason = Id("reason"), ExpiresAt = JsonRead.Long(e, "expires_at"),
+                };
+                break;
+            case "ssh.keys_needed":
+                ev = new SshKeysNeededEvent { Client = SshText.Procs(e) };
+                break;
+            case "ssh.agent":
+                ev = new SshAgentEvent { State = Id("state"), Pipe = Id("pipe"), Error = Id("error") };
                 break;
             default:
                 if (type.StartsWith("update.", StringComparison.Ordinal))

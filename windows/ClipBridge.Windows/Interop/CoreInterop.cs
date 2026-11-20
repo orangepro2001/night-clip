@@ -38,6 +38,9 @@ public sealed class CoreException : Exception
     /// <summary>The error's <c>details.retry_after_s</c> (RATE_LIMITED), or 0 when absent.</summary>
     public int RetryAfterSeconds { get; }
 
+    /// <summary>The error's <c>details</c> object (for example <c>reason</c> of SSH_KEY_UNSUPPORTED), or an undefined element.</summary>
+    public JsonElement Details { get; init; }
+
     public CoreException(string code, string message, int retryAfterSeconds = 0) : base($"{code}: {message}")
     {
         Code = code;
@@ -106,7 +109,10 @@ public sealed class CoreHost : IDisposable, ICoreCaller
             && details.TryGetProperty("retry_after_s", out var ra) && ra.ValueKind == JsonValueKind.Number && ra.TryGetInt32(out var secs))
             retry = secs;
         throw new CoreException(e.GetProperty("code").GetString() ?? "INTERNAL",
-                                e.GetProperty("message").GetString() ?? "", retry);
+                                e.GetProperty("message").GetString() ?? "", retry)
+        {
+            Details = e.TryGetProperty("details", out var d) && d.ValueKind == JsonValueKind.Object ? d.Clone() : default,
+        };
     }
 
     private void PumpLoop()

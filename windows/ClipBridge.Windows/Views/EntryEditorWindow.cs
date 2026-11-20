@@ -165,7 +165,7 @@ internal sealed class EntryEditorWindow : SmallWindow
         var w = new EntryEditorWindow(shell, groups, editId);
         if (editId.Length == 0)
         {
-            w.Fill(new EntryDraft { Kind = EntryKinds.Normalize(defaultKind), GroupId = defaultGroupId });
+            w.Fill(new EntryDraft { Kind = EntryKinds.IsCreatable(defaultKind) ? defaultKind : EntryKinds.Login, GroupId = defaultGroupId });
             w.Opened += (_, _) => w._titleBox.Focus();
         }
         else
@@ -231,8 +231,22 @@ internal sealed class EntryEditorWindow : SmallWindow
         _fieldsPanel.Children.Clear();
         _rows.Clear();
         foreach (var f in d.Fields) AddFieldRow(f);
-        var kind = EntryKinds.All.FirstOrDefault(k => k == d.Kind) ?? EntryKinds.Login;
-        _kindBox.SelectedItem = _kindBox.Items.OfType<SegmentedItem>().First(i => (string?)i.Tag == kind);
+        // A kind the editor cannot create (an SSH key, or one from a newer version) is kept and shown
+        // locked: saving must never turn the entry into something else.
+        var kind = EntryKinds.Normalize(d.Kind);
+        var item = _kindBox.Items.OfType<SegmentedItem>().FirstOrDefault(i => (string?)i.Tag == kind);
+        if (item is null)
+        {
+            var label = EntryKinds.Known.Contains(kind) ? KindTemplate.For(kind).Label : kind;
+            item = new SegmentedItem
+            {
+                Tag = kind,
+                Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { Ui.Icon(VaultUi.KindIcon(kind), 14), new TextBlock { Text = label } } },
+            };
+            _kindBox.Items.Add(item);
+        }
+        _kindBox.SelectedItem = item;
+        _kindBox.IsEnabled = EntryKinds.IsCreatable(kind);
         _groupBox.SelectedItem = _groupChoices.FirstOrDefault(g => g.Id == d.GroupId) ?? _groupChoices.FirstOrDefault();
         _ready = true;
         // The form normalises a few things (tags, empty field rows); compare against what it would produce now.

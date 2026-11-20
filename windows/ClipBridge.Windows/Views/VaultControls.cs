@@ -59,6 +59,7 @@ internal static class VaultUi
         EntryKinds.ApiKey => AppIcons.Key,
         EntryKinds.Secret => AppIcons.Shield,
         EntryKinds.Note => AppIcons.Of(Lumen.UI.Icons.IconKind.FileText),
+        EntryKinds.Ssh => AppIcons.Terminal,
         _ => AppIcons.Of(Lumen.UI.Icons.IconKind.User),
     };
 

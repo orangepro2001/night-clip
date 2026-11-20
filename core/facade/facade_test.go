@@ -17,7 +17,8 @@ type reply struct {
 	OK     bool            `json:"ok"`
 	Result json.RawMessage `json:"result"`
 	Error  struct {
-		Code string `json:"code"`
+		Code    string         `json:"code"`
+		Details map[string]any `json:"details"`
 	} `json:"error"`
 }
 

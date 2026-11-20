@@ -41,6 +41,14 @@ public static class DiagnosticsText
             if (pa.Count > 0) sb.AppendLine($"    地址: {string.Join(", ", pa)}");
         }
 
+        var ssh = JsonRead.Obj(diag, "ssh");
+        if (ssh.ValueKind == JsonValueKind.Object)
+        {
+            var err = JsonRead.Str(ssh, "error");
+            sb.AppendLine($"SSH 代理: {(JsonRead.Bool(ssh, "enabled") ? "开" : "关")}，状态 {JsonRead.Str(ssh, "state")}，管道 {JsonRead.Str(ssh, "pipe")}，" +
+                          $"已加载 {JsonRead.Long(ssh, "keys_loaded")} 把（{JsonRead.Str(ssh, "keys_state")}）" + (err.Length > 0 ? $"，错误: {err}" : ""));
+        }
+
         var upd = JsonRead.Obj(diag, "update");
         if (upd.ValueKind == JsonValueKind.Object)
         {

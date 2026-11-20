@@ -31,8 +31,10 @@ export ANDROID_NDK_HOME ?= $(lastword $(sort $(wildcard $(ANDROID_HOME)/ndk/*)))
 export JAVA_HOME        ?= /usr/lib/jvm/java-17-openjdk-amd64
 export PATH := $(PATH):$(shell $(GO) env GOPATH)/bin
 
-# Release identity (scripts/version.sh) and the local-only update URL (git-ignored file).
+# Release identity (scripts/version.sh). The update service is the public release-publish at
+# https://release.moonl.cloud (since 2026-11-20); the git-ignored release.local.env may override it.
 -include release.local.env
+CB_UPDATE_URL ?= https://release.moonl.cloud
 CB_VERSION_VARS := $(shell scripts/version.sh)
 export CB_VERSION_CODE := $(patsubst CB_VERSION_CODE=%,%,$(filter CB_VERSION_CODE=%,$(CB_VERSION_VARS)))
 export CB_VERSION_NAME := $(patsubst CB_VERSION_NAME=%,%,$(filter CB_VERSION_NAME=%,$(CB_VERSION_VARS)))

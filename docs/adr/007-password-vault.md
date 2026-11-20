@@ -2,6 +2,7 @@
 
 - 状态：**Accepted（2026-10-27；V1–V3 已合并，真机验证与发布验证待完成）**
 - 相关：[plan-vault.md](../plan-vault.md)、[vault-v0-poc-report.md](../vault-v0-poc-report.md)、[vault-api.md](../vault-api.md)、[ADR-005](005-go-core-and-tailnet-p2p.md)
+- 修改：第 4 条与第 8 条中关于 SSH Agent 的部分已由 [ADR-009](009-ssh-agent.md)（2026-11-20）取代：核心内置 SSH Agent，只开放签名、只给同一用户，私钥不离开核心。
 
 ## 背景
 

@@ -63,6 +63,17 @@ internal static class Snapshots
                     await Task.Delay(1200);
                 }
                 Save(main, Path.Combine(dir, $"{(int)page}-{page}.{suffix}.png"));
+                if (page == MainPage.Settings && main.GetVisualDescendants().OfType<SshSettingsCard>().FirstOrDefault() is { } sshCard)
+                {
+                    sshCard.BringIntoView();
+                    await Task.Delay(900);
+                    Save(main, Path.Combine(dir, $"{(int)page}-{page}-ssh.{suffix}.png"));
+                }
+                if (page == MainPage.Vault && SelectWhere(main, typeof(EntryRow), o => o is EntryRow r && r.Summary.Kind == EntryKinds.Ssh))
+                {
+                    await Task.Delay(1500);
+                    Save(main, Path.Combine(dir, $"{(int)page}-{page}-ssh.{suffix}.png"));
+                }
             }
 
             // dialogs over the main window
@@ -109,6 +120,11 @@ internal static class Snapshots
                     w.Close();
                 }
                 await editor;
+
+                // SSH windows (docs/adr/009-ssh-agent.md)
+                await SnapWindowAsync(desktop, () => SshGenerateWindow.ShowAsync(main, shell), Path.Combine(dir, $"win-ssh-generate.{suffix}.png"));
+                await SnapWindowAsync(desktop, () => SshImportWindow.ShowAsync(main, shell, "", SampleKeys(dir)), Path.Combine(dir, $"win-ssh-import.{suffix}.png"));
+                await SnapWindowAsync(desktop, () => SshMigrateWindow.ShowAsync(main, shell), Path.Combine(dir, $"win-ssh-migrate.{suffix}.png"), 2500);
             }
             await Task.Delay(300);
         }
@@ -139,6 +155,7 @@ internal static class Snapshots
             await shell.VaultCallAsync(a => a.Add(new EntryDraft { Kind = EntryKinds.ApiKey, Title = "OpenWeather API", Password = "sk_live_51HxQ2example", Url = "https://api.openweathermap.org" }));
             await shell.VaultCallAsync(a => a.Add(new EntryDraft { Kind = EntryKinds.Login, Title = "家里路由器", Username = "admin", Password = "Tr0ub4dor&3", Url = "http://192.168.1.1" }));
             await shell.VaultCallAsync(a => a.Add(new EntryDraft { Kind = EntryKinds.Note, Title = "Wi-Fi 访客网络", Notes = "SSID: Home-Guest\n密码写在冰箱上。" }));
+            await shell.SshCallAsync(a => a.Generate("ed25519", 0, "GitHub 部署密钥", "deploy@clipbridge"));
         }
 
         var notes = await shell.NotesCallAsync(api => api.List());
@@ -192,6 +209,48 @@ internal static class Snapshots
         var list = window.GetVisualDescendants().OfType<ListBox>()
             .FirstOrDefault(l => l.IsEffectivelyVisible && l.ItemsSource is System.Collections.IEnumerable items && items.Cast<object>().FirstOrDefault()?.GetType() == rowType);
         if (list is not null) list.SelectedIndex = 0;
+    }
+
+    /// <summary>Two throwaway keys for the import window: a plain PKCS#8 one and a passphrase-protected one.</summary>
+    private static IReadOnlyList<string> SampleKeys(string dir)
+    {
+        var plain = Path.Combine(dir, "sample-plain.pem");
+        var locked = Path.Combine(dir, "sample-locked.pem");
+        using var a = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        File.WriteAllText(plain, a.ExportPkcs8PrivateKeyPem());
+        using var b = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP384);
+        File.WriteAllText(locked, b.ExportEncryptedPkcs8PrivateKeyPem("snapshot",
+            new System.Security.Cryptography.PbeParameters(System.Security.Cryptography.PbeEncryptionAlgorithm.Aes256Cbc, System.Security.Cryptography.HashAlgorithmName.SHA256, 10_000)));
+        return new[] { plain, locked };
+    }
+
+    /// <summary>Selects the first row of a <paramref name="rowType"/> list that matches; false when there is none.</summary>
+    private static bool SelectWhere(Window window, Type rowType, Func<object, bool> match)
+    {
+        var list = window.GetVisualDescendants().OfType<ListBox>()
+            .FirstOrDefault(l => l.IsEffectivelyVisible && l.ItemsSource is System.Collections.IEnumerable items && items.Cast<object>().FirstOrDefault()?.GetType() == rowType);
+        if (list?.ItemsSource is not System.Collections.IEnumerable all) return false;
+        var index = all.Cast<object>().ToList().FindIndex(o => match(o));
+        if (index < 0) return false;
+        list.SelectedIndex = index;
+        return true;
+    }
+
+    /// <summary>
+    /// Opens a vault window through <paramref name="open"/>, saves it once it has settled, closes it. The window types
+    /// are not Windows themselves (they own a VaultWindow), so the newest VaultWindow is the one captured.
+    /// </summary>
+    private static async Task SnapWindowAsync(IClassicDesktopStyleApplicationLifetime desktop, Func<Task> open, string path, int settleMs = 1200)
+    {
+        var before = desktop.Windows.OfType<VaultWindow>().ToHashSet();
+        var task = open();
+        await Task.Delay(settleMs);
+        if (desktop.Windows.OfType<VaultWindow>().FirstOrDefault(w => !before.Contains(w)) is { } w)
+        {
+            Save(w, path);
+            w.Close();
+        }
+        await task;
     }
 
     /// <summary>Clicks the first visible button with the given tooltip.</summary>

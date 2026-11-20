@@ -16,6 +16,7 @@ public class QuickFilterTests
     [InlineData(QuickFilter.ApiKeys, "apikey", false)]
     [InlineData(QuickFilter.Secrets, "secret", false)]
     [InlineData(QuickFilter.Notes, "note", false)]
+    [InlineData(QuickFilter.Ssh, "ssh", false)]
     [InlineData(QuickFilter.Expiring, "", false)]
     [InlineData(QuickFilter.Trash, "", true)]
     public void ToQuery_MapsFilters(QuickFilter f, string kind, bool trash)
@@ -28,8 +29,8 @@ public class QuickFilterTests
     }
 
     [Fact]
-    public void AllSevenFiltersHaveDistinctLabels() =>
-        Assert.Equal(7, QuickFilters.All.Select(QuickFilters.Label).Distinct().Count());
+    public void EveryFilterHasADistinctLabel() =>
+        Assert.Equal(QuickFilters.All.Count, QuickFilters.All.Select(QuickFilters.Label).Distinct().Count());
 
     [Fact]
     public void Expiry_States()

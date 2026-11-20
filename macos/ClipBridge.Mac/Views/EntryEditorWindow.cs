@@ -159,7 +159,7 @@ internal sealed class EntryEditorWindow : Window
         var w = new EntryEditorWindow(shell, groups, editId);
         if (editId.Length == 0)
         {
-            w.Fill(new EntryDraft { Kind = EntryKinds.Normalize(defaultKind), GroupId = defaultGroupId });
+            w.Fill(new EntryDraft { Kind = EntryKinds.IsCreatable(defaultKind) ? defaultKind : EntryKinds.Login, GroupId = defaultGroupId });
         }
         else
         {
@@ -210,7 +210,12 @@ internal sealed class EntryEditorWindow : Window
         _fieldsPanel.Children.Clear();
         _rows.Clear();
         foreach (var f in d.Fields) AddFieldRow(f);
-        _kindBox.SelectedItem = EntryKinds.All.FirstOrDefault(k => k == d.Kind) ?? EntryKinds.Login;
+        // A kind the editor cannot create (an SSH key, or one from a newer version) is kept and shown
+        // locked: saving must never turn the entry into something else.
+        var kind = EntryKinds.Normalize(d.Kind);
+        _kindBox.ItemsSource = EntryKinds.IsCreatable(kind) ? EntryKinds.All : EntryKinds.All.Append(kind).ToList();
+        _kindBox.SelectedItem = kind;
+        _kindBox.IsEnabled = EntryKinds.IsCreatable(kind);
         _groupBox.SelectedItem = _groupChoices.FirstOrDefault(g => g.Id == d.GroupId) ?? _groupChoices.FirstOrDefault();
         _ready = true;
         // The form normalises a few things (tags, empty field rows); compare against what it would produce now.

@@ -218,6 +218,9 @@ public static class LockPolicy
     /// <summary>Locking happens when the workstation locks, the user logs off or switches away, or the PC suspends.</summary>
     public static bool ShouldLock(LockTrigger t) =>
         t is LockTrigger.SessionLock or LockTrigger.SessionLogoff or LockTrigger.UserSwitch or LockTrigger.RemoteDisconnect or LockTrigger.Suspend;
+
+    /// <summary>The vault.lock reason for a trigger. Either one also drops the SSH agent's keys at once.</summary>
+    public static string Reason(LockTrigger t) => t == LockTrigger.Suspend ? "suspend" : "session";
 }
 
 public static class BackupLabels

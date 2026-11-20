@@ -24,6 +24,7 @@
     <Compile Include="..\ClipBridge.Windows\Strings.cs" Link="Strings.cs" />
     <Compile Include="..\ClipBridge.Windows\StringsVault.cs" Link="StringsVault.cs" />
     <Compile Include="..\ClipBridge.Windows\StringsNotes.cs" Link="StringsNotes.cs" />
+    <Compile Include="..\ClipBridge.Windows\StringsSsh.cs" Link="StringsSsh.cs" />
     <Compile Include="..\ClipBridge.Windows\Logic\*.cs" Link="Logic\%(Filename)%(Extension)" />
   </ItemGroup>
 

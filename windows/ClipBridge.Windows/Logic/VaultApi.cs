@@ -61,7 +61,11 @@ public sealed class VaultApi
         return JsonRead.Long(_core.Call("vault.unlock", p), "unlock_ms");
     }
 
-    public bool Lock() => JsonRead.Bool(_core.Call("vault.lock"), "was_unlocked");
+    /// <summary>
+    /// <paramref name="reason"/>: user, session (screen lock, logoff, user switch) or suspend. Any of them
+    /// also drops the SSH agent's keys, even when the vault was already locked.
+    /// </summary>
+    public bool Lock(string reason = "user") => JsonRead.Bool(_core.Call("vault.lock", new { reason }), "was_unlocked");
 
     public void VerifyMaster(VaultCreds creds)
     {

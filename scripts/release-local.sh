@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Builds the release packages and publishes them to the local release-publish service
-# (`relhub`, https://<host>/release), which signs the manifests and serves the update API
-# to the installed apps (docs/update.md, docs/release-publish-integration.md).
+# Builds the release packages and publishes them to the release-publish service (`relhub`,
+# https://release.moonl.cloud since 2026-11-20), which signs the manifests and serves the
+# update API to the installed apps (docs/update.md, docs/release-publish-integration.md).
+# Uploads use RELHUB_URL and an app-scoped RELHUB_TOKEN from release.local.env.
 #
 #   scripts/release-local.sh [--platform android|windows|macos|all] [--notes TEXT] [--force]
 #                            [--no-build] [--allow-dirty] [--check]
@@ -42,7 +43,14 @@ ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}"
 app=clipbridge
 relhub="${RELHUB_BIN:-$(command -v relhub || echo "$HOME/.local/bin/relhub")}"
 [ -x "$relhub" ] || die "relhub not found (install release-publish: ~/dev/release-publish/deploy/install.sh)"
-[ -n "${CB_UPDATE_URL:-}" ] || die "CB_UPDATE_URL is empty: copy release.local.env.example to release.local.env"
+CB_UPDATE_URL="${CB_UPDATE_URL:-https://release.moonl.cloud}"
+export CB_UPDATE_URL
+# Upload to the service the apps read from, unless release.local.env names another one.
+export RELHUB_URL="${RELHUB_URL:-$CB_UPDATE_URL}"
+case "$RELHUB_URL" in
+  http://127.0.0.1*|http://localhost*) ;; # a local server: relhub reads its admin token itself
+  *) [ -n "${RELHUB_TOKEN:-}" ] || die "RELHUB_TOKEN is empty: put the app-scoped publish token for $RELHUB_URL in release.local.env" ;;
+esac
 
 if [ "$dirty" = 0 ] && [ -n "$(git status --porcelain)" ]; then
   die "working tree has uncommitted changes; commit first (the version is the commit count) or pass --allow-dirty"
@@ -55,18 +63,20 @@ fi
 trusted="$(sed -n 's/^[[:space:]]*"\([A-Za-z0-9+\/]\{43\}=\)".*/\1/p' core/update/keys.go)"
 [ -n "$trusted" ] || die "no trusted keys found in core/update/keys.go"
 info="$(curl -fsS --max-time 15 "${CB_UPDATE_URL%/}/v1/info")" \
-  || die "cannot reach the update service at $CB_UPDATE_URL (tailscale serve /release -> 127.0.0.1:18790; is the release-publish service up? see its docs)"
+  || die "cannot reach the update service at $CB_UPDATE_URL (is release-publish up on moon? systemctl status release-publish)"
 active="$(printf '%s' "$info" | python3 -c 'import json,sys; print("\n".join(k["publicKey"] for k in json.load(sys.stdin)["keys"] if k["active"]))')"
 [ -n "$active" ] || die "the service at $CB_UPDATE_URL reports no active signing key"
 grep -qxF "$active" <<<"$trusted" \
   || die "the service signs with $active, which core/update/keys.go does not trust: apps built now could never update again"
 pinned_keys="$(paste -sd, <<<"$trusted")"
+# relhub verifies what it reads back (publish, list) against the keys this build trusts.
+export RELHUB_KEYS="$pinned_keys"
 
 eval "$(scripts/version.sh)"
 echo "release $CB_VERSION_NAME (code $CB_VERSION_CODE) -> $CB_UPDATE_URL (app $app)"
 
 # A platform's versionCode only goes up; learn now if this one is taken instead of after a
-# 5-minute build. (The local CLI talks to 127.0.0.1:18790 with the admin token.)
+# 5-minute build.
 for p in android windows macos; do
   if [ "$platform" = all ] || [ "$platform" = "$p" ]; then
     if out="$("$relhub" list -all -app "$app" -platform "$p" 2>/dev/null)" \

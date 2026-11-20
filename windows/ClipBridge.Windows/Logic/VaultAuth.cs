@@ -116,7 +116,7 @@ public static class VaultScreens
     public static string LockedNote(string? reason) => reason switch
     {
         "idle" => Strings.LockedIdle,
-        "session" => Strings.LockedSession,
+        "session" or "suspend" => Strings.LockedSession,
         "user" => "",
         "" or null => "",
         _ => Strings.LockedOther,

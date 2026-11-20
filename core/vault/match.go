@@ -118,7 +118,7 @@ func (v *Vault) FindMatches(pageURL, androidPackage string) ([]Match, error) {
 			return
 		}
 		e := fromLib(v.db, le, gid, false)
-		if e.Kind == KindNote {
+		if e.Kind == KindNote || e.Kind == KindSSH {
 			return
 		}
 		best := 0

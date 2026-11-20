@@ -1,13 +1,13 @@
 # 密码库：门面接口与壳层规则
 
 > 对应实现：`core/vault`（KDBX 4 存储）与 `core/facade/vault.go`（`vault.*` 方法）。设计依据：[plan-vault.md](plan-vault.md)、[vault-v0-poc-report.md](vault-v0-poc-report.md)。
-> 所有方法都通过现有的 `Call(method, paramsJSON)`；**一律不开放给命名管道和命令行**（`core/pipe` 有测试固定这一点）。
+> 所有方法都通过现有的 `Call(method, paramsJSON)`；**一律不开放给命名管道和命令行**（`core/pipe` 有测试固定这一点）。SSH 密钥的 `ssh.*` 方法同样如此；SSH Agent 用自己的管道，只提供签名（[ADR-009](adr/009-ssh-agent.md)、§3.9）。
 > 数据文件：`<data_dir>/vault/vault.kdbx`（标准 KDBX 4，KeePassXC 可直接打开）、`vault.kdbx.prev`（上一代）、`backups/`（快照）。
 
 ## 1. 状态与锁
 
 - 核心同一时刻最多持有一个已解锁的库。**未解锁时除下列方法外一律返回 `VAULT_LOCKED`**：`vault.status`、`vault.create`、`vault.unlock`、`vault.lock`、`vault.verify_master`（需要已解锁）、`vault.generate`、`vault.strength`、`vault.backup_list`、`vault.backup_verify`。
-- **空闲自动锁**：任何 `vault.*`（除 `status` 和 `vault.totp`）调用都会重置计时（轮询一次性验证码**不算**活动，否则无人值守的库永远不会锁）；用户正在输入而没有调用核心时，壳发 `vault.touch`（`{}`）表示“还在”；超过 `vault_autolock_s`（默认 300 秒；范围 0 或 30–86400，0 = 永不自动锁定）核心自行锁定并发出事件 `{"type":"vault.locked","reason":"idle"}`。壳在系统锁屏/睡眠/应用进入后台时应调用 `vault.lock`（`reason:"user"`）。
+- **空闲自动锁**：任何 `vault.*`（除 `status` 和 `vault.totp`）调用都会重置计时（轮询一次性验证码**不算**活动，否则无人值守的库永远不会锁）；用户正在输入而没有调用核心时，壳发 `vault.touch`（`{}`）表示“还在”；超过 `vault_autolock_s`（默认 300 秒；范围 0 或 30–86400，0 = 永不自动锁定）核心自行锁定并发出事件 `{"type":"vault.locked","reason":"idle"}`。壳在系统锁屏、注销、切换用户时调用 `vault.lock {reason:"session"}`，睡眠时 `{reason:"suspend"}`，用户点“锁定”时 `{reason:"user"}`（默认）；事件里的 `reason` 与之相同。这三种原因还会立即清除 SSH Agent 里的钥匙，**即使密码库本来就锁着**（空闲锁定后钥匙可能还在宽限期里），所以壳在这些系统事件上无论库是否解锁都要调用。
 - **猜测限速**：所有接受凭据的方法（`unlock`、`verify_master`、`change_master`/`export_*` 的确认、`backup_verify`、`restore`、`restore_preview`、`import_file`、带密码的 `sync_resolve`）**一次只处理一个**，并共用同一个计数；只有“打开库/确认主密码”的成功才会清零计数（用旧密码验证备份成功不会清零）。同一进程内连续 3 次错误凭据后，每次再试等待 1、2、4…秒（上限 5 分钟），期间 `vault.unlock`/`verify_master`/`change_master`/`export_*`/`backup_verify` 返回 `RATE_LIMITED`（`retryable:true`，`details.retry_after_s`）。成功一次清零。这只能挡住对运行中应用的脚本猜测；偷走文件的离线猜测靠 Argon2 成本。
 - 关闭核心（`shutdown`）会先锁库。
 
@@ -37,7 +37,7 @@
 | `vault.status` | — | `{exists, unlocked, autolock_s, clip_clear_s, retry_after_s, key_file?, entries?, kdf?{memory_mib,iterations,parallelism}, backups?, last_manual_backup_at?}`；`key_file` 表示这台设备上次使用的凭据是否含密钥文件（KDBX 文件本身不说明；通过同步加入的库在首次解锁前没有这个字段） |
 | `vault.create` | `credParams`（主密码**至少 8 个字符**，否则 `INVALID`）+ `kdf?`（`low`/`standard`/`high`，默认 `standard`），`name?` | `{unlocked:true, create_ms}`；创建后已解锁。`exists` 时 `VAULT_EXISTS` |
 | `vault.unlock` | `credParams` | `{unlocked:true, unlock_ms}` |
-| `vault.lock` | — | `{was_unlocked}` |
+| `vault.lock` | `reason?`（`user` 默认 / `session` / `suspend`） | `{was_unlocked, ssh_keys_cleared}` |
 | `vault.verify_master` | `credParams` | `{ok:true}` 或 `VAULT_WRONG_CREDENTIALS`；用于“再次确认主密码”类操作 |
 | `vault.change_master` | `credParams`（当前）+ `new: {password(≥8 字符), key_file_b64?}` + `kdf?` + `purge_backups?` | `{purged}`；整个库用新的随机值重新加密；**旧快照仍需要旧密码**，怀疑泄露时传 `purge_backups:true` 删除全部快照和上一代文件（不可撤销） |
 
@@ -48,12 +48,13 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 条目 JSON（`vault.add`/`vault.update` 的 `entry`）：
 
 ```json
-{"kind":"login|apikey|secret|note","title":"…","username":"","password":"","url":"","notes":"",
+{"kind":"login|apikey|secret|note|ssh","title":"…","username":"","password":"","url":"","notes":"",
  "tags":["a","b"],"fields":[{"name":"Key ID","value":"…","protected":false}],
  "totp":"otpauth://totp/… 或 base32","expires_at":0,"group_id":""}
 ```
 
-- `kind` 只影响界面的呈现：`login`（站点账号）、`apikey`（API 密钥/令牌：密钥放 `password`，端点放 `url`，Key ID/区域/环境等放 `fields`）、`secret`（单个机密：许可证、PIN、恢复码，放 `password`）、`note`（安全笔记，只用 `notes`）。KeePassXC 里它们都是普通条目。
+- `kind` 只影响界面的呈现：`login`（站点账号）、`apikey`（API 密钥/令牌：密钥放 `password`，端点放 `url`，Key ID/区域/环境等放 `fields`）、`secret`（单个机密：许可证、PIN、恢复码，放 `password`）、`note`（安全笔记，只用 `notes`）、`ssh`（SSH 私钥，见 §3.9；由 `ssh.import`/`ssh.generate` 创建，不要用 `vault.add` 手写）。KeePassXC 里它们都是普通条目。
+- 没有 `ClipBridge.Kind`（或它是 `login`）但带 `KeeAgent.settings` 附件的条目读作 `ssh`，因此从 KeePassXC 导入的 SSH 条目会被识别；`vault.update` 对这样的条目收到 `kind:"login"` 时保持 `ssh`。
 - `fields[].name` 不能是保留名（Title/UserName/Password/URL/Notes/otp，大小写不敏感），不能重复，≤128 字节；单个文本字段 ≤256 KiB；最多 100 个字段/标签。
 
 | 方法 | 参数 | 结果 |
@@ -143,6 +144,50 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | --- | --- | --- |
 | `vault_autolock_s` | `0` 或 30–86400 | 300 |
 | `vault_clip_clear_s` | `0` 或 5–300 | 20 |
+| `ssh_agent` | `on`/`off`：启用 SSH Agent（Android 上没有效果） | `off` |
+| `ssh_agent_pipe` | Agent 的地址：Windows 为 `\\.\pipe\名字`，其它平台为绝对路径；空 = 默认 | Windows `\\.\pipe\openssh-ssh-agent`，其它 `<data_dir>/ssh-agent.sock` |
+| `ssh_key_ttl_s` | `0` 或 300–86400：密码库**空闲**锁定后钥匙在 Agent 里再留多久（从本应锁定的时刻算起）；0 = 一起清除 | 14400 |
+| `ssh_allow_forwarding` | `on`/`off`：是否服务经 `ssh -A` 转发来的请求 | `off` |
+
+改 `ssh_agent` 或 `ssh_agent_pipe` 会立刻停止并重新启动监听。
+
+### 3.9 SSH 密钥与 SSH Agent（[ADR-009](adr/009-ssh-agent.md)）
+
+**存放：** kind `ssh` 的条目。私钥以**不加密**的 OpenSSH 格式作为附件（名字沿用原文件名，生成的叫 `id_<算法>`），另有 `KeeAgent.settings` 附件（KeePassXC 的格式；`AllowUseOfSshKey` 与 `AddAtDatabaseOpen` 都为真时提供给 Agent）。KeePassXC 习惯把加密私钥的口令放在条目的 Password 里，核心读取时会用它试着解密；`ssh.normalize` 可以把这类条目转成不加密的 OpenSSH 附件。
+
+**`vault.get` 的 `ssh` 块**（只有 SSH 条目有）：`{entry_id, title, group_id, key_attachment, algo, bits, fingerprint:"SHA256:…", comment, public_key, agent, loaded, source_format, encrypted, problem, reason?, last_used_at?, in_trash, expires_at}`。`problem` 为空表示可用；其它值：`needs_passphrase`（附件仍加密且没有可用口令）、`external_file`（KeePassXC 指向磁盘文件，不支持）、`missing_key`、`too_large`、`unsupported`（`reason` 同下表）、`corrupt`、`missing_settings`（可用，但没有 `KeeAgent.settings`，不会进 Agent）。
+
+| 方法 | 参数 | 结果 |
+| --- | --- | --- |
+| `ssh.inspect` | `data_b64` 或 `path`（绝对路径，≤1 MiB），`passphrase?` | `{format, encrypted, cipher, kdf, needs_passphrase, wrong_passphrase, algo?, bits?, fingerprint?, comment?, public_key?, in_vault?:[{entry_id,title}], warnings:[]}`。**库锁着也能用**（此时没有 `in_vault`）。需要口令时不报错，`needs_passphrase:true`；OpenSSH 与 PPK 不需要口令也能给出公钥 |
+| `ssh.import` | `data_b64`/`path`、`passphrase?`、`title?`、`group_id?`、`agent?`（默认 true）、`attachment_name?`、`allow_duplicate?` | `{id, fingerprint, public_key, algo, bits, attachment_name}`；按指纹查重，已存在时 `SSH_KEY_DUPLICATE`（`details.entry_id`） |
+| `ssh.generate` | `type`（`ed25519` 默认 / `rsa` 3072·4096 / `ecdsa` 256·384·521）、`bits?`、`title`、`comment?`、`group_id?`、`agent?` | 同上 |
+| `ssh.public_key` | `id` 或 `fingerprint` | `{public_key, fingerprint, algo, title}`；库锁着时从 Agent 已加载的钥匙里回答 |
+| `ssh.export` | `credParams`（主密码，再确认）、`id`、`format`（`openssh` 默认 / `pkcs8` / `pem`，pem 只限 RSA/ECDSA 且不加密）、`passphrase?`、`path`（绝对路径） | `{size}`；以独占方式新建文件（权限 0600），已存在则 `INVALID`。**私钥离开核心的唯一途径** |
+| `ssh.set_agent` | `id`、`enabled` | `{agent}`；改写（或新建）`KeeAgent.settings`，保留其中不认识的元素 |
+| `ssh.normalize` | `id`、`passphrase?`（缺省用条目的 Password） | `{fingerprint}`；附件改成不加密的 OpenSSH 格式 |
+| `ssh.scan` | `dir?`（默认 `~/.ssh`） | `{dir, items:[{path, format, encrypted, algo, bits, fingerprint, comment, pub_path, pub_state, config_hosts, referenced_by:[{file,line}], problem, in_vault}], skipped, vault_unlocked}`。只看目录本身（不递归），每个文件最多读 64 KiB，靠内容判断哪些是私钥；**从不返回文件内容**。`pub_state`：`ok`/`missing`/`mismatch`/`unverified`；`config_hosts` 来自同目录 `config` 的 `Host`/`IdentityFile`；`referenced_by` 是同目录 `*.ps1/*.sh/*.bat/*.cmd` 里直接写了这个文件路径的行 |
+| `ssh.write_pub` | `path`（必须以 `.pub` 结尾）、`id` 或 `fingerprint` | `{pub_path, state}`：`created`/`same`/`mismatch`；从不覆盖 |
+| `ssh.status` | — | `{supported, enabled, state, pipe, error, keys_loaded, keys_state, expires_at, vault_unlocked, ttl_s, allow_forwarding, connections}`；`state`：`listening`/`stopped`/`conflict`（管道名已被别的程序占用）/`error`/`unsupported`；`keys_state`：`empty`/`loaded`/`grace` |
+| `ssh.keys` | — | `{vault_unlocked, keys:[…]}`：库解锁时为全部 SSH 条目（同 `vault.get` 的 `ssh` 块，外加 `group_path`）；锁着时只有 Agent 里已加载的钥匙 |
+| `ssh.recent` | `limit?`（≤100） | `{uses:[…]}`，最新在前，字段同 `ssh.used` 事件 |
+| `ssh.selftest` | — | `{ok, listed, fingerprints, error}`：作为客户端连自己的管道并列出钥匙（只列不签） |
+
+除 `ssh.import/generate/export/set_agent/normalize` 外都可以在库锁着时调用。
+
+**SSH 错误码**：`SSH_KEY_UNSUPPORTED`（`details.reason`：`dsa`、`sk`、`sshcom`、`putty1`、`pbes1`、`public_only`、`certificate`、`rsa_small`、`curve`、`multi`、`cipher`、`unknown`）、`SSH_KEY_PASSPHRASE`（`details.wrong`）、`SSH_KEY_CORRUPT`、`SSH_KEY_TOO_EXPENSIVE`（密钥派生参数超过核心上限，没有尝试解密）、`SSH_KEY_DUPLICATE`、`SSH_AGENT_UNAVAILABLE`。
+
+**事件**（`ssh.used`、`ssh.refused`、`ssh.keys_needed` 合计限速约每秒 10 个，被丢弃的数量随下一个事件的 `suppressed` 报告；壳可随时用 `ssh.status`/`ssh.recent` 补齐）：
+
+```json
+{"type":"ssh.agent","state":"listening|stopped|conflict|error","pipe":"\\.\pipe\openssh-ssh-agent","error":""}
+{"type":"ssh.keys","state":"loaded|grace|cleared|expired","count":2,"keys_state":"grace","reason":"idle","expires_at":1790000000}
+{"type":"ssh.used","at":1790000000,"fingerprint":"SHA256:…","title":"GitHub","entry_id":"…","client":[{"pid":1,"name":"ssh.exe","path":"…"},{"pid":2,"name":"git.exe"}],"host":"github.com","host_key_fp":"SHA256:…","user":"git","kind":"userauth|sshsig|other","namespace":"git","forwarded":false,"result":"signed","reason":""}
+{"type":"ssh.refused", …同上…, "result":"refused","reason":"forwarding|no_keys|unknown_key|error"}
+{"type":"ssh.keys_needed","client":[…]}   // 有程序来要钥匙，但一把也没加载（库锁着）；每分钟最多一次
+```
+
+`client` 是发起请求的进程和最多 4 层父进程，只用于显示，不作为安全判断；`host` 只在 known_hosts 里有明文主机名时才有。
 
 ## 3.8 解码与资源限制（参考）
 
@@ -160,8 +205,9 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 4. **锁定：** 系统锁屏/睡眠/切换用户、应用进入后台超过设定秒数 → `vault.lock`。锁定后清空列表、详情、搜索框、剪贴板中仍是我们写入的那份。
 5. **危险操作再确认：** 导出（KDBX/CSV）、改主密码、清空回收站、永久删除、整库恢复，都要先弹确认；导出还要重新输入主密码（核心也会校验）。
 6. **快速解锁（可选）：** 壳可以把主密码用设备密钥保护后保存（Android：Keystore + `BiometricPrompt`，`setUserAuthenticationRequired(true)`，生物识别变化即失效；Windows：暂不提供），解锁时取出并调用 `vault.unlock`。**有效期由壳的设置决定（默认 72 小时，可设 0 = 永不过期）；无论有效期多长，重启后或连续 5 次失败后必须重新输入主密码。** 核心不知道也不保存这个包装。
-7. **不要**缓存条目详情或机密到磁盘，不要把库内容放进系统备份（Android `allowBackup="false"` 已满足）。
-8. **文案**中不得出现“忘记主密码可以找回”之类的话：忘记主密码就是永久无法打开，请在创建时明确告知，并引导用户做一份 `vault.export_file` 备份和（可选）密钥文件。
+7. **kind 原样往返：** 壳不认识的 kind（例如旧版本遇到 `ssh`）必须原样保存，不能在编辑后改成 `login`；“认识的 kind”和“编辑器可以新建的 kind”是两张表（`ssh` 只能由导入/生成创建）。
+8. **不要**缓存条目详情或机密到磁盘，不要把库内容放进系统备份（Android `allowBackup="false"` 已满足）。
+9. **文案**中不得出现“忘记主密码可以找回”之类的话：忘记主密码就是永久无法打开，请在创建时明确告知，并引导用户做一份 `vault.export_file` 备份和（可选）密钥文件。
 
 ## 5. 与剪贴板同步的关系
 

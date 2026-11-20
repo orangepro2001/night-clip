@@ -45,6 +45,7 @@
     <Compile Include="$(WinShell)Strings.cs" Link="Shared\Strings.cs" />
     <Compile Include="$(WinShell)StringsVault.cs" Link="Shared\StringsVault.cs" />
     <Compile Include="$(WinShell)StringsNotes.cs" Link="Shared\StringsNotes.cs" />
+    <Compile Include="$(WinShell)StringsSsh.cs" Link="Shared\StringsSsh.cs" />
     <Compile Include="$(WinShell)Interop\CoreInterop.cs" Link="Shared\CoreInterop.cs" />
     <Compile Include="$(WinShell)Update\UpdateModel.cs" Link="Shared\UpdateModel.cs" />
     <Compile Include="$(WinShell)Update\BuildInfo.cs" Link="Shared\BuildInfo.cs" />

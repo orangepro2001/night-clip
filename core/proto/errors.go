@@ -38,6 +38,13 @@ const (
 	CodeVaultBroken      Code = "VAULT_BROKEN"
 	CodeVaultNotEmpty    Code = "VAULT_NOT_EMPTY"
 	CodeVaultReview      Code = "VAULT_REVIEW" // a sync or merge needs the user's approval (see vault.sync_status)
+	// SSH keys and the SSH agent (docs/adr/009-ssh-agent.md). details.reason names the problem.
+	CodeSSHKeyUnsupported   Code = "SSH_KEY_UNSUPPORTED"   // recognised but unusable: details.reason (dsa, sk, public_only, …)
+	CodeSSHKeyPassphrase    Code = "SSH_KEY_PASSPHRASE"    // encrypted key: details.wrong says whether a passphrase was tried
+	CodeSSHKeyCorrupt       Code = "SSH_KEY_CORRUPT"       // the file claims a known format but is damaged
+	CodeSSHKeyTooExpensive  Code = "SSH_KEY_TOO_EXPENSIVE" // key derivation parameters above the core's limits
+	CodeSSHKeyDuplicate     Code = "SSH_KEY_DUPLICATE"     // the key is already in the vault: details.entry_id
+	CodeSSHAgentUnavailable Code = "SSH_AGENT_UNAVAILABLE" // the agent is off, unsupported here, or its pipe is taken
 	// Notes (notes/api-spec.md §5).
 	CodeNotFound          Code = "NOT_FOUND"
 	CodeConflict          Code = "CONFLICT"           // the note cannot be changed as asked without a user decision

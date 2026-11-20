@@ -126,10 +126,21 @@ public static class EntryKinds
     public const string ApiKey = "apikey";
     public const string Secret = "secret";
     public const string Note = "note";
+    public const string Ssh = "ssh";
 
+    /// <summary>The kinds the editor offers for a new entry. SSH keys come from importing or generating a key.</summary>
     public static readonly IReadOnlyList<string> All = new[] { Login, ApiKey, Secret, Note };
 
-    public static string Normalize(string? kind) => kind is Login or ApiKey or Secret or Note ? kind : Login;
+    /// <summary>Every kind this version knows how to show.</summary>
+    public static readonly IReadOnlyList<string> Known = new[] { Login, ApiKey, Secret, Note, Ssh };
+
+    /// <summary>
+    /// Keeps the kind the vault sent, even one this version does not know (a newer client may write it):
+    /// saving an entry must never quietly turn it into a login. Empty means login.
+    /// </summary>
+    public static string Normalize(string? kind) => string.IsNullOrWhiteSpace(kind) ? Login : kind.Trim();
+
+    public static bool IsCreatable(string? kind) => kind is Login or ApiKey or Secret or Note;
 }
 
 /// <summary>Which form fields a kind shows, and what they are called (docs/vault-api.md §3.2).</summary>
@@ -145,6 +156,8 @@ public sealed record KindTemplate(
             false, true, false, false, false, Array.Empty<string>()),
         EntryKinds.Note => new(EntryKinds.Note, Strings.KindNote, "📝", false, false, Strings.LabelPassword, false, Strings.LabelUrl,
             false, true, true, false, false, Array.Empty<string>()),
+        EntryKinds.Ssh => new(EntryKinds.Ssh, Strings.KindSsh, "🔐", false, false, Strings.LabelPassword, false, Strings.LabelUrl,
+            false, true, true, true, true, Array.Empty<string>()),
         _ => new(EntryKinds.Login, Strings.KindLogin, "👤", true, true, Strings.LabelPassword, true, Strings.LabelUrl,
             true, true, true, true, true, Array.Empty<string>()),
     };

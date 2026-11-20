@@ -47,6 +47,11 @@ internal sealed class EntryDetailPane : Border
         _shell = shell;
         Child = new ScrollViewer { Content = _root };
         _timer.Tick += (_, _) => OnTick();
+        // The agent loaded, dropped or used a key: the SSH section's badges change.
+        shell.SshChanged += () =>
+        {
+            if (_shown && _detail?.Ssh is not null) _ = ShowAsync(_detail.Id);
+        };
         Render();
     }
 
@@ -220,6 +225,7 @@ internal sealed class EntryDetailPane : Border
             header.Children.Add(edit);
         }
         _root.Children.Add(header);
+        if (d.Ssh is { } ssh) _root.Children.Add(BuildSsh(ssh, d.Summary.InTrash));
 
         var fields = new StackPanel { Spacing = 0 };
         foreach (var row in _rows) fields.Children.Add(BuildRow(row));
@@ -252,7 +258,8 @@ internal sealed class EntryDetailPane : Border
         _root.Children.Add(meta);
 
         if (!d.Summary.InTrash) _root.Children.Add(BuildAttachments());
-        if (_history.Count > 0) _root.Children.Add(BuildHistory());
+        // Restoring a version does not bring back attachments, so an SSH key's history is not offered.
+        if (_history.Count > 0 && d.Ssh is null) _root.Children.Add(BuildHistory());
 
         RefreshTotpUi();
     }
@@ -326,8 +333,8 @@ internal sealed class EntryDetailPane : Border
         var panel = new StackPanel { Spacing = 6 };
         panel.Children.Add(Ui.Text(Strings.AttachmentsTitle, "caption", "strong", "secondary"));
         var d = _detail!;
-        if (d.Attachments.Count == 0) panel.Children.Add(Ui.Text(Strings.AttachmentsNone, "caption", "tertiary"));
-        foreach (var a in d.Attachments)
+        if (d.OtherAttachments.Count == 0) panel.Children.Add(Ui.Text(Strings.AttachmentsNone, "caption", "tertiary"));
+        foreach (var a in d.OtherAttachments)
         {
             var line = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
             line.Children.Add(Ui.Icon(AppIcons.Paperclip, 14).With(i => { i.Margin = new Thickness(0, 0, 8, 0); i.VerticalAlignment = VerticalAlignment.Center; }));
@@ -350,6 +357,125 @@ internal sealed class EntryDetailPane : Border
         }
         panel.Children.Add(Ui.Button(AppIcons.Of(IconKind.Plus), Strings.BtnAddAttachment, () => _ = AddAttachmentAsync(), "ghost", "sm"));
         return panel;
+    }
+
+    // ---- SSH keys --------------------------------------------------------------------------------
+
+    private Control BuildSsh(SshKeyInfo k, bool inTrash)
+    {
+        var outer = new StackPanel { Spacing = 10 };
+        if (SshText.Problem(k.Problem, k.Reason) is { Length: > 0 } problem)
+        {
+            var bar = new InfoBar { Severity = Severity.Warning, IsOpen = true, IsClosable = false, Message = problem };
+            if (k.Problem == "needs_passphrase" && !inTrash)
+                bar.Actions = Ui.TextButton(Strings.SshBtnNormalize, () => _ = NormalizeAsync(k, needsPassphrase: true), "soft", "sm");
+            outer.Children.Add(bar);
+        }
+
+        var fields = new StackPanel { Spacing = 0 };
+        if (k.TypeText.Length > 0)
+            fields.Children.Add(FieldBlock(Strings.SshLabelType, Ui.Text(k.TypeText + "  ·  " + Strings.SshFormatName(k.SourceFormat)), null));
+        if (k.Fingerprint.Length > 0)
+            fields.Children.Add(FieldBlock(Strings.SshLabelFingerprint, SshUi.Mono(k.Fingerprint, wrap: false).With(t => t.TextTrimming = TextTrimming.CharacterEllipsis),
+                Ui.IconButton(AppIcons.Of(IconKind.Copy), Strings.BtnCopyField, () => _ = SshUi.CopyAsync(_shell, k.Fingerprint, Strings.CopiedPlain), "sm")));
+        if (k.Comment.Length > 0)
+            fields.Children.Add(FieldBlock(Strings.SshLabelComment, new SelectableTextBlock { Text = k.Comment, TextWrapping = TextWrapping.Wrap }, null));
+        if (k.PublicKey.Length > 0)
+            fields.Children.Add(FieldBlock(Strings.SshLabelPublicKey, SshUi.Mono(k.PublicKey).With(t => t.MaxLines = 4),
+                Ui.IconButton(AppIcons.Of(IconKind.Copy), Strings.SshBtnCopyPublic, () => _ = SshUi.CopyAsync(_shell, k.PublicKey, Strings.SshCopiedPublic), "sm")));
+        if (fields.Children.Count > 0) outer.Children.Add(Section(fields));
+        if (inTrash) return outer;
+
+        // Agent: the switch, what the agent does with the key right now, when it was last used.
+        var toggle = new ToggleSwitch { IsChecked = k.Agent, IsEnabled = k.Usable, VerticalAlignment = VerticalAlignment.Center };
+        toggle.IsCheckedChanged += (_, _) => _ = SetAgentAsync(k, toggle.IsChecked == true);
+        var state = _shell.SshState;
+        var badge = !k.Agent ? SshUi.Badge(Strings.SshBadgeAgentOff, "")
+            : k.Loaded && state.InGrace ? SshUi.Badge(Strings.SshBadgeGrace(DateTimeOffset.FromUnixTimeSeconds(state.ExpiresAt)), "warning")
+            : k.Loaded ? SshUi.Badge(Strings.SshBadgeLoaded, "success")
+            : SshUi.Badge(Strings.SshBadgeNotLoaded, "");
+        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { Ui.Text(Strings.SshLabelAgent, "medium"), badge } };
+        var info = new StackPanel { Spacing = 3, Children = { title, Ui.Text(Strings.SshAgentHint, "caption", "tertiary").With(t => t.TextWrapping = TextWrapping.Wrap) } };
+        info.Children.Add(Ui.Text(k.LastUsedAt > 0 ? Strings.SshLastUsed(StampText.Local(k.LastUsedAt)) : Strings.SshNeverUsed, "caption", "tertiary"));
+        var agentRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Margin = new Thickness(0, 8) };
+        agentRow.Children.Add(info);
+        Grid.SetColumn(toggle, 1);
+        agentRow.Children.Add(toggle);
+        var agentBlock = new StackPanel { Spacing = 6, Children = { agentRow } };
+        if (k.Agent && state.Supported && !state.Listening)
+        {
+            var bar = new InfoBar { Severity = Severity.Info, IsOpen = true, IsClosable = false, Message = Strings.SshAgentNotRunning };
+            bar.Actions = Ui.TextButton(Strings.SshBtnEnableAgent, () => _ = EnableAgentAsync(), "soft", "sm");
+            agentBlock.Children.Add(bar);
+        }
+        outer.Children.Add(Section(agentBlock));
+
+        var actions = new WrapPanel { Orientation = Orientation.Horizontal };
+        void Add(Button b) { b.Margin = new Thickness(0, 0, 8, 6); actions.Children.Add(b); }
+        if (k.Usable)
+        {
+            Add(Ui.Button(AppIcons.Save, Strings.SshBtnWritePub, () => _ = WritePubAsync(k), "soft", "sm"));
+            Add(Ui.Button(AppIcons.Key, Strings.SshBtnExport, () => _ = ExportAsync(k), "soft", "sm"));
+            if (k.Encrypted) Add(Ui.Button(AppIcons.Shield, Strings.SshBtnNormalize, () => _ = NormalizeAsync(k, needsPassphrase: false), "soft", "sm"));
+        }
+        if (actions.Children.Count > 0) outer.Children.Add(actions);
+        return outer;
+    }
+
+    private async Task SetAgentAsync(SshKeyInfo k, bool on)
+    {
+        if (on == k.Agent) return;
+        var id = k.EntryId;
+        var r = await _shell.SshCallAsync(a => a.SetAgent(id, on));
+        if (!r.Ok) await Fail(r.Error);
+        if (_detail?.Id == id) await ShowAsync(id);
+    }
+
+    private async Task EnableAgentAsync()
+    {
+        if (await _shell.SetSshAgentAsync(true) is { } error) { await Fail(error); return; }
+        if (_detail is not null) await ShowAsync(_detail.Id);
+    }
+
+    private async Task WritePubAsync(SshKeyInfo k)
+    {
+        var name = (k.KeyAttachment.Length > 0 ? k.KeyAttachment : "id_key") + ".pub";
+        var path = await Ui.PickSaveFileAsync(this, Strings.SshBtnWritePub, name, SshUi.SshDir, "pub");
+        if (path is null) return;
+        var id = k.EntryId;
+        var r = await _shell.SshCallAsync(a => a.WritePub(path, id));
+        if (!r.Ok) { await Fail(r.Error); return; }
+        switch (r.Value)
+        {
+            case "created": _shell.ShowStatus(Strings.SshPubWritten(path), StatusKind.Success); break;
+            case "same": _shell.ShowStatus(Strings.SshPubSame, StatusKind.Info); break;
+            default: await Fail(Strings.SshPubExists); break;
+        }
+    }
+
+    private async Task ExportAsync(SshKeyInfo k)
+    {
+        var st = await _shell.VaultCallAsync(a => a.Status());
+        await SshExportWindow.ShowAsync(VaultUi.OwnerOf(this), _shell, k, st.Ok && st.Value!.KeyFile);
+    }
+
+    private async Task NormalizeAsync(SshKeyInfo k, bool needsPassphrase)
+    {
+        var id = k.EntryId;
+        var passphrase = "";
+        if (needsPassphrase)
+        {
+            var entered = await Ui.PromptAsync(this, Strings.SshNormalizeTitle, Strings.SshImportPassphrase, "",
+                v => string.IsNullOrEmpty(v) ? null : v, Strings.ErrSshNeedsPassphrase, Strings.SshBtnNormalize);
+            if (entered is null) return;
+            passphrase = entered;
+        }
+        else if (!await VaultUi.ConfirmAsync(this, Strings.SshNormalizeText, Strings.SshNormalizeTitle, Strings.SshBtnNormalize)) return;
+        var r = await _shell.SshCallAsync(a => a.Normalize(id, passphrase));
+        if (!r.Ok) { await Fail(r.Error); return; }
+        _shell.ShowStatus(Strings.SshNormalizeDone, StatusKind.Success);
+        if (_detail?.Id == id) await ShowAsync(id);
+        DataChanged?.Invoke();
     }
 
     private Control BuildHistory()

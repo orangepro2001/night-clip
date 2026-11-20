@@ -41,7 +41,7 @@
 
   <!-- Stamped by `make dist-windows` (scripts/version.sh); a plain build is a dev build
        (code 0), which keeps self-update off. The update URL is deliberately not in the
-       repository: it comes from the git-ignored release.local.env. -->
+       Makefile: https://release.moonl.cloud unless the git-ignored release.local.env overrides it. -->
   <PropertyGroup>
     <CbVersionCode Condition="'$(CbVersionCode)' == ''">0</CbVersionCode>
     <CbVersionName Condition="'$(CbVersionName)' == ''">0.0.0-dev</CbVersionName>

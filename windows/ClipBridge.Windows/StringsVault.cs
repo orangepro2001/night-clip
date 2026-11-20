@@ -32,6 +32,7 @@ public static partial class Strings
     public const string KindApiKey = "API 密钥";
     public const string KindSecret = "单个机密";
     public const string KindNote = "安全笔记";
+    public const string KindSsh = "SSH 密钥";
 
     // ---- strength ---------------------------------------------------------------------
     public const string StrengthVeryWeak = "非常弱";
@@ -107,6 +108,7 @@ public static partial class Strings
     public const string FilterApiKeys = "API 密钥";
     public const string FilterSecrets = "机密";
     public const string FilterNotes = "笔记";
+    public const string FilterSsh = "SSH 密钥";
     public const string FilterExpiring = "即将到期";
     public const string FilterTrash = "回收站";
     public const string GroupsTitle = "分组";

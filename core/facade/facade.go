@@ -66,6 +66,7 @@ type Core struct {
 	n       *netState
 	ctl     *controlChannel
 	vs      vaultState
+	ssh     sshState
 	started bool
 	closed  bool
 
@@ -159,6 +160,7 @@ func (c *Core) Init(configJSON string) (err error) {
 	}
 	c.n, c.upd, c.started = n, upd, true
 	c.startControlChannel(cfg.Pipe)
+	c.sshInit()
 	upd.Run()
 	c.emit(map[string]any{"type": "core.started", "device_id": id.DeviceID})
 	c.openGate()
@@ -210,6 +212,7 @@ func (c *Core) Shutdown() {
 	if ctl != nil { // first: no new outside requests
 		ctl.close()
 	}
+	c.sshShutdown() // before the vault: no signatures after this point
 	c.closeVault()
 	if upd != nil {
 		upd.Close()
@@ -285,6 +288,9 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		"vault.sync_status", "vault.sync_enable", "vault.sync_resolve", "vault.sync_now", "vault.match", "vault.touch", "vault.patch":
 		return c.vaultCall(method, paramsJSON)
 	default:
+		if isSSHMethod(method) {
+			return c.sshCall(method, paramsJSON)
+		}
 		if isNotesMethod(method) {
 			return c.notesCall(method, paramsJSON)
 		}

@@ -405,6 +405,12 @@ Android：`"listen": false`。`db_key_b64` 由壳从 DPAPI/Keystore 取出后传
 {"type":"update.progress","received":1048576,"total":15000000}
 {"type":"update.ready","version_code":12,"version_name":"0.1.12","path":"…","mandatory":false}
 {"type":"update.error","code":"HASH_MISMATCH","message":"…"}
+{"type":"vault.locked","reason":"idle|user|session|suspend"}
+{"type":"ssh.agent","state":"listening|stopped|conflict|error","pipe":"…","error":""}      // SSH Agent，见 vault-api.md §3.9
+{"type":"ssh.keys","state":"loaded|grace|cleared|expired","count":2,"keys_state":"grace","reason":"idle","expires_at":1790000000}
+{"type":"ssh.used","fingerprint":"SHA256:…","title":"GitHub","client":[…],"host":"github.com","kind":"userauth","result":"signed",…}
+{"type":"ssh.refused","reason":"forwarding|no_keys|unknown_key|error",…}
+{"type":"ssh.keys_needed","client":[…]}
 ```
 
 敏感事件的 `clip.received` 对 UI 层的行为约束由壳实现：通知不显示 `text`。

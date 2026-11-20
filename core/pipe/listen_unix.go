@@ -40,6 +40,10 @@ func (u *unixListener) Close() error {
 	return err
 }
 
+// ClientPID is not implemented for Unix sockets yet (macOS needs
+// LOCAL_PEERPID, Linux SO_PEERCRED).
+func ClientPID(c io.ReadWriteCloser) (uint32, bool) { return 0, false }
+
 // Dial connects to a control socket.
 func Dial(path string) (io.ReadWriteCloser, error) {
 	return net.DialTimeout("unix", path, 2*time.Second)

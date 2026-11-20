@@ -1,7 +1,7 @@
 namespace ClipBridge.Windows.Logic;
 
 /// <summary>The quick filters of the left column.</summary>
-public enum QuickFilter { All, Logins, ApiKeys, Secrets, Notes, Expiring, Trash }
+public enum QuickFilter { All, Logins, ApiKeys, Secrets, Notes, Ssh, Expiring, Trash }
 
 public enum ExpiryState { None, Ok, Soon, Expired }
 
@@ -18,6 +18,7 @@ public static class QuickFilters
         QuickFilter.ApiKeys => Strings.FilterApiKeys,
         QuickFilter.Secrets => Strings.FilterSecrets,
         QuickFilter.Notes => Strings.FilterNotes,
+        QuickFilter.Ssh => Strings.FilterSsh,
         QuickFilter.Expiring => Strings.FilterExpiring,
         QuickFilter.Trash => Strings.FilterTrash,
         _ => Strings.FilterAll,
@@ -29,6 +30,7 @@ public static class QuickFilters
         QuickFilter.ApiKeys => EntryKinds.ApiKey,
         QuickFilter.Secrets => EntryKinds.Secret,
         QuickFilter.Notes => EntryKinds.Note,
+        QuickFilter.Ssh => EntryKinds.Ssh,
         _ => "",
     };
 

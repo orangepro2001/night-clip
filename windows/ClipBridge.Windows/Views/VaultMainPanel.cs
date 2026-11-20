@@ -66,6 +66,10 @@ internal sealed class VaultMainPanel : Grid
         menu.Items.Add(MenuItem(Strings.BtnImport, ImportAsync));
         menu.Items.Add(MenuItem(Strings.BtnExport, () => ExportWindow.ShowAsync(Owner, _shell)));
         menu.Items.Add(new Separator());
+        menu.Items.Add(MenuItem(Strings.SshMenuImport, ImportSshAsync));
+        menu.Items.Add(MenuItem(Strings.SshMenuGenerate, GenerateSshAsync));
+        menu.Items.Add(MenuItem(Strings.SshMenuMigrate, MigrateSshAsync));
+        menu.Items.Add(new Separator());
         menu.Items.Add(MenuItem(Strings.BtnChangeMaster, () => ChangeMasterWindow.ShowAsync(Owner, _shell)));
         menu.Items.Add(MenuItem(Strings.BtnVaultSettings, SettingsAsync));
         more.Flyout = menu;
@@ -168,6 +172,7 @@ internal sealed class VaultMainPanel : Grid
         QuickFilter.ApiKeys => AppIcons.Key,
         QuickFilter.Secrets => AppIcons.Shield,
         QuickFilter.Notes => AppIcons.Of(IconKind.FileText),
+        QuickFilter.Ssh => AppIcons.Terminal,
         QuickFilter.Expiring => AppIcons.Of(IconKind.Calendar),
         QuickFilter.Trash => AppIcons.Of(IconKind.Trash),
         _ => AppIcons.Of(IconKind.Layers),
@@ -372,10 +377,38 @@ internal sealed class VaultMainPanel : Grid
     private async Task NewAsync()
     {
         if (_filter == QuickFilter.Trash) return;
+        if (_filter == QuickFilter.Ssh)
+        {
+            // SSH keys are imported or generated, not typed into the entry editor.
+            var choose = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedLeft };
+            choose.Items.Add(MenuItem(Strings.SshMenuImport, ImportSshAsync));
+            choose.Items.Add(MenuItem(Strings.SshMenuGenerate, GenerateSshAsync));
+            choose.Items.Add(MenuItem(Strings.SshMenuMigrate, MigrateSshAsync));
+            choose.ShowAt(_newButton);
+            return;
+        }
         var id = await EntryEditorWindow.ShowAsync(Owner, _shell, _groups, "", _groupId, QuickFilters.KindOf(_filter));
         if (id is null) return;
         await JumpToAsync(id); // the new entry may not match the current filter: show everything and select it
         _shell.ShowStatus(Strings.EntrySaved, StatusKind.Success);
+    }
+
+    private async Task ImportSshAsync()
+    {
+        var n = await SshImportWindow.ShowAsync(Owner, _shell, _groupId);
+        if (n > 0) await ReloadAsync(SelectedId);
+    }
+
+    private async Task GenerateSshAsync()
+    {
+        var id = await SshGenerateWindow.ShowAsync(Owner, _shell, _groupId);
+        if (id is not null) await JumpToAsync(id);
+    }
+
+    private async Task MigrateSshAsync()
+    {
+        await SshMigrateWindow.ShowAsync(Owner, _shell);
+        await ReloadAsync(SelectedId);
     }
 
     private async Task EditAsync()

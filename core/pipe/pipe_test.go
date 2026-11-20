@@ -151,6 +151,10 @@ func TestOnlyWhitelistedMethodsAreReachable(t *testing.T) {
 		if strings.HasPrefix(m, "notes.") {
 			t.Errorf("%s must never be allowed over the pipe", m)
 		}
+		// nor are SSH keys (docs/adr/009-ssh-agent.md): the agent has its own pipe and only signs
+		if strings.HasPrefix(m, "ssh.") {
+			t.Errorf("%s must never be allowed over the pipe", m)
+		}
 	}
 	for _, banned := range []string{"notes.list", "notes.get", "notes.create", "notes.update", "notes.delete", "notes.render", "notes.sync_now", "vault.status", "vault.unlock", "vault.list", "vault.reveal", "vault.copy", "vault.export_csv", "settings.set", "pair.begin", "pair.join", "pair.confirm", "pair.cancel", "peers.remove", "peers.update", "update.config", "shutdown"} {
 		if Allowed[banned] {

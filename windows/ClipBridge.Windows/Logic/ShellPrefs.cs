@@ -32,6 +32,14 @@ public sealed class ShellPrefs
     /// <summary>Whether the sidebar of the main window is expanded (default) or collapsed to icons.</summary>
     public bool SidebarOpen { get; set; } = true;
 
+    /// <summary>Balloons for SSH key use: "first" (the first use per program and key, the default), "all" or "off".</summary>
+    public string SshNotify { get; set; } = "first";
+
+    public static string NormalizeSshNotify(string? value) => value is "all" or "off" ? value : "first";
+
+    /// <summary>The core.sshCommand value this app set for Git, so "undo" only removes our own change.</summary>
+    public string? GitSshCommandSet { get; set; }
+
     /// <summary>"system", "light" or "dark"; anything else reads as "system".</summary>
     public static string NormalizeTheme(string? value) => value is "light" or "dark" ? value : "system";
 
@@ -61,6 +69,8 @@ public sealed class ShellPrefs
                 Theme = NormalizeTheme(JsonRead.Str(doc.RootElement, "theme")),
                 Accent = NormalizeAccent(JsonRead.Str(doc.RootElement, "accent")),
                 SidebarOpen = JsonRead.Bool(doc.RootElement, "sidebar_open", true),
+                SshNotify = NormalizeSshNotify(JsonRead.Str(doc.RootElement, "ssh_notify")),
+                GitSshCommandSet = JsonRead.Str(doc.RootElement, "git_ssh_command_set") is { Length: > 0 } g ? g : null,
             };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -84,6 +94,8 @@ public sealed class ShellPrefs
                 ["theme"] = NormalizeTheme(Theme),
                 ["accent"] = NormalizeAccent(Accent),
                 ["sidebar_open"] = SidebarOpen,
+                ["ssh_notify"] = NormalizeSshNotify(SshNotify),
+                ["git_ssh_command_set"] = GitSshCommandSet,
             });
             var path = Path.Combine(dataDir, FileName);
             var tmp = path + ".tmp";

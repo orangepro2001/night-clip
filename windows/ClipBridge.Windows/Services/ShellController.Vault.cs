@@ -20,7 +20,6 @@ internal sealed partial class ShellController
     private DispatcherTimer? _vaultClipTimer;
     private bool _systemEventsHooked;
     private bool _vaultPageVisible;
-    private volatile string? _lockReasonOverride;
     private DispatcherTimer? _keepAliveTimer;
     private DateTimeOffset _lastVaultActivity = DateTimeOffset.MinValue;
     private DateTimeOffset _lastKeepAlive = DateTimeOffset.MinValue;
@@ -119,15 +118,8 @@ internal sealed partial class ShellController
 
     private void OnVaultLockedEvent(VaultLockedEvent ev)
     {
-        // vault.lock always reports reason "user"; when the shell locked because of a session event, say so.
-        var reason = ev.Reason;
-        if (_lockReasonOverride is { } o)
-        {
-            if (reason is "user" or "") reason = o;
-            _lockReasonOverride = null;
-        }
         ClearVaultClipboardForLock();
-        try { VaultLocked?.Invoke(ev with { Reason = reason }); }
+        try { VaultLocked?.Invoke(ev); }
         catch (Exception ex) { AppLog.Error("vault locked subscriber", ex); }
     }
 
@@ -156,18 +148,19 @@ internal sealed partial class ShellController
         LockFromSystemEvent(trigger);
     }
 
-    /// <summary>Runs on the SystemEvents thread. The core call is made right here: a suspend must not outrun it.</summary>
+    /// <summary>
+    /// Runs on the SystemEvents thread. The core call is made right here: a suspend must not outrun it. It is made
+    /// even when the vault is already locked, because it also drops the SSH agent's keys (which outlive an idle lock).
+    /// </summary>
     private void LockFromSystemEvent(LockTrigger trigger)
     {
-        if (_disposed || !LockPolicy.ShouldLock(trigger)) return;
-        _lockReasonOverride = "session"; // set before the call: the vault.locked event can reach the UI thread first
+        if (_disposed || !CoreRunning || !LockPolicy.ShouldLock(trigger)) return;
         try
         {
-            if (!Vault.Lock()) _lockReasonOverride = null; // it was not unlocked: no event will come
+            Vault.Lock(LockPolicy.Reason(trigger));
         }
         catch (CoreException ex)
         {
-            _lockReasonOverride = null;
             AppLog.Write("lock on session event failed: " + ex.Code);
         }
         UiPost(ClearVaultClipboardForLock);

@@ -1,6 +1,7 @@
 # 自动更新与本机分发
 
-> 范围：Windows 与 Android 两个壳都能自动检查、下载、校验更新；安装由用户确认。更新包由**本机**（开发机）构建，托管并签名交给本机的 **release-publish** 服务（`relhub`，`https://<本机>.ts.net/release`），不依赖任何第三方服务。
+> 范围：Windows、Android、macOS 三个壳都能自动检查、下载、校验更新；安装由用户确认。更新包由开发机（`AI`，tony-ai-pc-1）构建，交给 **release-publish** 服务（`relhub`）签名和托管。
+> **2026-11-20 起服务是 moon 上公开的 `https://release.moonl.cloud`**（Caddy 反代，没有路径前缀，签名公钥与原来相同），见 §7b。在此之前是 `AI` 上只在 tailnet 内可用的 `https://tony-ai-pc-1.tail9f7f1f.ts.net/release`，那台服务已经停用；下文里写作 `https://<本机>.ts.net/release` 的地方是当时的历史记录。
 > 2026-10-28 起使用 release-publish，取代项目自带的 `cbdist`（`/clipbridge`）。迁移过程与已装设备如何过渡见 §7；把这次接入当作可复用方法看，见 [release-publish-integration.md](release-publish-integration.md)。
 > GitHub 上的 `nightly` 发布是功能全部完成之后的事，见 §10。
 
@@ -120,8 +121,9 @@ relhub import clipbridge -from ~/.local/share/clipbridge/releases
 
 # 4) Android 签名密钥与 ~/.config/clipbridge/android-signing.properties（storeFile/storePassword/keyAlias/keyPassword）
 
-# 5) 分发地址（不进仓库，因为它包含 tailnet 名）：release-publish 的基地址，含 /release
-cp release.local.env.example release.local.env   # 编辑 CB_UPDATE_URL=https://<本机>.ts.net/release
+# 5) 分发地址：2026-11-20 起是公开地址，Makefile 默认就是 https://release.moonl.cloud；
+#    release.local.env 里只放上传用的 RELHUB_URL 和只能发布 clipbridge 的 RELHUB_TOKEN（见 §7b）
+cp release.local.env.example release.local.env   # 填 RELHUB_TOKEN，chmod 600
 ```
 
 每次发布：
@@ -153,6 +155,29 @@ scripts/release-local.sh --notes "更新说明"           # 预检 → 构建两
 ### 每个阶段性功能都发版
 
 约定：一个阶段性功能完成后依次 `git commit` → `git push` → `scripts/release-local.sh --notes "…"`。版本号是提交数，设备上已安装的应用会在约 1 秒内收到新版本并自动下载，Android 通知栏 / Windows 任务栏闪烁提示，点击即可安装。
+
+## 7b. 2026-11-20：迁到 release.moonl.cloud
+
+- **服务**：moon（srv2178025）上的 `release-publish.service`，Caddy 在 `https://release.moonl.cloud` 根路径反代，数据在 `/var/lib/release-publish`，配置 `/etc/release-publish/env`。签名公钥与 `AI` 上的旧服务相同（key id `f5faa9f9858b789f`），所以 `core/update/keys.go` 不用改。这台服务上的应用和版本是它自己的，不与别处镜像。
+- **注册与令牌**（在 moon 上做一次，已于 2026-11-20 完成）：
+
+  ```sh
+  relhub app create -id clipbridge -name ClipBridge -desc "…" -data /var/lib/release-publish
+  relhub token create -name clipbridge-release -app clipbridge -data /var/lib/release-publish   # 只能发布 clipbridge
+  ```
+
+  令牌只写进构建机（`AI`）上 git 忽略的 `release.local.env`（`RELHUB_URL=https://release.moonl.cloud`、`RELHUB_TOKEN=…`，权限 600），不进仓库、不放 CI。
+- **发布**：仍在 `AI` 上 `scripts/release-local.sh --notes "…"`。脚本把 `RELHUB_URL` 默认设成更新地址，远端服务要求有 `RELHUB_TOKEN`，并用编译进 App 的公钥（`RELHUB_KEYS`）核对读回的清单；最后照旧用真实核心客户端从公开地址下载比对。
+- **已装设备**：≤ 0.1.110 的安装把 `AI` 的 tailnet 地址编译在里面，而那台服务和 `AI` 上的 tailscale 都已停用，所以它们收不到任何更新，也**不做桥接**（用户 2026-11-20 的决定）。每台设备手动装一次新版即可：
+
+  | 平台 | 下载 |
+  | --- | --- |
+  | Windows | `https://release.moonl.cloud/v1/apps/clipbridge/windows/latest/download`，解压覆盖原安装目录（或解压到新目录后删掉旧的） |
+  | Android | `https://release.moonl.cloud/v1/apps/clipbridge/android/latest/download`，覆盖安装（签名不变，数据保留） |
+  | macOS | `https://release.moonl.cloud/v1/apps/clipbridge/macos/latest/download` |
+
+  装好之后它们只问 `release.moonl.cloud`，以后自动更新。下载页：`https://release.moonl.cloud/`。
+- **egg**（`https://release.521985.xyz`）是另一台独立的公开分发服务器，上面停在 0.1.110；不要把它当作这个项目的后备地址。
 
 ## 7. 从旧分发服务（cbdist）迁移
 

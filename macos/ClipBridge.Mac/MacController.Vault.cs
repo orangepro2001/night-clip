@@ -32,7 +32,6 @@ internal sealed partial class MacController
     private DispatcherTimer? _keepAliveTimer;
     private MacSessionWatcher? _sessionWatcher;
     private bool _vaultPageVisible;
-    private volatile string? _lockReasonOverride;
     private DateTimeOffset _lastVaultActivity = DateTimeOffset.MinValue;
     private DateTimeOffset _lastKeepAlive = DateTimeOffset.MinValue;
 
@@ -128,16 +127,9 @@ internal sealed partial class MacController
 
     private void OnVaultLockedEvent(VaultLockedEvent ev)
     {
-        // vault.lock always reports reason "user"; when the shell locked because of a session event, say so.
-        var reason = ev.Reason;
-        if (_lockReasonOverride is { } o)
-        {
-            if (reason is "user" or "") reason = o;
-            _lockReasonOverride = null;
-        }
         ClearVaultClipboardForLock();
         PurgeOpenedAttachments();
-        try { VaultLocked?.Invoke(ev with { Reason = reason }); }
+        try { VaultLocked?.Invoke(ev); }
         catch (Exception ex) { MacLog.Error("vault locked subscriber", ex); }
     }
 
@@ -145,21 +137,19 @@ internal sealed partial class MacController
     private void LockFromSystemEvent(LockTrigger trigger)
     {
         if (_disposed || !CoreRunning || !LockPolicy.ShouldLock(trigger)) return;
-        _lockReasonOverride = "session"; // set before the call: the vault.locked event can reach the UI thread first
         _ = Task.Run(() =>
         {
             try
             {
-                if (!Vault.Lock()) _lockReasonOverride = null; // it was not unlocked: no event will come
+                Vault.Lock(LockPolicy.Reason(trigger)); // also drops the SSH agent's keys when the vault was already locked
             }
             catch (CoreException ex)
             {
-                _lockReasonOverride = null;
                 MacLog.Write("lock on session event failed: " + ex.Code);
             }
             catch (Exception ex) when (ex is InvalidOperationException or ObjectDisposedException)
             {
-                _lockReasonOverride = null;
+                // the core is shutting down
             }
             UiPost(ClearVaultClipboardForLock);
         });

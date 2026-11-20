@@ -64,7 +64,17 @@ public sealed record EntryDetail(
         JsonRead.Bool(e, "has_password"),
         JsonRead.Arr(e, "attachments").Select(a => new AttachmentInfo(JsonRead.Str(a, "name"), JsonRead.Long(a, "size"))).ToList(),
         (int)JsonRead.Long(e, "history"), JsonRead.Long(e, "created_at"),
-        PasswordStrength.FromJson(JsonRead.Obj(e, "password_strength")));
+        PasswordStrength.FromJson(JsonRead.Obj(e, "password_strength")))
+    {
+        Ssh = JsonRead.Obj(e, "ssh") is { ValueKind: JsonValueKind.Object } s ? SshKeyInfo.FromJson(s) : null,
+    };
+
+    /// <summary>For SSH key entries: the key's public half and state (null for other entries).</summary>
+    public SshKeyInfo? Ssh { get; init; }
+
+    /// <summary>Attachments other than the SSH key and its KeeAgent.settings, which the SSH section shows instead.</summary>
+    public IReadOnlyList<AttachmentInfo> OtherAttachments => Ssh is null ? Attachments
+        : Attachments.Where(a => a.Name != "KeeAgent.settings" && a.Name != Ssh.KeyAttachment).ToList();
 }
 
 public sealed record GroupInfo(string Id, string ParentId, string Name, string Path, int Entries, bool IsTrash)

@@ -127,7 +127,33 @@ func (l *pipeListener) Accept() (io.ReadWriteCloser, error) {
 		_ = syscall.CloseHandle(h)
 		return nil, errors.New("listener closed")
 	}
+	// Create the next instance right away: between this Accept and the next
+	// one a second client would otherwise find no instance and fail (OpenSSH
+	// opens the agent pipe once per connection, often several in a row).
+	if next, err := l.newInstance(); err == nil {
+		l.mu.Lock()
+		if l.done || l.pending != 0 {
+			_ = syscall.CloseHandle(next)
+		} else {
+			l.pending = next
+		}
+		l.mu.Unlock()
+	}
 	return &pipeConn{File: os.NewFile(uintptr(h), l.name), h: h}, nil
+}
+
+// ClientPID returns the process id of the client at the other end of a
+// connection returned by Accept.
+func ClientPID(c io.ReadWriteCloser) (uint32, bool) {
+	pc, ok := c.(*pipeConn)
+	if !ok {
+		return 0, false
+	}
+	var pid uint32
+	if r, _, _ := procGetNamedPipeClientProcessId.Call(uintptr(pc.h), uintptr(unsafe.Pointer(&pid))); r == 0 {
+		return 0, false
+	}
+	return pid, true
 }
 
 // Close stops accepting. A blocked ConnectNamedPipe is woken by connecting once.
@@ -190,8 +216,9 @@ func (c *pipeConn) Close() error {
 }
 
 var (
-	procCancelIoEx = kernel32.NewProc("CancelIoEx")
-	procDisconnect = kernel32.NewProc("DisconnectNamedPipe")
+	procGetNamedPipeClientProcessId = kernel32.NewProc("GetNamedPipeClientProcessId")
+	procCancelIoEx                  = kernel32.NewProc("CancelIoEx")
+	procDisconnect                  = kernel32.NewProc("DisconnectNamedPipe")
 )
 
 func disconnect(h syscall.Handle) error {

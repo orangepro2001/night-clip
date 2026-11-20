@@ -8,7 +8,7 @@ plugins {
 
 // Release identity comes from scripts/version.sh through the environment (Makefile target
 // dist-android). A plain build has code 0, which keeps self-update off. The update server URL
-// is deliberately not in the repository: it comes from the git-ignored release.local.env.
+// comes from the Makefile (https://release.moonl.cloud unless release.local.env overrides it).
 val cbVersionCode = (System.getenv("CB_VERSION_CODE") ?: "0").toLong()
 val cbVersionName = System.getenv("CB_VERSION_NAME") ?: "0.0.0-dev"
 val cbUpdateUrl = System.getenv("CB_UPDATE_URL") ?: ""
