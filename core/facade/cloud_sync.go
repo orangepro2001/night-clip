@@ -49,6 +49,7 @@ type cloudSync struct {
 
 	mu      sync.Mutex // serializes sync against enrollment and disconnect
 	failure string
+	pair    *syncPair
 }
 
 func newCloudSync(core *Core, base string) *cloudSync {
@@ -275,6 +276,10 @@ func (s *cloudSync) apply(b *syncBinding, open *vault.Vault, token string, remot
 }
 
 func (s *cloudSync) enable(mode, key string) (*syncBinding, error) {
+	return s.enableFor(mode, key, "")
+}
+
+func (s *cloudSync) enableFor(mode, key, expectedSubject string) (*syncBinding, error) {
 	if mode != "create" && mode != "join" {
 		return nil, syncError("INVALID", "choose create or join")
 	}
@@ -282,7 +287,7 @@ func (s *cloudSync) enable(mode, key string) (*syncBinding, error) {
 	if open == nil {
 		return nil, vault.ErrLocked
 	}
-	subject, token, err := s.core.account.syncCredentials(s.ctx, "", false)
+	subject, token, err := s.core.account.syncCredentials(s.ctx, expectedSubject, false)
 	if err != nil {
 		return nil, err
 	}
@@ -359,6 +364,8 @@ func (c *Core) cloudCall(method, params string) (any, error) {
 		return nil, publicSyncError(err)
 	}
 	switch method {
+	case "sync.pair_start", "sync.pair_prepare", "sync.pair_status", "sync.pair_approve", "sync.pair_cancel":
+		return s.pairCall(method, params, b)
 	case "sync.status":
 		return s.view(b), nil
 	case "sync.enable":

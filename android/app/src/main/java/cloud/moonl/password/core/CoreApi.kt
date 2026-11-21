@@ -34,6 +34,12 @@ data class SyncStatus(val enabled: Boolean = false, val lastSync: Long = 0, val 
     }
 }
 
+data class PairStatus(val state: String, val code: String = "", val device: String = "", val error: String = "") {
+    companion object {
+        fun from(o: JSONObject) = PairStatus(o.optString("state"), o.optString("code"), o.optString("device"))
+    }
+}
+
 /**
  * Type-safe wrapper over [CoreHost.call] (api-spec §7.3 and shell-guide §2) for everything that is not the vault
  * ([VaultApi]). All functions suspend off the main thread.
@@ -57,6 +63,10 @@ object CoreApi {
     suspend fun syncNow() = run("sync.now", parse = SyncStatus::from)
     suspend fun syncKey() = run("sync.recovery_key") { it.optString("key") }
     suspend fun syncDisconnect() = run("sync.disconnect", parse = SyncStatus::from)
+    suspend fun pairBegin(requester: Boolean) = run(if (requester) "sync.pair_start" else "sync.pair_prepare", parse = PairStatus::from)
+    suspend fun pairStatus() = run("sync.pair_status", parse = PairStatus::from)
+    suspend fun pairApprove(code: String) = run("sync.pair_approve", JSONObject().put("code", code), PairStatus::from)
+    suspend fun pairCancel() = run("sync.pair_cancel") { }
 
     suspend fun setSetting(key: String, value: String) =
         run("settings.set", JSONObject().put("key", key).put("value", value)) { }

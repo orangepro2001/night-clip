@@ -12,6 +12,7 @@ import cloud.moonl.password.core.CoreApi
 import cloud.moonl.password.core.CoreEvent
 import cloud.moonl.password.core.CoreHost
 import cloud.moonl.password.core.CoreState
+import cloud.moonl.password.core.PairStatus
 import cloud.moonl.password.core.SyncStatus
 import cloud.moonl.password.platform.VaultClipboard
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -22,6 +23,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -36,6 +39,11 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val sync = _sync.asStateFlow()
     private val _syncBusy = MutableStateFlow(false)
     val syncBusy = _syncBusy.asStateFlow()
+    private val _pair = MutableStateFlow<PairStatus?>(null)
+    val pair = _pair.asStateFlow()
+    private var pairJob: Job? = null
+    var pairRequester = false
+        private set
 
     private val _deviceName = MutableStateFlow("")
     val deviceName: StateFlow<String> = _deviceName.asStateFlow()
@@ -86,6 +94,56 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun joinSync(key: String) = runSync { CoreApi.syncEnable("join", key) }
     fun syncNow() = runSync { CoreApi.syncNow() }
     fun disconnectSync() = runSync { CoreApi.syncDisconnect() }
+
+    fun beginPair(requester: Boolean) {
+        if (_pair.value != null) return
+        pairRequester = requester
+        _pair.value = PairStatus("starting")
+        pairJob = viewModelScope.launch {
+            val start = CoreApi.pairBegin(requester)
+            if (acceptPair(start)) pollPair()
+        }
+    }
+
+    fun approvePair(code: String) {
+        if (_pair.value?.state != "compare") return
+        pairJob?.cancel()
+        _pair.value = PairStatus("starting")
+        pairJob = viewModelScope.launch {
+            if (acceptPair(CoreApi.pairApprove(code))) pollPair()
+        }
+    }
+
+    fun cancelPair() {
+        if (_pair.value == null) return
+        val finished = _pair.value?.state in setOf("sent", "connected")
+        _pair.value = null
+        pairJob?.cancel()
+        if (!finished) viewModelScope.launch { CoreApi.pairCancel() }
+    }
+
+    private suspend fun pollPair() {
+        while (true) {
+            delay(2000)
+            val result = CoreApi.pairStatus()
+            if (result is ApiResult.Fail && result.code == "SYNC_NETWORK") continue
+            if (!acceptPair(result)) return
+        }
+    }
+
+    private fun acceptPair(result: ApiResult<PairStatus>): Boolean {
+        return when (result) {
+            is ApiResult.Ok -> {
+                _pair.value = result.value
+                if (result.value.state == "connected") refreshSync()
+                result.value.state in setOf("waiting", "compare")
+            }
+            is ApiResult.Fail -> {
+                _pair.value = PairStatus("error", error = result.code)
+                false
+            }
+        }
+    }
 
     private fun runSync(action: suspend () -> ApiResult<SyncStatus>) {
         if (_syncBusy.value) return
@@ -195,5 +253,9 @@ internal fun syncErrorText(code: String): Int = when (code) {
     "SYNC_KEY" -> R.string.sync_bad_key
     "SYNC_CONFLICT" -> R.string.sync_conflict
     "SYNC_DATA" -> R.string.sync_invalid
+    "PAIR_MISSING" -> R.string.pair_missing
+    "PAIR_BUSY" -> R.string.pair_busy
+    "PAIR_INVALID", "PAIR_STATE" -> R.string.pair_expired
+    "PAIR_CONFIRM" -> R.string.pair_check_code
     else -> R.string.sync_network_error
 }

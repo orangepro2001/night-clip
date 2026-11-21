@@ -23,6 +23,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -170,8 +171,13 @@ private fun VaultSyncCard(vm: SettingsViewModel, signedIn: Boolean) {
     val sync by vm.sync.collectAsStateWithLifecycle()
     val busy by vm.syncBusy.collectAsStateWithLifecycle()
     val unlocked by VaultSession.unlocked.collectAsStateWithLifecycle()
+    val pairing by vm.pair.collectAsStateWithLifecycle()
     var showJoin by remember { mutableStateOf(false) }
     var showDisconnect by remember { mutableStateOf(false) }
+    val requester = vm.pairRequester
+    LaunchedEffect(unlocked, signedIn) {
+        if (!unlocked || !signedIn) vm.cancelPair()
+    }
 
     SectionCard(stringResource(R.string.sync_title)) {
         Text(stringResource(R.string.sync_description), style = MaterialTheme.typography.bodySmall)
@@ -185,12 +191,49 @@ private fun VaultSyncCard(vm: SettingsViewModel, signedIn: Boolean) {
         })
         if (sync.enabled) {
             Button(enabled = !busy && unlocked && signedIn, onClick = vm::syncNow) { Text(stringResource(R.string.sync_now)) }
+            OutlinedButton(enabled = !busy && unlocked && signedIn, onClick = { vm.beginPair(false) }) {
+                Text(stringResource(R.string.pair_approve_title))
+            }
             OutlinedButton(enabled = !busy && unlocked, onClick = vm::copySyncKey) { Text(stringResource(R.string.sync_copy_key)) }
             TextButton(enabled = !busy, onClick = { showDisconnect = true }) { Text(stringResource(R.string.sync_disconnect)) }
         } else {
             Button(enabled = !busy && unlocked && signedIn, onClick = vm::createSync) { Text(stringResource(R.string.sync_create)) }
-            OutlinedButton(enabled = !busy && unlocked && signedIn, onClick = { showJoin = true }) { Text(stringResource(R.string.sync_join)) }
+            OutlinedButton(enabled = !busy && unlocked && signedIn, onClick = { vm.beginPair(true) }) {
+                Text(stringResource(R.string.pair_start_title))
+            }
+            TextButton(enabled = !busy && unlocked && signedIn, onClick = { showJoin = true }) { Text(stringResource(R.string.sync_join)) }
         }
+    }
+    pairing?.takeIf { unlocked && signedIn }?.let { current ->
+        AlertDialog(
+            onDismissRequest = vm::cancelPair,
+            title = { Text(stringResource(if (requester) R.string.pair_start_title else R.string.pair_approve_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(when (current.state) {
+                        "starting" -> stringResource(R.string.pair_starting)
+                        "waiting" -> stringResource(if (requester) R.string.pair_wait_old else R.string.pair_wait_new)
+                        "compare" -> if (requester) stringResource(R.string.pair_compare_new)
+                            else stringResource(R.string.pair_compare_old, current.device)
+                        "connected" -> stringResource(R.string.pair_connected)
+                        "sent" -> stringResource(R.string.pair_sent)
+                        "error" -> stringResource(syncErrorText(current.error))
+                        else -> stringResource(R.string.pair_expired)
+                    })
+                    if (current.code.isNotEmpty()) Text(current.code, style = MaterialTheme.typography.headlineLarge, fontFamily = FontFamily.Monospace)
+                }
+            },
+            confirmButton = {
+                if (!requester && current.state == "compare") {
+                    TextButton(onClick = { vm.approvePair(current.code) }) { Text(stringResource(R.string.pair_confirm)) }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = vm::cancelPair) {
+                    Text(stringResource(if (current.state in setOf("starting", "waiting", "compare")) R.string.pair_cancel else R.string.close))
+                }
+            },
+        )
     }
     if (showJoin && unlocked && signedIn) {
         var key by remember { mutableStateOf("") }

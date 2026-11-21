@@ -104,10 +104,8 @@ func Put(ctx context.Context, hc *http.Client, base, token, subject, expected, r
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/octet-stream")
-	seed := sha256.Sum256([]byte("MoonPassword vault sync write key v1:" + recoveryKey))
-	key := ed25519.NewKeyFromSeed(seed[:])
+	key := vaultWriteKey(recoveryKey)
 	defer clear(key)
-	clear(seed[:])
 	req.Header.Set(writeKeyHeader, base64.RawURLEncoding.EncodeToString(key[32:]))
 	req.Header.Set(signatureHeader, base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, writeMessage(subject, expected, version(data)))))
 	if expected == "" {
@@ -152,6 +150,7 @@ type Server struct {
 	verify func(context.Context, string) (string, error)
 	mu     sync.Mutex
 	slots  chan struct{}
+	pairs  pairRelay
 }
 
 func NewServer(dir string, verify func(context.Context, string) (string, error)) (*Server, error) {
@@ -167,13 +166,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if r.URL.Path != VaultPath {
+	if r.URL.Path != VaultPath && r.URL.Path != PairPath {
 		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set(protocolHeader, "1")
-	if r.Method != http.MethodGet && r.Method != http.MethodPut {
-		w.Header().Set("Allow", "GET, PUT")
+	allow := "GET, PUT"
+	allowed := r.Method == http.MethodGet || r.Method == http.MethodPut
+	if r.URL.Path == PairPath {
+		allow, allowed = "POST", r.Method == http.MethodPost
+	}
+	if !allowed {
+		w.Header().Set("Allow", allow)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
@@ -196,6 +200,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	account := sha256.Sum256([]byte(sub))
 	path := filepath.Join(s.dir, hex.EncodeToString(account[:])+".kdbx")
+	if r.URL.Path == PairPath {
+		s.pairHTTP(w, r, sub, path)
+		return
+	}
 	if r.Method == http.MethodGet {
 		s.get(w, r, path)
 		return

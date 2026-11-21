@@ -8,8 +8,8 @@ MoonPassword grew out of ClipBridge (clipboard sync over a Tailscale tailnet). C
 tailnet pairing were removed in 2026-11; the old design documents are kept in
 [`docs/archive-clipbridge/`](docs/archive-clipbridge). On Windows and Android, Settings offers Moon SSO sign-in
 and automatic encrypted vault sync. Unlock the local vault with its own master password. Create the
-cloud vault on the first device and copy its sync key. On a second device, sign into the same account,
-unlock its local vault and connect to the existing cloud vault with that key. See [vault sync](docs/vault-sync.md).
+cloud vault on the first device. On a second device, sign into the same account, unlock its local vault
+and compare the six-digit code on both devices before approving on the first. See [vault sync](docs/vault-sync.md).
 
 ```text
 core/                         Go module `moonpassword/core`: all business logic

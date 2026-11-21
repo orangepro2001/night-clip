@@ -85,7 +85,32 @@ func TestCloudSyncJoinsIndependentVaultsAndMergesOfflineEdits(t *testing.T) {
 	if code := phone.errorCode("sync.enable", map[string]any{"mode": "join", "key": wrong}); code != "SYNC_KEY" {
 		t.Fatalf("wrong recovery key: %s", code)
 	}
-	phone.call("sync.enable", map[string]any{"mode": "join", "key": key})
+	if start := phone.call("sync.pair_start", nil); start["state"] != "waiting" || start["code"] != nil {
+		t.Fatalf("pair request: %v", start)
+	}
+	if result := other.call("sync.pair_status", nil); result["state"] != "idle" {
+		t.Fatalf("cross-account pairing: %v", result)
+	}
+	pc.call("sync.pair_prepare", nil)
+	newDevice := phone.call("sync.pair_status", nil)
+	old := pc.call("sync.pair_status", nil)
+	code, _ := newDevice["code"].(string)
+	if len(code) != 6 || old["code"] != code || old["device"] != "Phone" {
+		t.Fatalf("devices did not derive the same code: %v / %v", newDevice, old)
+	}
+	if failure := pc.errorCode("sync.pair_approve", map[string]any{"code": "wrong"}); failure != "PAIR_CONFIRM" {
+		t.Fatalf("bad comparison code was accepted: %s", failure)
+	}
+	if poll := phone.call("sync.pair_status", nil); poll["state"] != "compare" {
+		t.Fatalf("key released without approval: %v", poll)
+	}
+	pc.call("sync.pair_approve", map[string]any{"code": code})
+	if result := phone.call("sync.pair_status", nil); result["state"] != "connected" {
+		t.Fatalf("pairing did not join the existing vault: %v", result)
+	}
+	if phone.call("sync.recovery_key", nil)["key"] != key || pc.call("sync.recovery_key", nil)["key"] != key {
+		t.Fatal("pairing changed the existing recovery key")
+	}
 	if !titles(phone)["First device"] {
 		t.Fatal("the Android vault did not receive the Windows entry")
 	}
