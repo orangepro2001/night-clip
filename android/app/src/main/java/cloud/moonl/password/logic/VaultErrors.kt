@@ -19,6 +19,7 @@ object VaultErrors {
             Context.EXPORT -> "目标文件已存在，请换一个文件名"
             else -> "密码库已存在"
         }
+        "BITWARDEN_ENCRYPTED" -> "这是加密的 Bitwarden 导出。请在 Bitwarden 重新导出未加密的 .json 文件。"
         "VAULT_UNSUPPORTED" -> "这个库的加密参数不受支持或不安全。"
         "VAULT_NOT_EMPTY" -> "这个分组里还有条目或子分组，请先删除或移走它们"
         "VAULT_REVIEW" -> when (context) {

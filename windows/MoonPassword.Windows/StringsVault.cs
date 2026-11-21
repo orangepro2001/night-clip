@@ -301,14 +301,20 @@ public static partial class Strings
 
     // ---- import / export --------------------------------------------------------------
     public const string ImportTitle = "导入";
-    public const string ImportKdbx = "KDBX 文件（KeePassXC / KeePass）";
-    public const string ImportCsv = "CSV 文件（浏览器、Bitwarden、1Password、LastPass…）";
+    public const string ImportKdbx = "KeePass KDBX";
+    public const string ImportCsv = "CSV 文件";
+    public const string ImportBitwarden = "Bitwarden JSON";
+    public const string ImportBitwardenNote = "请选择 Bitwarden 导出的未加密 .json 文件。导入并核对后请删除明文文件。";
+    public const string ErrBitwardenEncrypted = "这是加密的 Bitwarden 导出。请在 Bitwarden 重新导出未加密的 .json 文件。";
     public const string ImportKdbxPassword = "这个文件的主密码";
     public const string ImportChooseFile = "选择文件…";
     public const string ImportNoFile = "还没有选择文件";
     public const string ImportCsvNote = "CSV 是明文文件。导入完成后建议把它安全删除。";
     public const string BtnImportNow = "导入";
     public static string ImportedCsv(int added, int skipped) => $"已导入 {added} 个条目，跳过 {skipped} 行。";
+    public static string ImportedBitwarden(int added, int skipped, int passkeysSkipped) =>
+        $"已导入 {added} 个条目，跳过 {skipped} 个条目" +
+        (passkeysSkipped == 0 ? "。" : $"，另跳过 {passkeysSkipped} 个通行密钥。");
     public const string ImportedKdbx = "导入完成";
     public const string ExportTitle = "导出";
     public const string ExportKdbx = "加密的 KDBX 文件（推荐）";

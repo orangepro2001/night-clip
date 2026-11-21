@@ -123,53 +123,7 @@ func (v *Vault) ImportCSV(in io.Reader) (added, skipped int, err error) {
 		}
 		return ""
 	}
-	groups := map[string]string{}
-	groupCount := v.countGroups()
-	groupFor := func(path string) string {
-		if path == "" {
-			return ""
-		}
-		if id, ok := groups[path]; ok {
-			return id
-		}
-		parent := ""
-		var cur []string
-		for _, part := range strings.Split(path, "/") {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-			if len(cur) >= maxGroupDepth-1 || groupCount >= maxGroups { // too deep or too many: file the rest in the last group
-				break
-			}
-			cur = append(cur, part)
-			key := strings.Join(cur, "/")
-			if id, ok := groups[key]; ok {
-				parent = id
-				continue
-			}
-			pg := v.root()
-			if parent != "" {
-				pg, _, _ = v.findGroup(parent)
-			}
-			// reuse an existing group of that name
-			found := ""
-			for i := range pg.Groups {
-				if pg.Groups[i].Name == part && uuidHex(pg.Groups[i].UUID) != binID(v.db) {
-					found = uuidHex(pg.Groups[i].UUID)
-				}
-			}
-			if found == "" {
-				ng := v.newGroupNamed(part)
-				pg.Groups = append(pg.Groups, ng)
-				groupCount++
-				found = uuidHex(ng.UUID)
-			}
-			groups[key] = found
-			parent = found
-		}
-		return parent
-	}
+	groupFor := v.importFolderLookup()
 	for {
 		rec, rerr := r.Read()
 		if rerr == io.EOF {
@@ -219,4 +173,55 @@ func (v *Vault) ImportCSV(in io.Reader) (added, skipped int, err error) {
 		return 0, skipped, nil
 	}
 	return added, skipped, v.commit("import")
+}
+
+// importFolderLookup reuses existing folders and creates missing paths. The caller holds v.mu.
+func (v *Vault) importFolderLookup() func(string) string {
+	groups := map[string]string{}
+	groupCount := v.countGroups()
+	return func(path string) string {
+		if path == "" {
+			return ""
+		}
+		if id, ok := groups[path]; ok {
+			return id
+		}
+		parent := ""
+		var cur []string
+		for _, part := range strings.Split(path, "/") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if len(cur) >= maxGroupDepth-1 || groupCount >= maxGroups { // too deep or too many: file the rest in the last group
+				break
+			}
+			cur = append(cur, part)
+			key := strings.Join(cur, "/")
+			if id, ok := groups[key]; ok {
+				parent = id
+				continue
+			}
+			pg := v.root()
+			if parent != "" {
+				pg, _, _ = v.findGroup(parent)
+			}
+			// reuse an existing group of that name
+			found := ""
+			for i := range pg.Groups {
+				if pg.Groups[i].Name == part && uuidHex(pg.Groups[i].UUID) != binID(v.db) {
+					found = uuidHex(pg.Groups[i].UUID)
+				}
+			}
+			if found == "" {
+				ng := v.newGroupNamed(part)
+				pg.Groups = append(pg.Groups, ng)
+				groupCount++
+				found = uuidHex(ng.UUID)
+			}
+			groups[key] = found
+			parent = found
+		}
+		return parent
+	}
 }

@@ -135,6 +135,9 @@ object VaultApi {
 
     suspend fun importCsv(path: String) = run("vault.import_csv", JSONObject().put("path", path), VaultParsers::csvResult)
 
+    suspend fun importBitwardenJson(path: String) =
+        run("vault.import_bitwarden_json", JSONObject().put("path", path), VaultParsers::bitwardenResult)
+
     /** [confirm] is the current master credential, [exportCreds] the new ones that encrypt the exported file. */
     suspend fun exportFile(path: String, confirm: VaultCreds, exportCreds: VaultCreds, kdf: String?): ApiResult<Unit> {
         val p = JSONObject().put("path", path)

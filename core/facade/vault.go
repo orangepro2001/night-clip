@@ -688,7 +688,7 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 			return rerr
 		})
 		return map[string]any{"stats": st}, err
-	case "vault.import_csv":
+	case "vault.import_csv", "vault.import_bitwarden_json":
 		var p struct {
 			Path string `json:"path"`
 		}
@@ -700,6 +700,13 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 			return nil, proto.Errorf(proto.CodeInvalid, "cannot read that file")
 		}
 		defer f.Close()
+		if method == "vault.import_bitwarden_json" {
+			result, err := v.ImportBitwardenJSON(f)
+			if errors.Is(err, vault.ErrBitwardenEncrypted) {
+				return nil, proto.Errorf("BITWARDEN_ENCRYPTED", "export Bitwarden as unencrypted JSON")
+			}
+			return result, err
+		}
 		added, skipped, err := v.ImportCSV(f)
 		return map[string]any{"added": added, "skipped": skipped}, err
 	case "vault.export_file", "vault.export_csv":

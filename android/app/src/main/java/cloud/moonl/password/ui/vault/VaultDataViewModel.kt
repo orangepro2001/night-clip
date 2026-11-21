@@ -3,6 +3,7 @@ package cloud.moonl.password.ui.vault
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.viewModelScope
+import cloud.moonl.password.R
 import cloud.moonl.password.core.ApiResult
 import cloud.moonl.password.core.BackupCheck
 import cloud.moonl.password.core.MergeStats
@@ -178,6 +179,17 @@ class VaultDataViewModel(application: Application) : VaultBaseViewModel(applicat
     fun importCsv(uri: Uri) {
         runImport(uri, "csv") { path ->
             VaultApi.importCsv(path).map { "新增 ${it.added} 条，跳过 ${it.skipped} 条" }
+        }
+    }
+
+    fun importBitwardenJson(uri: Uri) {
+        runImport(uri, "json") { path ->
+            VaultApi.importBitwardenJson(path).map {
+                val summary = app.getString(R.string.vault_import_bitwarden_result, it.added, it.skipped)
+                if (it.passkeysSkipped == 0) summary else {
+                    summary + app.getString(R.string.vault_import_bitwarden_passkeys, it.passkeysSkipped)
+                }
+            }
         }
     }
 

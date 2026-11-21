@@ -61,6 +61,9 @@ fun ImportScreen(vm: VaultViewModel, data: VaultDataViewModel, onMessage: (Strin
     val csvPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) data.importCsv(uri)
     }
+    val bitwardenPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) data.importBitwardenJson(uri)
+    }
 
     Column(Modifier.fillMaxSize()) {
         VaultTopBar(stringResource(R.string.vault_menu_import), onBack = { vm.pop() })
@@ -72,6 +75,11 @@ fun ImportScreen(vm: VaultViewModel, data: VaultDataViewModel, onMessage: (Strin
             SectionTitle(stringResource(R.string.vault_import_csv))
             HintText(stringResource(R.string.vault_import_csv_hint))
             Button(onClick = { VaultSession.expectSystemUi(); csvPicker.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "*/*")) }, enabled = !busy) {
+                Text(stringResource(R.string.vault_import_pick))
+            }
+            SectionTitle(stringResource(R.string.vault_import_bitwarden))
+            HintText(stringResource(R.string.vault_import_bitwarden_hint))
+            Button(onClick = { VaultSession.expectSystemUi(); bitwardenPicker.launch(arrayOf("*/*")) }, enabled = !busy) {
                 Text(stringResource(R.string.vault_import_pick))
             }
             if (busy) CircularProgressIndicator()

@@ -94,6 +94,10 @@ func registrable(host string) string {
 	return host
 }
 
+func isAutofillURLField(name string) bool {
+	return strings.HasPrefix(name, "url") || strings.HasPrefix(name, "kp2a_url")
+}
+
 // FindMatches returns the entries that fit a page (url) or an app (package), best first. Entries in the
 // recycle bin and notes never match.
 func (v *Vault) FindMatches(pageURL, androidPackage string) ([]Match, error) {
@@ -122,41 +126,41 @@ func (v *Vault) FindMatches(pageURL, androidPackage string) ([]Match, error) {
 			return
 		}
 		best := 0
-		if pkg != "" {
-			for _, f := range e.Fields {
-				if strings.EqualFold(f.Name, "AndroidApp") && strings.TrimSpace(f.Value) == pkg {
-					best = 4
-				}
-			}
-			if strings.TrimSpace(strings.TrimPrefix(e.URL, "androidapp://")) == pkg && strings.HasPrefix(e.URL, "androidapp://") {
+		matchedURL := e.URL
+		urls := []string{e.URL}
+		for _, f := range e.Fields {
+			if pkg != "" && strings.EqualFold(f.Name, "AndroidApp") && strings.TrimSpace(f.Value) == pkg {
 				best = 4
 			}
-		}
-		if host != "" {
-			urls := []string{e.URL}
-			for _, f := range e.Fields {
-				if n := strings.ToLower(f.Name); strings.HasPrefix(n, "url") || strings.HasPrefix(n, "kp2a_url") {
-					urls = append(urls, f.Value)
-				}
+			if isAutofillURLField(strings.ToLower(f.Name)) {
+				urls = append(urls, f.Value)
 			}
-			for _, u := range urls {
-				if strings.HasPrefix(u, "androidapp://") {
-					continue
+		}
+		for _, u := range urls {
+			if app, ok := strings.CutPrefix(u, "androidapp://"); ok {
+				if pkg != "" && strings.TrimSpace(app) == pkg {
+					best = 4
 				}
-				et, ok := parseTarget(u)
-				if !ok || et.port != page.port || !schemeAllows(page, et) {
-					continue
-				}
-				switch {
-				case et.host == host && best < 3:
-					best = 3
-				case registrable(et.host) == reg && best < 2:
-					best = 2
-				}
+				continue
+			}
+			if host == "" {
+				continue
+			}
+			et, ok := parseTarget(u)
+			if !ok || et.port != page.port || !schemeAllows(page, et) {
+				continue
+			}
+			switch {
+			case et.host == host && best < 3:
+				best, matchedURL = 3, u
+			case registrable(et.host) == reg && best < 2:
+				best, matchedURL = 2, u
 			}
 		}
 		if best > 0 {
-			out = append(out, Match{Summary: e.Summarize(), Score: best})
+			summary := e.Summarize()
+			summary.URL = matchedURL
+			out = append(out, Match{Summary: summary, Score: best})
 		}
 	}, nil)
 	sort.SliceStable(out, func(i, j int) bool {

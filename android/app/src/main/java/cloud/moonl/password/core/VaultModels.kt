@@ -113,6 +113,8 @@ data class MergeStats(
 
 data class CsvImportResult(val added: Int, val skipped: Int)
 
+data class BitwardenImportResult(val added: Int, val skipped: Int, val passkeysSkipped: Int)
+
 data class TotpCode(val code: String, val secondsLeft: Int) {
     override fun toString() = "TotpCode(secondsLeft=$secondsLeft)"
 }
@@ -251,6 +253,10 @@ object VaultParsers {
     }
 
     fun csvResult(o: JSONObject) = CsvImportResult(o.optInt("added", 0), o.optInt("skipped", 0))
+
+    fun bitwardenResult(o: JSONObject) = BitwardenImportResult(
+        o.optInt("added"), o.optInt("skipped"), o.optInt("passkeys_skipped"),
+    )
 
     fun totp(o: JSONObject) = TotpCode(o.optString("code", ""), o.optInt("seconds_left", 0))
 

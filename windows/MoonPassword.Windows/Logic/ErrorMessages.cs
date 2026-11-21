@@ -15,6 +15,7 @@ public static class ErrorMessages
         "KEY_INVALID" => Strings.ErrKeyInvalid,
         "NOT_INITIALIZED" => Strings.ErrNotInitialized,
         "METHOD_NOT_FOUND" => Strings.ErrMethodNotFound,
+        "BITWARDEN_ENCRYPTED" => Strings.ErrBitwardenEncrypted,
         "UPDATE_DISABLED" => Strings.ErrUpdateDisabled,
         "UPDATE_FAILED" => Strings.ErrUpdateFailed,
         "UPDATE_REJECTED" => Strings.ErrUpdateRejected,

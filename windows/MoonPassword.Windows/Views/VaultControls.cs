@@ -75,6 +75,7 @@ internal static class VaultUi
 
     public static readonly FilePickerFileType KdbxType = new(Strings.FileTypeKdbx) { Patterns = ["*.kdbx"] };
     public static readonly FilePickerFileType CsvType = new(Strings.FileTypeCsv) { Patterns = ["*.csv"] };
+    public static readonly FilePickerFileType BitwardenType = new(Strings.ImportBitwarden) { Patterns = ["*.json"] };
     public static readonly FilePickerFileType AnyType = new(Strings.FileTypeAll) { Patterns = ["*.*"] };
 
     /// <summary>One local file the user picks; null when cancelled.</summary>

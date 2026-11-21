@@ -187,6 +187,12 @@ public sealed class VaultApi
         return ((int)JsonRead.Long(r, "added"), (int)JsonRead.Long(r, "skipped"));
     }
 
+    public (int Added, int Skipped, int PasskeysSkipped) ImportBitwardenJson(string path)
+    {
+        var r = _core.Call("vault.import_bitwarden_json", new { path });
+        return ((int)JsonRead.Long(r, "added"), (int)JsonRead.Long(r, "skipped"), (int)JsonRead.Long(r, "passkeys_skipped"));
+    }
+
     /// <summary>A KDBX copy encrypted with <paramref name="fileCreds"/>; <paramref name="master"/> is the current master (asked again).</summary>
     public void ExportFile(string path, VaultCreds master, VaultCreds fileCreds, string kdf = "")
     {

@@ -181,6 +181,10 @@
     <string name="vault_import_kdbx_password">输入这个文件的密码（和密钥文件）。</string>
     <string name="vault_import_csv">导入 CSV</string>
     <string name="vault_import_csv_hint">支持 Chrome / Edge、Bitwarden、1Password、LastPass、KeePassXC 等常见表头。CSV 文件里的密码是明文，导入后请删除原文件。</string>
+    <string name="vault_import_bitwarden">导入 Bitwarden JSON</string>
+    <string name="vault_import_bitwarden_hint">请选择 Bitwarden 导出的未加密 .json 文件。导入并核对后请删除明文文件。</string>
+    <string name="vault_import_bitwarden_result">新增 %1$d 条，跳过 %2$d 条</string>
+    <string name="vault_import_bitwarden_passkeys">，另跳过 %1$d 个通行密钥</string>
     <string name="vault_import_pick">选择文件</string>
     <string name="vault_import_go">导入</string>
     <string name="vault_export_kdbx">导出加密副本（.kdbx）</string>

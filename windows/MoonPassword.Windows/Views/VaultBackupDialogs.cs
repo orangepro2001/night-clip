@@ -236,7 +236,7 @@ internal static class RestorePreviewWindow
     }
 }
 
-/// <summary>Import a KDBX file (with its password) or a CSV file.</summary>
+/// <summary>Import KDBX, CSV or Bitwarden JSON.</summary>
 internal static class ImportWindow
 {
     public static async Task<bool> ShowAsync(Window? owner, ShellController shell)
@@ -246,6 +246,7 @@ internal static class ImportWindow
         var kind = new SegmentedControl { Classes = { "block" } };
         kind.Items.Add(new SegmentedItem { Content = Strings.ImportKdbx });
         kind.Items.Add(new SegmentedItem { Content = Strings.ImportCsv });
+        kind.Items.Add(new SegmentedItem { Content = Strings.ImportBitwarden });
         kind.SelectedIndex = 0;
         var pathBox = new TextBox { IsReadOnly = true, PlaceholderText = Strings.ImportNoFile };
         var pick = Ui.Button(AppIcons.Of(IconKind.Folder), Strings.ImportChooseFile, () => { });
@@ -256,26 +257,33 @@ internal static class ImportWindow
         fileRow.Children.Add(pick);
         var fileField = new FormField { Label = Strings.ImportFileLabel, Content = fileRow };
         var creds = new CredsBox { Caption = Strings.ImportKdbxPassword };
-        var csvNote = new InfoBar { Severity = Severity.Warning, Message = Strings.ImportCsvNote, IsOpen = false };
+        var plaintextNote = new InfoBar { Severity = Severity.Warning, Message = Strings.ImportCsvNote, IsOpen = false };
         var error = new StatusBar();
         var go = DialogKit.Btn(Strings.BtnImportNow, 90, "primary");
         go.IsDefault = true;
         var cancel = DialogKit.Btn(Strings.BtnCancel, 90);
 
-        var panel = new StackPanel { Spacing = 14, Children = { Ui.Text(Strings.ImportTitle, "title"), kind, fileField, creds, csvNote, error, DialogKit.ButtonRow(cancel, go) } };
+        var panel = new StackPanel { Spacing = 14, Children = { Ui.Text(Strings.ImportTitle, "title"), kind, fileField, creds, plaintextNote, error, DialogKit.ButtonRow(cancel, go) } };
         var w = DialogKit.Create(shell, Strings.ImportTitle, 540, panel);
         cancel.Click += (_, _) => w.Close();
 
         bool IsKdbx() => kind.SelectedIndex == 0;
+        bool IsBitwarden() => kind.SelectedIndex == 2;
         kind.SelectionChanged += (_, _) =>
         {
             creds.IsVisible = IsKdbx();
-            csvNote.IsOpen = !IsKdbx();
+            plaintextNote.IsOpen = !IsKdbx();
+            plaintextNote.Message = IsBitwarden() ? Strings.ImportBitwardenNote : Strings.ImportCsvNote;
+            path = null;
+            pathBox.Text = null;
+            fileField.Error = null;
         };
         pick.Click += async (_, _) =>
         {
-            var chosen = await VaultUi.PickOpenFileAsync(w, Strings.ImportTitle, IsKdbx() ? VaultUi.KdbxType : VaultUi.CsvType);
-            if (chosen is null) return;
+            var format = kind.SelectedIndex;
+            var fileType = IsKdbx() ? VaultUi.KdbxType : IsBitwarden() ? VaultUi.BitwardenType : VaultUi.CsvType;
+            var chosen = await VaultUi.PickOpenFileAsync(w, Strings.ImportTitle, fileType);
+            if (chosen is null || format != kind.SelectedIndex) return;
             path = chosen;
             pathBox.Text = chosen;
             fileField.Error = null;
@@ -297,6 +305,13 @@ internal static class ImportWindow
                 go.IsEnabled = true;
                 if (!r.Ok) { error.Say(r.Error ?? Strings.ErrVaultUnexpected, false); return; }
                 message = Strings.ImportedKdbx + "\n" + StatsText.Describe(r.Value!);
+            }
+            else if (IsBitwarden())
+            {
+                var r = await shell.VaultCallAsync(a => a.ImportBitwardenJson(file));
+                go.IsEnabled = true;
+                if (!r.Ok) { error.Say(r.Error ?? Strings.ErrVaultUnexpected, false); return; }
+                message = Strings.ImportedBitwarden(r.Value.Added, r.Value.Skipped, r.Value.PasskeysSkipped);
             }
             else
             {

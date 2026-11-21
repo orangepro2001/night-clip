@@ -204,6 +204,45 @@ func TestVaultExportNeedsTheMasterPasswordAndNeverOverwrites(t *testing.T) {
 	m.call("vault.import_csv", map[string]any{"path": csv})
 }
 
+func TestVaultImportBitwardenJSON(t *testing.T) {
+	n := startNode(t, "Desk", "windows")
+	path := filepath.Join(t.TempDir(), "bitwarden.json")
+	params := map[string]any{"path": path}
+	if code := n.errorCode("vault.import_bitwarden_json", params); code != "VAULT_LOCKED" {
+		t.Fatalf("locked import = %s", code)
+	}
+	vcreate(t, n)
+	if err := os.WriteFile(path, []byte(`{"encrypted":true,"data":"ciphertext"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code := n.errorCode("vault.import_bitwarden_json", params); code != "BITWARDEN_ENCRYPTED" {
+		t.Fatalf("encrypted import = %s", code)
+	}
+	fixture := `{"encrypted":false,"items":[{"type":1,"name":"Site",
+		"login":{"uris":[{"uri":"https://example.org"},{"uri":"https://example.net"}],"fido2Credentials":[{}]},
+		"fields":[{"name":"PIN","type":1,"value":"private-fixture-value"}]}]}`
+	if err := os.WriteFile(path, []byte(fixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	result := n.call("vault.import_bitwarden_json", params)
+	if result["added"] != float64(1) || result["passkeys_skipped"] != float64(1) {
+		t.Fatalf("import = %v", result)
+	}
+	match := n.call("vault.match", map[string]any{"url": "https://example.net"})["matches"].([]any)
+	if len(match) != 1 {
+		t.Fatal("secondary URL did not match")
+	}
+	id := match[0].(map[string]any)["id"].(string)
+	p, _ := json.Marshal(map[string]any{"id": id})
+	got := n.c.Call("vault.get", string(p))
+	if strings.Contains(got, "private-fixture-value") || !strings.Contains(got, "https://example.net") {
+		t.Fatal("detail omitted the secondary URL or leaked a protected field")
+	}
+	if field := n.call("vault.reveal", map[string]any{"id": id, "field": "field:PIN"}); field["value"] != "private-fixture-value" {
+		t.Fatal("protected field value was not preserved")
+	}
+}
+
 func TestVaultBackupsAndRestoreThroughTheFacade(t *testing.T) {
 	n := startNode(t, "Desk", "windows")
 	vcreate(t, n)

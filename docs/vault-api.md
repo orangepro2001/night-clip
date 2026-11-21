@@ -114,6 +114,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `vault.restore` | `name`, `mode`, `ids?`, `credParams?` | `{stats}`。`mode`：`entries`（把列出的条目恢复成备份中的样子，当前版本进历史，已不存在的重建）、`merge`（按合并规则并入）、`replace`（整库替换为备份内容，只在当前库里的条目会丢，但仍在恢复前的快照里）。**恢复前一定先拍快照，所以恢复本身可以撤销** |
 | `vault.import_file` | `path` + 该文件的 `credParams` | `{stats}`：把另一个 KDBX 文件（KeePassXC、旧版 KDBX 3.x 都行）并入当前库 |
 | `vault.import_csv` | `path` | `{added, skipped}`；能识别 Chrome/Edge、Bitwarden、1Password、LastPass、KeePassXC 等常见表头；分组列里的 `A/B` 会建成嵌套分组 |
+| `vault.import_bitwarden_json` | `path` | 导入未加密的 Bitwarden JSON，返回 `{added, skipped, passkeys_skipped}`。主网址保存在 `url`，其他可匹配的网址保存在 `URL n` 字段。自定义字段及其保护状态随条目保存。银行卡、身份资料和 SSH 密钥保存为安全笔记。加密导出返回 `BITWARDEN_ENCRYPTED`。 |
 | `vault.export_file` | `path`, `confirm_password`（+`confirm_key_file_b64?`，当前主凭据），导出文件的 `password`/`key_file_b64`，`kdf?` | `{}`：用**另外的**凭据加密的完整副本；**不覆盖**已存在的文件（`VAULT_EXISTS`） |
 | `vault.export_csv` | `path`, `confirm_password` | `{}`：**明文**；壳必须先强警告并要求用户确认，文件权限 0600 |
 
