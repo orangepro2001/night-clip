@@ -29,15 +29,18 @@ object AutofillSetup {
 
     /** Opens the system dialog; falls back to the general settings when this device has no such dialog. */
     fun open(context: Context) {
-        val intent = intentToEnable(context).apply { if (context !is android.app.Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-        try {
-            context.startActivity(intent)
-        } catch (e: ActivityNotFoundException) {
-            try {
-                context.startActivity(Intent(Settings.ACTION_SETTINGS).apply { if (context !is android.app.Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
-            } catch (_: ActivityNotFoundException) {
-                // nothing else to try
-            }
-        }
+        if (!launch(context, intentToEnable(context))) openSystemSettings(context)
+    }
+
+    fun openSystemSettings(context: Context) {
+        launch(context, Intent(Settings.ACTION_SETTINGS))
+    }
+
+    private fun launch(context: Context, intent: Intent): Boolean = try {
+        if (context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
     }
 }

@@ -30,9 +30,7 @@ import cloud.moonl.password.platform.AutofillPrefs
 import cloud.moonl.password.platform.AutofillSetup
 
 /**
- * Self-contained "自动填充" settings card: state of the system setting, the enable button and the
- * "每次填充前验证主密码" switch. The vault screens call `AutofillSettingsSection()` from their settings page
- * (it needs no view model); [AutofillSettingsActivity] shows the same card for the system's "settings" gear.
+ * Shared by the app's settings page and [AutofillSettingsActivity], the system's settings gear.
  */
 @Composable
 fun AutofillSettingsSection(modifier: Modifier = Modifier) {
@@ -60,7 +58,7 @@ fun AutofillSettingsSection(modifier: Modifier = Modifier) {
                 Button(onClick = { AutofillSetup.open(context) }) { Text(stringResource(R.string.autofill_enable)) }
             }
             if (state == AutofillSetupLogic.State.ENABLED) {
-                OutlinedButton(onClick = { AutofillSetup.open(context) }) { Text(stringResource(R.string.autofill_open_system_settings)) }
+                OutlinedButton(onClick = { AutofillSetup.openSystemSettings(context) }) { Text(stringResource(R.string.autofill_open_system_settings)) }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(R.string.autofill_require_auth), Modifier.weight(1f))
@@ -68,7 +66,6 @@ fun AutofillSettingsSection(modifier: Modifier = Modifier) {
             }
             Text(stringResource(R.string.autofill_require_auth_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(stringResource(R.string.autofill_browser_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(stringResource(R.string.autofill_untested_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

@@ -56,15 +56,14 @@
     <!-- Autofill service (密码库自动填充) -->
     <string name="autofill_service_label">MoonPassword 密码库</string>
     <string name="autofill_settings_title">自动填充</string>
-    <string name="autofill_status_enabled">已启用：在应用和浏览器里可以用 MoonPassword 密码库填充账号密码。</string>
+    <string name="autofill_status_enabled">已设为 Android 自动填充服务。在支持的登录页面点输入框，即可选择匹配的条目。</string>
     <string name="autofill_status_disabled">未启用。启用后，在登录页面点输入框就能选择要填充的条目。</string>
     <string name="autofill_status_unsupported">这台设备不支持第三方自动填充服务。</string>
     <string name="autofill_enable">启用自动填充</string>
     <string name="autofill_open_system_settings">打开系统设置</string>
     <string name="autofill_require_auth">每次填充前验证主密码</string>
     <string name="autofill_require_auth_hint">开启后，每次填充都要重新输入主密码；在应用内嵌网页里填充时无论如何都会要求输入。</string>
-    <string name="autofill_browser_hint">Chrome 135 及以上、Firefox 等浏览器可直接使用；更老的 Chrome 需要在 Chrome 设置里启用“第三方自动填充”。</string>
-    <string name="autofill_untested_hint">自动填充只做过单元测试，尚未在真机上验证。</string>
+    <string name="autofill_browser_hint">使用 Chrome 时，在 Chrome 设置中找到“自动填充”，选择“使用其他服务自动填充”，然后重启 Chrome。</string>
 
     <string name="autofill_unlock_title">解锁 MoonPassword 密码库</string>
     <string name="autofill_unlock_item">解锁以填充</string>

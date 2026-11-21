@@ -42,6 +42,7 @@ import cloud.moonl.password.BuildConfig
 import cloud.moonl.password.R
 import cloud.moonl.password.UpdateState
 import cloud.moonl.password.app
+import cloud.moonl.password.autofill.AutofillSettingsSection
 import cloud.moonl.password.logic.UpdatePresenter
 import cloud.moonl.password.platform.Notifications
 import cloud.moonl.password.platform.VaultSession
@@ -107,6 +108,8 @@ fun SettingsScreen(vm: SettingsViewModel, onMessage: (String) -> Unit, modifier:
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+
+        AutofillSettingsSection()
 
         SectionCard(stringResource(R.string.settings_notifications)) {
             SwitchRow(stringResource(R.string.settings_notifications_switch), notificationsOn) { on ->
