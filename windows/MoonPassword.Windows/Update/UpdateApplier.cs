@@ -1,11 +1,12 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using MoonPassword.Windows.Logic;
 
 namespace MoonPassword.Windows.Update;
 
 /// <summary>Arguments of the hidden "apply update" start mode.</summary>
-public sealed record ApplyArgs(int Pid, string Target);
+public sealed record ApplyArgs(int Pid, string Target, bool StartMinimized = false);
 
 /// <summary>
 /// Installs a downloaded Windows update. The running app cannot overwrite its
@@ -65,7 +66,7 @@ public static class UpdateApplier
     }
 
     /// <summary>Starts the staged exe in apply mode.</summary>
-    public static Process LaunchApplier(string stagedDir, string targetDir, int pid)
+    public static Process LaunchApplier(string stagedDir, string targetDir, int pid, bool startMinimized = false)
     {
         var psi = new ProcessStartInfo(Path.Combine(stagedDir, ExeName))
         {
@@ -77,6 +78,7 @@ public static class UpdateApplier
         psi.ArgumentList.Add(pid.ToString());
         psi.ArgumentList.Add("--target");
         psi.ArgumentList.Add(targetDir);
+        if (startMinimized) psi.ArgumentList.Add(StartupOptions.MinimizedFlag);
         return Process.Start(psi) ?? throw new InvalidOperationException("could not start the updater");
     }
 
@@ -91,7 +93,7 @@ public static class UpdateApplier
             else if (args[i] == "--target") target = args[i + 1];
         }
         if (!int.TryParse(pid, out var p) || p <= 0 || string.IsNullOrWhiteSpace(target)) return false;
-        parsed = new ApplyArgs(p, target);
+        parsed = new ApplyArgs(p, target, StartupOptions.Parse(args).Minimized);
         return true;
     }
 

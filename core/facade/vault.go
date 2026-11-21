@@ -179,7 +179,9 @@ func (c *Core) lockLocked(reason string) bool {
 	v := c.vs.v
 	c.vs.v = nil
 	go v.Close()
-	c.sshOnLock(reason, c.vs.lastActive, time.Duration(c.vaultIntSetting(settingVaultAutoLock, defaultVaultAutoLock))*time.Second)
+	if reason == "idle" {
+		c.sshOnLock(reason, c.vs.lastActive, time.Duration(c.vaultIntSetting(settingVaultAutoLock, defaultVaultAutoLock))*time.Second)
+	}
 	c.emit(map[string]any{"type": "vault.locked", "reason": reason})
 	return true
 }
@@ -347,10 +349,10 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 		default:
 			return nil, proto.Errorf(proto.CodeInvalid, "reason must be user, session or suspend")
 		}
-		cleared := c.sshClearKeys(p.Reason)
 		c.vs.mu.Lock()
 		was := c.lockLocked(p.Reason)
 		c.vs.mu.Unlock()
+		cleared := c.sshClearKeys(p.Reason)
 		return map[string]any{"was_unlocked": was, "ssh_keys_cleared": cleared}, nil
 	case "vault.verify_master":
 		return c.vaultVerifyMaster(params)

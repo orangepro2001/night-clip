@@ -35,6 +35,8 @@ type Config struct {
 	DeviceName string `json:"device_name"`
 	Platform   string `json:"platform"` // "windows" | "android" | "macos"
 
+	SSHAgentHostPath string `json:"ssh_agent_host_path"` // installed Windows helper executable
+
 	// Self-update (docs/update.md). AppVersionCode is the installed build's
 	// monotonically increasing versionCode; 0 marks a development build and
 	// disables updates. UpdateURL is the build-time default server; a user

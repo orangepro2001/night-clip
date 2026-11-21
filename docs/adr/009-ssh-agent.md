@@ -12,10 +12,11 @@
 
 ## 决定
 
-1. **Agent 在 Go 核心里。** 新包 `core/sshagent` 实现 ssh-agent 协议（基于 `golang.org/x/crypto/ssh/agent`）。私钥只在核心进程内存里，对外只给公钥和签名。客户端的添加、删除、锁定请求一律拒绝，所以 KeePassXC 自己的 Agent 集成不能指向这个管道。
+1. **Agent 由 Go 实现。** `core/sshagent` 实现 ssh-agent 协议（基于 `golang.org/x/crypto/ssh/agent`）。Windows 的 `moonpassword-ssh-agent.exe` 独立持有管道和内存钥匙圈。壳的 Go 核心经当前用户专用、双向认证的加密管道加载钥匙。公开管道只给公钥和签名。客户端的添加、删除、锁定请求一律拒绝，所以 KeePassXC 自己的 Agent 集成不能指向这个管道。
 2. **只给同一用户，只能签名。** Windows 默认监听 `\\.\pipe\openssh-ssh-agent`（Windows ssh 在没设 `SSH_AUTH_SOCK` 时的默认地址），沿用 `core/pipe` 的写法：只允许本人访问的 DACL `D:P(A;;GA;;;OW)`、`FILE_FLAG_FIRST_PIPE_INSTANCE`（名字被占用就报“冲突”，绝不抢占）、拒绝远程客户端。密码库的 `vault.*` 和新的 `ssh.*` 方法仍然**不在**控制管道上（`core/pipe` 的测试固定这一点）。
 3. **不确认，只通知。** 签名前不弹窗（用户的选择）；每次签名发 `ssh.used` 事件，壳按“每个程序首次使用”节流后弹气泡，并保留最近 100 次记录。经 `ssh -A` 转发来的请求（session-bind 标记 `is_forwarding`）默认拒绝，设置 `ssh_allow_forwarding` 才放行。
 4. **钥匙圈独立于密码库。** 密码库解锁时、以及每次保存后（`Vault.SetOnSaved`）加载钥匙；签名不碰密码库，也不重置空闲计时。密码库因空闲自动锁定后，钥匙在 Agent 里再保留 `ssh_key_ttl_s`（默认 4 小时，从“本应锁定的时刻”算起，0 = 一起锁）；手动锁定、锁屏/注销/切换用户、睡眠、退出时立即清除。`vault.lock` 因此带 `reason`（user / session / suspend），且即使密码库已经锁着也会清除钥匙。
+   Windows 安装已验证更新时，核心先取得 Agent 的交接确认，新 UI 在两分钟内重新接管。公开管道、已有连接和原有钥匙有效期继续使用。更新期间锁屏、注销、切换用户和睡眠由 Agent 自己处理。主密码和私钥不会写入交接文件。
 5. **存放方式与 KeePassXC 互通。** 条目 kind 为 `ssh`；私钥统一转成**不加密**的 OpenSSH 格式存为附件（密码库本身就是加密层）；同时写 `KeeAgent.settings`（KeePassXC/KeeAgent 的格式，UTF-16LE），`AddAtDatabaseOpen` 即“提供给 Agent”的开关。没有 `MoonPassword.Kind` 但带 `KeeAgent.settings` 的条目读作 `ssh`；旧客户端把它改成 `login` 时核心保持 `ssh`。能否进 Agent 看 `KeeAgent.settings`，不看 kind。
 6. **格式识别在核心。** 新包 `core/sshkey` 按内容（不看文件名）识别并解密：OpenSSH（none、aes128/192/256-ctr/cbc、aes128/256-gcm、chacha20-poly1305、3des-cbc）、PEM PKCS#1/SEC1（含旧式 Proc-Type 加密）、PKCS#8（明文与 PBES2：PBKDF2-HMAC-SHA1/224/256/384/512 或 scrypt，AES-CBC 或 3DES）、裸 DER、PuTTY PPK v2/v3（Argon2i/d/id）。能识别但拒绝并说明原因：DSA、FIDO（sk-*）、ssh.com 格式、PPK v1、PBES1、公钥/证书、RSA < 2048、其它曲线、一文件多钥。每条解密路径都有成本上限（bcrypt 轮数、PBKDF2 次数、scrypt/Argon2 内存），解密在锁外进行。
 7. **私钥只经 `ssh.export` 离开核心**，且要求再次输入主密码，文件以独占方式新建（不覆盖）。

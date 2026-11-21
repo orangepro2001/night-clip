@@ -54,6 +54,9 @@ dll:
 	cd core && CGO_ENABLED=1 GOOS=windows GOARCH=amd64 CC=$(MINGW_CC) \
 		$(GO) build -buildmode=c-shared -trimpath -ldflags="-s -w" \
 		-o dist/windows-amd64/moonpassword_core.dll ./cmd/cbcore-dll
+	cd core && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+		$(GO) build -trimpath -ldflags="-s -w -H=windowsgui" \
+		-o dist/windows-amd64/moonpassword-ssh-agent.exe ./cmd/moonpassword-ssh-agent
 
 dll-smoke:
 	mkdir -p $(DIST)/linux-amd64
@@ -97,7 +100,7 @@ dist-windows: dll
 		--self-contained false -p:EnableWindowsTargeting=true -p:DebugType=None -p:DebugSymbols=false \
 		-p:CbVersionCode=$(CB_VERSION_CODE) -p:CbVersionName=$(CB_VERSION_NAME) -p:CbUpdateUrl=$(CB_UPDATE_URL) \
 		-o $(DIST)/publish-win
-	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/moonpassword-windows.zip MoonPassword.exe moonpassword_core.dll
+	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/moonpassword-windows.zip MoonPassword.exe moonpassword_core.dll moonpassword-ssh-agent.exe
 
 # macOS package (Apple Silicon), built on Linux: zig links the Go core, rcodesign signs ad hoc
 # (docs/plan-macos.md). Output: core/dist/moonpassword-macos.zip holding MoonPassword.app.

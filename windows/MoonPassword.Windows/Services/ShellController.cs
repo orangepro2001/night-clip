@@ -100,6 +100,7 @@ internal sealed partial class ShellController : IDisposable
             db_key_b64 = key.KeyBase64,
             device_name = Environment.MachineName,
             platform = "windows",
+            ssh_agent_host_path = Path.Combine(AppContext.BaseDirectory, "moonpassword-ssh-agent.exe"),
             app_version_code = BuildInfo.VersionCode,
             app_version_name = BuildInfo.VersionName,
             update_url = BuildInfo.UpdateUrl,

@@ -278,6 +278,25 @@ func (a *connAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Si
 		return refuse(RefusedHost)
 	}
 
+	sig, err := k.sign(data, flags)
+	if err != nil {
+		return refuse(RefusedError)
+	}
+	if use.HostKey != nil {
+		a.s.markUsed(use.HostKey, k.Fingerprint)
+	}
+	use.Result = ResultSigned
+	a.s.report(use)
+	return sig, nil
+}
+
+// sign protects private material from being wiped during an in-flight signature.
+func (k *Key) sign(data []byte, flags agent.SignatureFlags) (*ssh.Signature, error) {
+	k.useMu.RLock()
+	defer k.useMu.RUnlock()
+	if k.revoked {
+		return nil, errRefused
+	}
 	var sig *ssh.Signature
 	var err error
 	if k.Public.Type() == ssh.KeyAlgoRSA {
@@ -290,21 +309,13 @@ func (a *connAgent) SignWithFlags(key ssh.PublicKey, data []byte, flags agent.Si
 		}
 		as, ok := k.Signer.(ssh.AlgorithmSigner)
 		if !ok {
-			return refuse(RefusedError)
+			return nil, errRefused
 		}
 		sig, err = as.SignWithAlgorithm(rand.Reader, data, algo)
 	} else {
 		sig, err = k.Signer.Sign(rand.Reader, data)
 	}
-	if err != nil {
-		return refuse(RefusedError)
-	}
-	if use.HostKey != nil {
-		a.s.markUsed(use.HostKey, k.Fingerprint)
-	}
-	use.Result = ResultSigned
-	a.s.report(use)
-	return sig, nil
+	return sig, err
 }
 
 func (a *connAgent) Extension(extensionType string, contents []byte) ([]byte, error) {

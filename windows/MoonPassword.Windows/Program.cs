@@ -62,6 +62,10 @@ internal static class Program
         }
         // Start whatever is installed now: the new version, or the old one after a rollback.
         if (File.Exists(exe))
-            Process.Start(new ProcessStartInfo(exe) { WorkingDirectory = apply.Target, UseShellExecute = false });
+        {
+            var start = new ProcessStartInfo(exe) { WorkingDirectory = apply.Target, UseShellExecute = false };
+            if (apply.StartMinimized) start.ArgumentList.Add(Logic.StartupOptions.MinimizedFlag);
+            using var restarted = Process.Start(start);
+        }
     }
 }

@@ -260,6 +260,18 @@ func (c *Core) sshCall(method, params string) (any, error) {
 func (c *Core) sshDispatch(method, params string) (any, error) {
 	// Methods that work while the vault is locked.
 	switch method {
+	case "ssh.prepare_update":
+		var p struct {
+			Keep bool `json:"keep"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		preserving, err := c.sshPrepareUpdate(p.Keep)
+		if err != nil {
+			return nil, proto.Errorf("SSH_AGENT_UNAVAILABLE", "could not prepare the SSH Agent for an update")
+		}
+		return map[string]any{"preserving": preserving}, nil
 	case "ssh.status":
 		return c.sshStatus(), nil
 	case "ssh.recent":

@@ -75,6 +75,8 @@ jobs:
           cd core
           CGO_ENABLED=1 go build -buildmode=c-shared -trimpath -ldflags="-s -w" \
             -o dist/windows-amd64/moonpassword_core.dll ./cmd/cbcore-dll
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -H=windowsgui" \
+            -o dist/windows-amd64/moonpassword-ssh-agent.exe ./cmd/moonpassword-ssh-agent
       - name: Go tests
         run: go test ./...
         working-directory: core

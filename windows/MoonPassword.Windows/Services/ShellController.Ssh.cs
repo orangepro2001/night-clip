@@ -15,7 +15,7 @@ public sealed record SshResult<T>(bool Ok, T? Value, string Code, string Error, 
 /// <summary>
 /// The shell's side of the SSH agent (docs/adr/009-ssh-agent.md): calling ssh.*, turning agent events into
 /// balloons, and the few things only the shell can do (Git's configuration, the Recycle Bin, an elevated
-/// service change). The agent itself lives in the core.
+/// service change). The core manages the independent Windows agent.
 /// </summary>
 internal sealed partial class ShellController
 {

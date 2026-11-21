@@ -98,7 +98,8 @@
 - 窗口里的更新栏与 Android 相同。
 - 安装流程：`ready` → 解压到 `%LOCALAPPDATA%\MoonPassword\staging\<guid>\` → 启动**暂存目录里的新 `MoonPassword.exe --apply-update --pid N --target <安装目录>`** → 旧进程退出 → 新进程等待旧进程结束，把文件逐个移到 `.old` 后复制过去，**任何一步失败都回滚**，成功后删除 `.old` 并启动安装目录里的 exe。
 - 只覆盖更新包里有的文件，不删除其它文件。安装目录必须当前用户可写。
-- 更新包是 `dotnet publish`（framework-dependent，win-x64）的输出外加 `moonpassword_core.dll`，扁平 zip。
+- 更新包是 `dotnet publish`（framework-dependent，win-x64）的输出，包含 `moonpassword_core.dll` 和 `moonpassword-ssh-agent.exe`，打成扁平 zip。
+- Windows 的 SSH Agent 以独立进程运行。安装更新前确认交接，安装后从托盘重新连接。更新期间仍可通过原管道使用已加载的钥匙。首次升级到独立 Agent 版本后需要解锁一次。
 
 壳不关心更新服务是谁：它们只把构建期的 `CB_UPDATE_URL` 当作 `update_url` 交给核心。
 

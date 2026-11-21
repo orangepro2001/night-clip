@@ -163,6 +163,8 @@ public sealed class UpdateApplierTests : IDisposable
     {
         Assert.True(UpdateApplier.TryParseApplyArgs(["--apply-update", "--pid", "123", "--target", "/opt/app dir"], out var a));
         Assert.Equal(new ApplyArgs(123, "/opt/app dir"), a);
+        Assert.True(UpdateApplier.TryParseApplyArgs(["--apply-update", "--pid", "123", "--target", "C:/App", "--minimized"], out var agentUpdate));
+        Assert.Equal(new ApplyArgs(123, "C:/App", StartMinimized: true), agentUpdate);
 
         Assert.False(UpdateApplier.TryParseApplyArgs([], out _));
         Assert.False(UpdateApplier.TryParseApplyArgs(["--pid", "1", "--target", "x"], out _));          // flag missing

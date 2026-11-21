@@ -1,7 +1,6 @@
 package facade
 
 import (
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -19,6 +17,7 @@ import (
 	"moonpassword/core/pipe"
 	"moonpassword/core/proto"
 	"moonpassword/core/sshagent"
+	"moonpassword/core/sshagenthost"
 	"moonpassword/core/sshkey"
 )
 
@@ -51,14 +50,16 @@ const (
 )
 
 type sshState struct {
-	mu     sync.Mutex
-	ring   *sshagent.Keyring
-	srv    *sshagent.Server
-	pipe   string
-	state  string
-	err    string
-	known  *sshagent.KnownHosts
-	parsed map[[32]byte]*sshkey.Key
+	mu       sync.Mutex
+	ring     *sshagent.Keyring
+	srv      *sshagent.Server
+	remote   *sshagenthost.Client
+	updating bool
+	pipe     string
+	state    string
+	err      string
+	known    *sshagent.KnownHosts
+	parsed   map[[32]byte]*sshkey.Key
 
 	recent   []map[string]any
 	lastUsed map[string]int64
@@ -162,15 +163,19 @@ func (c *Core) sshInit() {
 func (c *Core) sshStart() {
 	c.ssh.mu.Lock()
 	defer c.ssh.mu.Unlock()
-	if c.ssh.srv != nil || !c.sshSupported() {
+	if c.ssh.srv != nil || c.ssh.remote != nil || !c.sshSupported() {
 		return
 	}
 	name := c.sshSettingValue(settingSSHAgentPipe)
 	c.ssh.pipe = name
+	if c.sshIndependent() {
+		c.sshStartRemoteLocked(name)
+		return
+	}
 	l, err := pipe.Listen(name)
 	if err != nil {
 		c.ssh.state, c.ssh.err = sshStateError, err.Error()
-		if pipeTaken(err) {
+		if sshagenthost.PipeTaken(err) {
 			c.ssh.state = sshStateConflict
 		}
 		c.emit(map[string]any{"type": "ssh.agent", "state": c.ssh.state, "pipe": name, "error": c.ssh.err})
@@ -216,20 +221,11 @@ func knownHostsFiles() []string {
 	return files
 }
 
-// pipeTaken reports whether a listen error means another process owns the name.
-func pipeTaken(err error) bool {
-	var errno syscall.Errno
-	if errors.As(err, &errno) && (errno == 5 || errno == 231) { // ACCESS_DENIED (first-instance flag), PIPE_BUSY
-		return true
-	}
-	return errors.Is(err, os.ErrExist)
-}
-
 // sshStop closes the server; with clear it also drops the loaded keys.
 func (c *Core) sshStop(clear bool) {
 	c.ssh.mu.Lock()
-	srv := c.ssh.srv
-	c.ssh.srv = nil
+	srv, remote := c.ssh.srv, c.ssh.remote
+	c.ssh.srv, c.ssh.remote = nil, nil
 	if c.ssh.state == sshStateListening || c.ssh.state == sshStateConflict || c.ssh.state == sshStateError {
 		c.ssh.state, c.ssh.err = sshStateStopped, ""
 	}
@@ -240,6 +236,10 @@ func (c *Core) sshStop(clear bool) {
 	if srv != nil {
 		srv.Close()
 	}
+	if remote != nil {
+		_, _ = remote.Clear()
+		remote.Close()
+	}
 	if clear {
 		c.sshClearKeys("agent_off")
 	}
@@ -247,8 +247,16 @@ func (c *Core) sshStop(clear bool) {
 
 // sshRestart applies a changed ssh_agent or ssh_agent_pipe setting.
 func (c *Core) sshRestart() {
-	wasRunning := func() bool { c.ssh.mu.Lock(); defer c.ssh.mu.Unlock(); return c.ssh.srv != nil }()
+	c.ssh.mu.Lock()
+	wasRunning := c.sshRunningLocked()
+	remote := c.ssh.remote
+	c.ssh.mu.Unlock()
 	on := c.sshSupported() && c.sshEnabled()
+	if remote != nil && on {
+		c.sshConfigureRemote(remote)
+		c.sshScheduleLoad()
+		return
+	}
 	c.sshStop(!on)
 	if on {
 		c.sshStart()
@@ -262,11 +270,19 @@ func (c *Core) onSettingChanged(key string) {
 	switch key {
 	case settingSSHAgent, settingSSHAgentPipe:
 		c.sshRestart()
+	case settingSSHForwarding:
+		if remote := c.sshRemote(); remote != nil {
+			c.sshConfigureRemote(remote)
+		}
 	}
 }
 
 // sshShutdown stops the agent at core shutdown.
 func (c *Core) sshShutdown() {
+	if c.sshShutdownRemote() {
+		c.sshDropParsed()
+		return
+	}
 	c.sshStop(false)
 	c.ssh.mu.Lock()
 	if c.ssh.grace != nil {
@@ -291,7 +307,7 @@ func (c *Core) sshDropParsed() {
 func (c *Core) sshScheduleLoad() {
 	c.ssh.mu.Lock()
 	defer c.ssh.mu.Unlock()
-	if c.ssh.srv == nil {
+	if !c.sshRunningLocked() {
 		return
 	}
 	if c.ssh.loadTimer != nil {
@@ -306,12 +322,21 @@ func (c *Core) sshLoad() {
 	c.ssh.loadMu.Lock()
 	defer c.ssh.loadMu.Unlock()
 	c.ssh.mu.Lock()
-	running := c.ssh.srv != nil
+	running := c.sshRunningLocked()
+	remote := c.ssh.remote
 	c.ssh.mu.Unlock()
 	if !running || c.ssh.ring == nil {
 		return
 	}
 	gen := c.ssh.ring.Gen()
+	if remote != nil {
+		var err error
+		gen, err = remote.Generation()
+		if err != nil {
+			c.sshRemoteFailure(remote, err)
+			return
+		}
+	}
 	v := c.currentVault()
 	if v == nil {
 		return
@@ -322,6 +347,12 @@ func (c *Core) sshLoad() {
 	}
 	now := time.Now().Unix()
 	var keys []*sshagent.Key
+	var remoteKeys []sshagenthost.KeyInput
+	defer func() {
+		for _, input := range remoteKeys {
+			clear(input.PEM)
+		}
+	}()
 	seen := map[string]bool{}
 	for _, e := range c.sshEvaluate(cands) {
 		if e.key == nil || e.cand.InTrash || !e.agentOn() || (e.cand.ExpiresAt > 0 && e.cand.ExpiresAt < now) {
@@ -332,6 +363,14 @@ func (c *Core) sshLoad() {
 			continue // the same key in two entries is offered once
 		}
 		seen[fp] = true
+		if remote != nil {
+			pem, err := sshkey.MarshalOpenSSH(e.key)
+			if err != nil {
+				return
+			}
+			remoteKeys = append(remoteKeys, sshagenthost.KeyInput{PEM: pem, EntryID: e.cand.ID, Title: e.cand.Title, Hosts: e.cand.Hosts})
+			continue
+		}
 		k, err := sshagent.NewKey(e.key.Signer, e.cand.ID, e.cand.Title, e.key.Comment)
 		if err != nil {
 			continue
@@ -343,9 +382,21 @@ func (c *Core) sshLoad() {
 	still := c.vs.v == v
 	c.vs.mu.Unlock()
 	if !still {
+		sshagent.Wipe(keys)
 		return
 	}
-	if c.ssh.ring.Replace(gen, keys) {
+	changed := false
+	if remote != nil {
+		var err error
+		changed, err = remote.Replace(gen, remoteKeys)
+		if err != nil {
+			c.sshRemoteFailure(remote, err)
+			return
+		}
+	} else {
+		changed = c.ssh.ring.Replace(gen, keys)
+	}
+	if changed {
 		c.sshKeysEvent("loaded", "")
 	}
 }
@@ -366,6 +417,15 @@ func (c *Core) sshOnLock(reason string, lastActive time.Time, idle time.Duration
 			base = base.Add(idle)
 		}
 		until := base.Add(ttl)
+		if remote := c.sshRemote(); remote != nil && until.After(time.Now()) {
+			changed, err := remote.Grace(until)
+			if err != nil {
+				c.sshRemoteFailure(remote, err)
+			} else if changed {
+				go c.sshKeysEvent("grace", reason)
+			}
+			return
+		}
 		if until.After(time.Now()) && c.ssh.ring.Grace(until) {
 			c.ssh.mu.Lock()
 			if c.ssh.grace != nil {
@@ -386,6 +446,13 @@ func (c *Core) sshClearKeys(reason string) int {
 		return 0
 	}
 	n := c.ssh.ring.Clear()
+	if remote := c.sshRemote(); remote != nil {
+		var err error
+		n, err = remote.Clear()
+		if err != nil {
+			c.sshRemoteFailure(remote, err)
+		}
+	}
 	c.ssh.mu.Lock()
 	if c.ssh.grace != nil {
 		c.ssh.grace.Stop()
@@ -403,7 +470,7 @@ func (c *Core) sshLoadedKeys() []*sshagent.Key {
 	if c.ssh.ring == nil {
 		return nil
 	}
-	keys, _, _ := c.ssh.ring.Snapshot()
+	keys, _, _ := c.sshSnapshot()
 	return keys
 }
 
@@ -425,10 +492,7 @@ func (c *Core) sshLastUsed(fingerprint string) int64 {
 // ---- events -------------------------------------------------------------------------------------
 
 func (c *Core) sshKeysEvent(state, reason string) {
-	keys, st, exp := []*sshagent.Key(nil), sshagent.StateEmpty, time.Time{}
-	if c.ssh.ring != nil {
-		keys, st, exp = c.ssh.ring.Snapshot()
-	}
+	keys, st, exp := c.sshSnapshot()
 	ev := map[string]any{"type": "ssh.keys", "state": state, "count": len(keys), "keys_state": st, "reason": reason}
 	if !exp.IsZero() {
 		ev["expires_at"] = exp.Unix()
@@ -522,14 +586,13 @@ func (c *Core) sshRecent(limit int) []map[string]any {
 }
 
 func (c *Core) sshStatus() map[string]any {
-	keys, st, exp := []*sshagent.Key(nil), sshagent.StateEmpty, time.Time{}
-	if c.ssh.ring != nil {
-		keys, st, exp = c.ssh.ring.Snapshot()
-	}
+	keys, st, exp := c.sshSnapshot()
 	c.ssh.mu.Lock()
 	state, errText, pipeName := c.ssh.state, c.ssh.err, c.ssh.pipe
 	conns := 0
-	if c.ssh.srv != nil {
+	if c.ssh.remote != nil {
+		conns = c.ssh.remote.Cached().Connections
+	} else if c.ssh.srv != nil {
 		conns = c.ssh.srv.Connections()
 	}
 	c.ssh.mu.Unlock()
@@ -552,7 +615,7 @@ func (c *Core) sshStatus() map[string]any {
 // never signs.
 func (c *Core) sshSelfTest() map[string]any {
 	c.ssh.mu.Lock()
-	running, name := c.ssh.srv != nil, c.ssh.pipe
+	running, name := c.sshRunningLocked(), c.ssh.pipe
 	c.ssh.mu.Unlock()
 	out := map[string]any{"ok": false, "listed": 0, "fingerprints": []string{}, "error": ""}
 	if !running {

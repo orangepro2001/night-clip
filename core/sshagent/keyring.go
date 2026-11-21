@@ -18,6 +18,8 @@ import (
 
 // Key is one loaded key.
 type Key struct {
+	useMu       sync.RWMutex
+	revoked     bool
 	Signer      ssh.Signer
 	Public      ssh.PublicKey
 	EntryID     string
@@ -50,6 +52,9 @@ func NewKey(priv any, entryID, title, comment string) (*Key, error) {
 }
 
 func (k *Key) wipe() {
+	k.useMu.Lock()
+	defer k.useMu.Unlock()
+	k.revoked = true
 	for i := range k.seed {
 		k.seed[i] = 0
 	}
@@ -169,6 +174,13 @@ func (r *Keyring) Find(blob []byte) *Key {
 }
 
 // wipeExcept zeroes the Ed25519 seeds of keys in old that are not in keep.
+// Wipe discards newly built keys that were never installed in a ring.
+func Wipe(keys []*Key) {
+	for _, key := range keys {
+		key.wipe()
+	}
+}
+
 func wipeExcept(old, keep []*Key) {
 	kept := map[*Key]bool{}
 	for _, k := range keep {

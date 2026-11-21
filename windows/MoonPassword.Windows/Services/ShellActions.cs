@@ -147,7 +147,16 @@ internal sealed partial class ShellController
             await Task.Run(() =>
             {
                 var staged = UpdateApplier.Stage(ready, App.StagingDir);
-                UpdateApplier.LaunchApplier(staged, target, pid);
+                var preservingAgent = Ssh.PrepareUpdate(keep: true);
+                try
+                {
+                    using var applier = UpdateApplier.LaunchApplier(staged, target, pid, startMinimized: preservingAgent);
+                }
+                catch
+                {
+                    Ssh.PrepareUpdate(keep: false);
+                    throw;
+                }
             });
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException

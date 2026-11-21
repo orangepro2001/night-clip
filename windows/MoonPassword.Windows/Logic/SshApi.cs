@@ -12,6 +12,9 @@ public sealed class SshApi
     private readonly ICoreCaller _core;
     public SshApi(ICoreCaller core) => _core = core;
 
+    public bool PrepareUpdate(bool keep) =>
+        JsonRead.Bool(_core.Call("ssh.prepare_update", new { keep }), "preserving");
+
     public SshStatus Status() => SshStatus.FromJson(_core.Call("ssh.status"));
 
     public SshKeyList Keys() => SshKeyList.FromJson(_core.Call("ssh.keys"));
