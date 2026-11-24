@@ -237,6 +237,7 @@ public static partial class Strings
     public const string SshMigrateFailedState = "失败";
 
     // ---- settings ---------------------------------------------------------------------------------
+    public const string SshHostSetupTitle = "配置 SSH 主机";
     public const string SshSettingsTitle = "SSH 代理";
     public const string SshSettingsDesc = "让 ssh、git、VS Code 直接使用密码库里的 SSH 密钥，私钥不必放在 ~/.ssh。";
     public const string SshSettingEnable = "启用 SSH 代理";

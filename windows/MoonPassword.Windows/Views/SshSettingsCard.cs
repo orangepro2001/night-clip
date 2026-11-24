@@ -90,6 +90,7 @@ internal sealed class SshSettingsCard : Card
             {
                 SettingRows.SettingRow(Strings.SshSettingEnable, Strings.SshSettingEnableHint, _enable),
                 state,
+                Ui.TextButton(Strings.SshHostSetupTitle, () => _ = SshHostSetupWindow.ShowAsync(_shell.Main, _shell), "soft", "sm"),
                 _issues,
                 new Separator(),
                 SettingRows.SettingRow(Strings.SshSettingTtl, Strings.SshSettingTtlHint, _ttl),
