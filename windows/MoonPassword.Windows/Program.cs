@@ -15,6 +15,12 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        if (FirefoxBridge.IsNativeInvocation(args))
+        {
+            FirefoxBridge.RelayAsync().GetAwaiter().GetResult();
+            return 0;
+        }
+
         // Hidden mode: this is the staged new version, started by the old one to swap the files. No window,
         // no core and no single-instance check (the old instance still holds the mutex until it has exited).
         if (UpdateApplier.TryParseApplyArgs(args, out var apply))

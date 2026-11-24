@@ -65,6 +65,15 @@ internal sealed class VaultMainPanel : Grid
         var menu = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedRight };
         menu.Items.Add(MenuItem(Strings.BtnImport, ImportAsync));
         menu.Items.Add(MenuItem(Strings.BtnExport, () => ExportWindow.ShowAsync(Owner, _shell)));
+        menu.Items.Add(MenuItem("添加验证码（OTP）", async () =>
+        {
+            if (await OtpTransferWindow.ImportAsync(Owner, _shell, _filter == QuickFilter.Trash ? "" : _groupId))
+            {
+                _detail.Clear();
+                await ReloadAsync();
+            }
+        }));
+        menu.Items.Add(MenuItem("导出与迁移验证码", () => OtpTransferWindow.ExportAsync(Owner, _shell)));
         menu.Items.Add(new Separator());
         menu.Items.Add(MenuItem(Strings.SshMenuImport, ImportSshAsync));
         menu.Items.Add(MenuItem(Strings.SshMenuGenerate, GenerateSshAsync));

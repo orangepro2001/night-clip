@@ -34,6 +34,7 @@ public static class ErrorMessages
     /// </summary>
     public static string ForVault(string? code, int retryAfterSeconds = 0) => code switch
     {
+        "OTP_INCOMPLETE" => "这次迁移还有二维码未添加。请扫描同一批次的全部二维码，再导入。",
         "VAULT_LOCKED" => Strings.ErrVaultLocked,
         "VAULT_WRONG_CREDENTIALS" => Strings.ErrVaultWrongCredentials,
         "VAULT_NOT_FOUND" => Strings.ErrVaultNotFound,

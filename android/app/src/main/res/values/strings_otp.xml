@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="vault_otp_import">添加验证码（OTP）</string>
+    <string name="vault_otp_export">导出与迁移验证码</string>
+    <string name="vault_otp_scan">相机扫码</string>
+    <string name="vault_otp_open">选择二维码图片或链接文件</string>
+    <string name="vault_otp_link">OTP 链接（每行一个）</string>
+    <string name="vault_otp_count">已添加 %1$d 条链接</string>
+    <string name="vault_otp_added">已添加 %1$d 项，跳过重复 %2$d 项，不支持的验证码 %3$d 项。</string>
+    <string name="vault_otp_import_hint">粘贴 otpauth:// 或 otpauth-migration:// 链接。Google Authenticator 分批迁移时，请扫描同一批次的全部二维码，再导入。</string>
+    <string name="vault_otp_incomplete">这次迁移还有二维码未添加。请扫描同一批次的全部二维码，再导入。</string>
+    <string name="vault_otp_single_qr">请扫描单个 TOTP 账号二维码。多个账号请从「添加验证码」导入。</string>
+    <string name="vault_otp_read_failed">无法读取验证码链接或二维码，请检查所选文件。</string>
+    <string name="vault_otp_export_warning">链接、二维码和导出文件含验证码密钥。请只交给你信任的设备或应用，迁移后妥善保管或删除文件。</string>
+    <string name="vault_otp_verify">验证主密码并查看</string>
+    <string name="vault_otp_empty">没有可导出的验证码。</string>
+    <string name="vault_otp_qr">用于迁移的验证码二维码</string>
+    <string name="vault_otp_copy">复制所选链接</string>
+    <string name="vault_otp_copied">链接已复制，30 秒后自动清除。</string>
+    <string name="vault_otp_copy_failed">无法复制验证码链接。</string>
+    <string name="vault_otp_save">导出链接文件</string>
+    <string name="vault_otp_saved">已导出验证码链接文件。</string>
+    <string name="vault_otp_save_failed">无法写入导出文件。</string>
+    <string name="vault_otp_skipped">有 %1$d 项无法导出。</string>
+</resources>

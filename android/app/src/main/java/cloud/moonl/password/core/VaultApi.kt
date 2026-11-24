@@ -10,6 +10,12 @@ import org.json.JSONObject
  * Type-safe wrapper over the `vault.*` facade methods (docs/vault-api.md §3). Every function suspends off the main
  * thread. Nothing here logs: parameters carry master passwords and secrets.
  */
+data class OtpExportEntry(val title: String, val username: String, val link: String) {
+    val label: String get() = if (username.isEmpty()) title else "$title ($username)"
+    override fun toString() = label
+}
+data class OtpExport(val entries: List<OtpExportEntry>, val skipped: Int)
+
 object VaultApi {
     private suspend fun <T> run(method: String, params: JSONObject = JSONObject(), parse: (JSONObject) -> T): ApiResult<T> {
         val r = CoreHost.call(method, params)
@@ -77,6 +83,21 @@ object VaultApi {
     /** For the clipboard: the core also registers the text so it is never broadcast. */
     suspend fun copy(id: String, field: String) =
         run("vault.copy", JSONObject().put("id", id).put("field", field), VaultParsers::copy)
+
+    suspend fun importOtp(links: List<String>, groupId: String) =
+        run("vault.otp_import", JSONObject().put("payloads", JSONArray(links)).put("group_id", groupId)) {
+            Triple(it.optInt("added"), it.optInt("duplicates"), it.optInt("unsupported"))
+        }
+
+    suspend fun exportOtp(id: String?, master: VaultCreds) =
+        run("vault.otp_export", creds(master).put("id", id.orEmpty())) { result ->
+            val array = result.getJSONArray("entries")
+            val entries = List(array.length()) { i ->
+                val item = array.getJSONObject(i)
+                OtpExportEntry(item.optString("title"), item.optString("username"), item.getString("link"))
+            }
+            OtpExport(entries, result.optInt("skipped"))
+        }
 
     suspend fun totp(id: String) = run("vault.totp", JSONObject().put("id", id), VaultParsers::totp)
 

@@ -84,6 +84,29 @@ internal sealed class SettingsPage : UserControl
         var updates = Section(Strings.SettingsUpdateTitle, null, updateRow, new Separator(),
             SettingRows.SettingRow(Strings.UpdateAuto, Strings.UpdateAutoHint, _autoUpdate));
 
+        var firefoxSwitch = new ToggleSwitch { IsChecked = FirefoxBridge.IsRegistered };
+        firefoxSwitch.IsCheckedChanged += (_, _) =>
+        {
+            if (_loading) return;
+            if (_shell.SetFirefoxIntegration(firefoxSwitch.IsChecked == true) is { } error) Fail(error);
+            Load(() => firefoxSwitch.IsChecked = FirefoxBridge.IsRegistered);
+        };
+        var extensionFolder = Ui.Button(AppIcons.Of(IconKind.Folder), "打开扩展文件夹", () =>
+        {
+            try
+            {
+                using var explorer = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = AppContext.BaseDirectory, UseShellExecute = true,
+                });
+            }
+            catch (System.ComponentModel.Win32Exception) { Fail("无法打开 MoonPassword 安装目录。"); }
+        });
+        extensionFolder.IsVisible = File.Exists(System.IO.Path.Combine(AppContext.BaseDirectory, "MoonPassword-Firefox.zip"));
+        var browser = Section("浏览器扩展", null,
+            SettingRows.SettingRow("Firefox 本机连接", "允许 Firefox 扩展匹配当前网站。每次填充密码或保存前均在 MoonPassword 确认。", firefoxSwitch),
+            SettingRows.SettingRow("Firefox 临时安装包", "在 about:debugging → 此 Firefox 中选择「临时载入附加组件」，再选 MoonPassword-Firefox.zip。", extensionFolder));
+
         // ---- about ----------------------------------------------------------------------------
         var about = Section(Strings.SettingsAboutTitle, null,
             AboutRow(Strings.AboutVersionLabel, _aboutVersion, null),
@@ -103,7 +126,7 @@ internal sealed class SettingsPage : UserControl
                 Classes = { "page" },
                 MaxWidth = 820,
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Children = { intro, new AccountSettingsCard(shell), new VaultSyncSettingsCard(shell), appearance, general, new SshSettingsCard(shell), updates, about },
+                Children = { intro, new AccountSettingsCard(shell), new VaultSyncSettingsCard(shell), appearance, general, new SshSettingsCard(shell), browser, updates, about },
             },
         };
 

@@ -472,3 +472,31 @@ func TestVaultGuessingCannotBeParallelisedOrResetByOtherCalls(t *testing.T) {
 		t.Fatalf("a successful backup_verify reset the failure counter (%d)", fails)
 	}
 }
+
+func TestOTPTransferFacadeRequiresMaster(t *testing.T) {
+	n := startNode(t, "Desk", "windows")
+	vcreate(t, n)
+	const uri = "otpauth://totp/Example:synthetic?secret=JBSWY3DPEHPK3PXP&issuer=Example"
+	got := n.call("vault.otp_import", map[string]any{"payloads": []string{uri}})
+	if got["added"] != float64(1) {
+		t.Fatal("OTP import failed")
+	}
+	if code := n.errorCode("vault.otp_export", map[string]any{"password": "wrong"}); code != "VAULT_WRONG_CREDENTIALS" {
+		t.Fatalf("OTP export accepted wrong master: %s", code)
+	}
+	got = n.call("vault.otp_export", map[string]any{"password": vpw})
+	entries := got["entries"].([]any)
+	if len(entries) != 1 {
+		t.Fatal("OTP export missing the OTP")
+	}
+	item := entries[0].(map[string]any)
+	id := item["id"].(string)
+	code := n.call("vault.copy", map[string]any{"id": id, "field": "totp"})
+	if len(code["value"].(string)) != 6 {
+		t.Fatal("copy did not return a six-digit code")
+	}
+	n.call("vault.lock", nil)
+	if code := n.errorCode("vault.otp_export", map[string]any{"password": vpw}); code != "VAULT_LOCKED" {
+		t.Fatalf("locked OTP export: %s", code)
+	}
+}

@@ -76,6 +76,8 @@ private fun UnlockedHost(
                 VaultRoute.Backups -> BackupsScreen(vm, data, onMessage)
                 VaultRoute.Import -> ImportScreen(vm, data, onMessage)
                 VaultRoute.Export -> ExportScreen(vm, data, onMessage)
+                is VaultRoute.OtpImport -> OtpImportScreen(vm, browse, top.groupId, onMessage)
+                is VaultRoute.OtpExport -> OtpExportScreen(vm, top.entryId, onMessage)
                 VaultRoute.ChangeMaster -> ChangeMasterScreen(vm, onMessage)
                 VaultRoute.Settings -> VaultSettingsScreen(vm, onMessage)
             }

@@ -100,7 +100,7 @@ dist-windows: dll
 		--self-contained false -p:EnableWindowsTargeting=true -p:DebugType=None -p:DebugSymbols=false \
 		-p:CbVersionCode=$(CB_VERSION_CODE) -p:CbVersionName=$(CB_VERSION_NAME) -p:CbUpdateUrl=$(CB_UPDATE_URL) \
 		-o $(DIST)/publish-win
-	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/moonpassword-windows.zip MoonPassword.exe moonpassword_core.dll moonpassword-ssh-agent.exe
+	python3 scripts/zipdir.py $(DIST)/publish-win $(DIST)/moonpassword-windows.zip MoonPassword.exe moonpassword_core.dll moonpassword-ssh-agent.exe MoonPassword-Firefox.zip
 
 # macOS package (Apple Silicon), built on Linux: zig links the Go core, rcodesign signs ad hoc
 # (docs/plan-macos.md). Output: core/dist/moonpassword-macos.zip holding MoonPassword.app.

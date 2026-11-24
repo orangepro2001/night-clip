@@ -409,6 +409,16 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 			}
 		}
 		return view, nil
+	case "vault.browser_logins":
+		var p struct {
+			Origin string `json:"origin"`
+			ID     string `json:"id"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		matches, err := v.BrowserLogins(p.Origin, p.ID)
+		return map[string]any{"matches": matches}, err
 	case "vault.match":
 		var p struct {
 			URL     string `json:"url"`
@@ -671,6 +681,32 @@ func (c *Core) vaultDispatch(method, params string) (any, error) {
 			return rerr
 		})
 		return map[string]any{"stats": st}, err
+	case "vault.otp_import":
+		var p struct {
+			Payloads []string `json:"payloads"`
+			GroupID  string   `json:"group_id"`
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		out, err := v.ImportOTP(p.Payloads, p.GroupID)
+		if errors.Is(err, vault.ErrOTPIncomplete) {
+			return nil, proto.Errorf("OTP_INCOMPLETE", "add all QR codes from the same migration batch")
+		}
+		return out, err
+	case "vault.otp_export":
+		var p struct {
+			ID string `json:"id"`
+			credParams
+		}
+		if err := parseParams(params, &p); err != nil {
+			return nil, err
+		}
+		if err := c.vaultConfirm(v, p.credParams); err != nil {
+			return nil, err
+		}
+		entries, skipped, err := v.ExportOTP(p.ID)
+		return map[string]any{"entries": entries, "skipped": skipped}, err
 	case "vault.import_file":
 		var p struct {
 			Path string `json:"path"`

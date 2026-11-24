@@ -78,7 +78,7 @@ fun EntryEditorScreen(route: VaultRoute.Editor, vm: VaultViewModel, browse: Vaul
         if (d == null) {
             VaultLoading(Modifier.weight(1f))
         } else {
-            EditorForm(d, issues.associateBy({ it.fieldKey to it.field }, { it.message }), groups, browse, onGenerate = { generator = true })
+            EditorForm(d, issues.associateBy({ it.fieldKey to it.field }, { it.message }), groups, browse, onMessage, onGenerate = { generator = true })
         }
     }
 
@@ -113,6 +113,7 @@ private fun EditorForm(
     errors: Map<Pair<Long?, DraftIssueField>, String>,
     groups: List<cloud.moonl.password.core.VaultGroup>,
     browse: VaultBrowseViewModel,
+    onMessage: (String) -> Unit,
     onGenerate: () -> Unit,
 ) {
     val template = KindTemplate.of(d.kind)
@@ -168,6 +169,7 @@ private fun EditorForm(
                 d.totp, { v -> browse.updateDraft { it.copy(totp = v) } }, stringResource(R.string.vault_field_totp_secret),
                 isError = err(DraftIssueField.TOTP) != null, supporting = err(DraftIssueField.TOTP) ?: stringResource(R.string.vault_totp_hint),
             )
+            OtpEditorScanButton(onLink = { v -> browse.updateDraft { it.copy(totp = v) } }, onMessage = onMessage)
         }
 
         // custom fields

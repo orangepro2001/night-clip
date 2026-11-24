@@ -97,6 +97,10 @@ fun EntryDetailScreen(id: String, vm: VaultViewModel, browse: VaultBrowseViewMod
                                 browse.restoreEntry(d.id) { vm.pop() }
                             })
                         } else {
+                            if (d.hasTotp) DropdownMenuItem(text = { Text(stringResource(R.string.vault_otp_export)) }, onClick = {
+                                menu = false
+                                vm.push(VaultRoute.OtpExport(d.id))
+                            })
                             DropdownMenuItem(text = { Text(stringResource(R.string.vault_move)) }, onClick = { menu = false; moveDialog = true })
                         }
                         DropdownMenuItem(

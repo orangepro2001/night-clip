@@ -86,6 +86,12 @@ fun VaultListScreen(vm: VaultViewModel, browse: VaultBrowseViewModel) {
                         MenuItem(R.string.vault_menu_backups) { menu = false; vm.push(VaultRoute.Backups) }
                         MenuItem(R.string.vault_menu_import) { menu = false; vm.push(VaultRoute.Import) }
                         MenuItem(R.string.vault_menu_export) { menu = false; vm.push(VaultRoute.Export) }
+                        MenuItem(R.string.vault_otp_import) {
+                            menu = false
+                            val group = groups.firstOrNull { it.id == groupFilter && !it.isTrash }
+                            vm.push(VaultRoute.OtpImport(group?.id.orEmpty()))
+                        }
+                        MenuItem(R.string.vault_otp_export) { menu = false; vm.push(VaultRoute.OtpExport()) }
                         MenuItem(R.string.vault_menu_change_master) { menu = false; vm.push(VaultRoute.ChangeMaster) }
                         MenuItem(R.string.vault_menu_settings) { menu = false; vm.push(VaultRoute.Settings) }
                     }

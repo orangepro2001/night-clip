@@ -1,0 +1,56 @@
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+:root {
+  color-scheme: light dark;
+  --paper: #f6f8ee;
+  --ink: #142e28;
+  --subtle: #4b6159;
+  --line: #d7e0d1;
+  --button: #e5ecdd;
+  --accent: #163e33;
+  --accent-ink: #f0ffd1;
+  font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #142722;
+    --ink: #ebf2df;
+    --subtle: #aebfb4;
+    --line: #37524a;
+    --button: #203830;
+    --accent: #d8f8a4;
+    --accent-ink: #132f26;
+  }
+}
+body { margin: 0; width: 342px; color: var(--ink); background: var(--paper); font-size: 13px; }
+header, main, footer { padding: 14px 16px; }
+header { display: flex; gap: 10px; align-items: center; border-bottom: 1px solid var(--line); }
+header img { flex: 0 0 auto; }
+h1 { margin: 0; font-family: Georgia, serif; font-weight: bold; font-size: 21px; }
+h2 { font-size: 12px; margin: 0 0 8px; }
+p { margin: 0; line-height: 1.55; color: var(--subtle); overflow-wrap: anywhere; }
+#site { font-family: Consolas, monospace; font-size: 12px; }
+section { padding-top: 3px; }
+section + section { margin-top: 14px; }
+#status:not([hidden]) + section { margin-top: 12px; }
+#accounts { display: grid; gap: 6px; max-height: 250px; overflow-y: auto; }
+button {
+  background: var(--button);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  padding: 8px 10px;
+  text-align: left;
+  width: 100%;
+}
+button:hover { border-color: currentColor; }
+button:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
+button:disabled { opacity: .58; cursor: wait; }
+button strong, button span { display: block; overflow-wrap: anywhere; }
+button span { color: var(--subtle); font-size: 11px; margin-top: 3px; }
+.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); margin-bottom: 6px; }
+footer { border-top: 1px solid var(--line); }
+footer p { margin-top: 8px; font-size: 11px; }

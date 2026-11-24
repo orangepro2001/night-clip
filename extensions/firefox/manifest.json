@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "MoonPassword",
+  "version": "1.0.127",
+  "description": "在 Firefox 中匹配、填充和生成密码。通过本机连接使用 Windows 版 MoonPassword 密码库。",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "nativeMessaging"
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "moonpassword@moonl.cloud",
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": [
+          "authenticationInfo",
+          "browsingActivity"
+        ]
+      }
+    }
+  },
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "action": {
+    "default_title": "MoonPassword",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "48": "moon.svg"
+  }
+}

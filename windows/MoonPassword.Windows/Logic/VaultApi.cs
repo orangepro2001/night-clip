@@ -14,6 +14,11 @@ public sealed record VaultCreds(string Password, byte[]? KeyFile = null)
     }
 }
 
+public sealed record OtpExportItem(string Title, string Username, string Link)
+{
+    public override string ToString() => string.IsNullOrEmpty(Username) ? Title : $"{Title} ({Username})";
+}
+
 /// <summary>What the list on the main page asks the core for.</summary>
 public sealed record VaultQuery(string Query = "", string GroupId = "", string Kind = "", string Tag = "", bool OnlyTrash = false, bool IncludeTrash = false)
 {
@@ -110,6 +115,23 @@ public sealed class VaultApi
     {
         var r = _core.Call("vault.copy", new { id, field });
         return new CopyResult(JsonRead.Str(r, "value"), (int)JsonRead.Long(r, "clear_after_s"));
+    }
+
+    public (int Added, int Duplicates, int Unsupported) ImportOtp(string[] links, string groupId)
+    {
+        var r = _core.Call("vault.otp_import", new { payloads = links, group_id = groupId });
+        return ((int)JsonRead.Long(r, "added"), (int)JsonRead.Long(r, "duplicates"), (int)JsonRead.Long(r, "unsupported"));
+    }
+
+    public (OtpExportItem[] Entries, int Skipped) ExportOtp(VaultCreds creds, string? id = null)
+    {
+        var p = new Dictionary<string, object?>();
+        creds.AddTo(p);
+        if (id is not null) p["id"] = id;
+        var r = _core.Call("vault.otp_export", p);
+        var entries = JsonRead.Arr(r, "entries").Select(e =>
+            new OtpExportItem(JsonRead.Str(e, "title"), JsonRead.Str(e, "username"), JsonRead.Str(e, "link")));
+        return (entries.ToArray(), (int)JsonRead.Long(r, "skipped"));
     }
 
     public TotpCode Totp(string id)

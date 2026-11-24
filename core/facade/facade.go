@@ -249,7 +249,7 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		"vault.restore_entry", "vault.empty_trash", "vault.move", "vault.groups", "vault.group_add", "vault.group_rename",
 		"vault.group_delete", "vault.history", "vault.history_restore", "vault.attach_add", "vault.attach_get",
 		"vault.attach_remove", "vault.health", "vault.restore_preview", "vault.restore", "vault.import_file",
-		"vault.import_csv", "vault.import_bitwarden_json", "vault.export_file", "vault.export_csv", "vault.match", "vault.touch", "vault.patch":
+		"vault.browser_logins", "vault.otp_import", "vault.otp_export", "vault.import_csv", "vault.import_bitwarden_json", "vault.export_file", "vault.export_csv", "vault.match", "vault.touch", "vault.patch":
 		return c.vaultCall(method, paramsJSON)
 	default:
 		if isSSHMethod(method) {

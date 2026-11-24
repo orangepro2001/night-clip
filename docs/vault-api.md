@@ -79,6 +79,7 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 
 | 方法 | 参数 | 结果 |
 | --- | --- | --- |
+| `vault.browser_logins` | `origin`（HTTPS 或回环地址 HTTP）, `id?` | `{matches:[{id,title,username}]}`。仅匹配同源的登录条目，涵盖备用网址。只有壳在用户确认后传入选中的 `id`，才返回该条目的 `password`，核心再次校验网址。 |
 | `vault.match` | `url?`（网页地址或主机名）, `package?`（Android 应用包名） | `{matches:[{…列表摘要字段, score}]}`，最好的在前。**不含机密**；要填入时再对选中的条目调用 `vault.reveal`（用户确认/生物识别之后） |
 
 匹配**严格**：先看协议和端口——只接受 http/https；https 页面可以用保存为 http 或 https 的条目，http 页面只能用保存为 http 的条目（本机/内网地址除外）；条目网址里写明的非默认端口必须与页面一致；然后只在“可注册域名”（公共后缀 + 一个标签）相同时才命中（`score` 3 = 主机完全相同，2 = 同一可注册域名），绝不因为一个名字包含另一个就命中（`example.com.evil.net`、`evil-example.com` 都不会匹配 `example.com`）；IP 与单标签主机名要完全相同。应用匹配（`score` 4）：条目的自定义字段 `AndroidApp` 等于包名，或条目 URL 为 `androidapp://<包名>`（Keepass2Android/KeePassDroid 的约定）。回收站与笔记不参与。条目可以用以 `URL`/`KP2A_URL` 开头的自定义字段登记更多网址。
@@ -114,6 +115,8 @@ KDF 预设：`low` = Argon2d 32 MiB×3，`standard` = 64 MiB×3，`high` = 128 M
 | `vault.restore` | `name`, `mode`, `ids?`, `credParams?` | `{stats}`。`mode`：`entries`（把列出的条目恢复成备份中的样子，当前版本进历史，已不存在的重建）、`merge`（按合并规则并入）、`replace`（整库替换为备份内容，只在当前库里的条目会丢，但仍在恢复前的快照里）。**恢复前一定先拍快照，所以恢复本身可以撤销** |
 | `vault.import_file` | `path` + 该文件的 `credParams` | `{stats}`：把另一个 KDBX 文件（KeePassXC、旧版 KDBX 3.x 都行）并入当前库 |
 | `vault.import_csv` | `path` | `{added, skipped}`；能识别 Chrome/Edge、Bitwarden、1Password、LastPass、KeePassXC 等常见表头；分组列里的 `A/B` 会建成嵌套分组 |
+| `vault.otp_import` | `payloads: string[]`, `group_id?` | 导入 `otpauth://totp` 或 Google Authenticator 的 `otpauth-migration://offline` 链接。返回 `{added, duplicates, unsupported}`。多张迁移二维码必须一起导入，缺少分片返回 `OTP_INCOMPLETE`。异步扫码可先在壳中收集链接。 |
+| `vault.otp_export` | `password`, `key_file_b64?`, `id?` | 重新认证后返回 `{entries:[{id,title,username,link}], skipped}`。省略 `id` 导出所有可用条目。有密钥的链接仅供当前导出流程使用，勿写入日志。 |
 | `vault.import_bitwarden_json` | `path` | 导入未加密的 Bitwarden JSON，返回 `{added, skipped, passkeys_skipped}`。主网址保存在 `url`，其他可匹配的网址保存在 `URL n` 字段。自定义字段及其保护状态随条目保存。银行卡、身份资料和 SSH 密钥保存为安全笔记。加密导出返回 `BITWARDEN_ENCRYPTED`。 |
 | `vault.export_file` | `path`, `confirm_password`（+`confirm_key_file_b64?`，当前主凭据），导出文件的 `password`/`key_file_b64`，`kdf?` | `{}`：用**另外的**凭据加密的完整副本；**不覆盖**已存在的文件（`VAULT_EXISTS`） |
 | `vault.export_csv` | `path`, `confirm_password` | `{}`：**明文**；壳必须先强警告并要求用户确认，文件权限 0600 |

@@ -107,6 +107,7 @@ internal sealed partial class ShellController : IDisposable
         };
         await Task.Run(() => _core.Start(config)); // opens the database: keep it off the UI thread
         CoreRunning = true;
+        RefreshFirefoxBridge();
 
         await ReloadAllAsync();
         UpdateTray();
@@ -125,11 +126,42 @@ internal sealed partial class ShellController : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _firefoxBridge?.Dispose();
         _tray.Dispose();      // first, so the icon disappears at once
         DisposeVault();       // session hooks off, our secret off the clipboard (needs the owner window)
         _clipOwner.Dispose();
         _clipQueue.Dispose();
         _core.Dispose();
+    }
+
+    private FirefoxBridge? _firefoxBridge;
+
+    public string? SetFirefoxIntegration(bool enabled)
+    {
+        try
+        {
+            if (enabled) FirefoxBridge.Register(); else FirefoxBridge.Unregister();
+            RefreshFirefoxBridge();
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or InvalidOperationException)
+        {
+            return "无法设置 Firefox 本机连接，请检查当前 Windows 用户是否已有其他 MoonPassword 安装启用了连接。";
+        }
+    }
+
+    private void RefreshFirefoxBridge()
+    {
+        if (!FirefoxBridge.IsRegistered)
+        {
+            _firefoxBridge?.Dispose();
+            _firefoxBridge = null;
+        }
+        else if (CoreRunning && _firefoxBridge is null)
+        {
+            _firefoxBridge = new FirefoxBridge(this);
+            _firefoxBridge.Start();
+        }
     }
 
     // ---- window helpers ------------------------------------------------------------------

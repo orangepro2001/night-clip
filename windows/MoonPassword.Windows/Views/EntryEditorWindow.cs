@@ -105,7 +105,9 @@ internal sealed class EntryEditorWindow : SmallWindow
         _pwdSection = _pwdField;
         _urlField.Content = _urlBox;
         _urlSection = _urlField;
-        _totpSection = new FormField { Label = Strings.LabelTotp, Content = _totpBox };
+        var scanOtp = Ui.Button(AppIcons.QrCode, "扫描二维码图片", () => _ = OtpTransferWindow.AddQrToEntryAsync(this, link => _totpBox.Text = link));
+        var otpLine = new StackPanel { Spacing = 6, Children = { _totpBox, scanOtp } };
+        _totpSection = new FormField { Label = Strings.LabelTotp, Content = otpLine };
         _expirySection = new FormField { Label = Strings.LabelExpiry, Content = _expiryPicker };
         _tagsSection = new FormField { Label = Strings.LabelTags, Content = _tagsBox };
         _notesSection = new FormField { Label = Strings.LabelNotes, Content = _notesBox };

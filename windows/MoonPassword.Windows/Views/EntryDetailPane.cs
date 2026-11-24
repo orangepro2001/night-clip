@@ -333,7 +333,11 @@ internal sealed class EntryDetailPane : Border
             Children = { new StackPanel { Orientation = Orientation.Horizontal, Children = { _ring, _totpText } }, _totpPaused },
         };
         var copy = Ui.IconButton(AppIcons.Of(IconKind.Copy), Strings.BtnCopyField, () => _ = CopyAsync("totp", Strings.TotpTitle), "sm");
-        return FieldBlock(Strings.TotpTitle, value, copy);
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { copy } };
+        if (_detail is { Summary.InTrash: false } detail)
+            actions.Children.Add(Ui.IconButton(AppIcons.QrCode, "导出与迁移验证码", () =>
+                _ = OtpTransferWindow.ExportAsync(VaultUi.OwnerOf(this), _shell, detail.Summary.Id), "sm"));
+        return FieldBlock(Strings.TotpTitle, value, actions);
     }
 
     private Control BuildAttachments()

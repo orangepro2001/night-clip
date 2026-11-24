@@ -10,6 +10,8 @@ sealed interface VaultRoute {
     data object Backups : VaultRoute
     data object Import : VaultRoute
     data object Export : VaultRoute
+    data class OtpImport(val groupId: String) : VaultRoute
+    data class OtpExport(val entryId: String? = null) : VaultRoute
     data object ChangeMaster : VaultRoute
     data object Settings : VaultRoute
 }
