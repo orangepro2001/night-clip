@@ -102,7 +102,7 @@ internal static class HealthWindow
     }
 }
 
-/// <summary>Auto-lock time, clipboard clearing and the screen-capture switch.</summary>
+/// <summary>Auto-lock time and clipboard clearing.</summary>
 internal static class VaultSettingsWindow
 {
     public static async Task ShowAsync(Window? owner, ShellController shell)
@@ -112,7 +112,6 @@ internal static class VaultSettingsWindow
         var clip = new TextBox { Width = 120 };
         var autolockField = new FormField { Label = Strings.VaultAutolockLabel, Content = autolock };
         var clipField = new FormField { Label = Strings.VaultClipClearLabel, Content = clip };
-        var capture = new ToggleSwitch { IsChecked = shell.PreventCapture };
         var kdf = Ui.Text("", "caption", "tertiary");
         var result = new InfoBar { IsOpen = false };
 
@@ -126,7 +125,6 @@ internal static class VaultSettingsWindow
             {
                 Ui.Text(Strings.VaultSettingsTitle, "title"),
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 20, Children = { autolockField, clipField } },
-                SettingRows.SettingRow(Strings.VaultPreventCapture, Strings.VaultPreventCaptureNote, capture),
                 kdf, result,
                 DialogKit.ButtonRow(close, save),
             },
@@ -156,8 +154,6 @@ internal static class VaultSettingsWindow
             if (auto is null || clear is null) return;
             var e1 = await shell.CallAsync(a => a.SettingsSet("vault_autolock_s", auto.Value.ToString(inv)));
             var e2 = e1 ?? await shell.CallAsync(a => a.SettingsSet("vault_clip_clear_s", clear.Value.ToString(inv)));
-            shell.SetPreventCapture(capture.IsChecked == true);
-            DisplayAffinity.Set(w, shell.PreventCapture); // this window follows the new switch right away
             result.Severity = e2 is null ? Severity.Success : Severity.Danger;
             result.Message = e2 ?? Strings.VaultSettingsSaved;
             result.IsOpen = true;

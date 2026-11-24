@@ -7,19 +7,21 @@ using MoonPassword.Windows.Logic;
 
 namespace MoonPassword.Windows.Services;
 
-internal sealed record SshProvisionedHost(SshHostForm Form, string NewKey, string OldKey);
+internal sealed record SshProvisionedHost(SshHostForm Form, string NewKey, string OldKey, string BackupFolder = "");
 
 internal sealed class SshHostSetupService(SshApi ssh, string sshFolder, string sshExe, bool useDefaultConfig = false)
 {
     private readonly SshHostFiles _files = new(sshFolder);
     private static readonly Regex HostFingerprint = new(@"^debug1: Server host key: \S+ (SHA256:[A-Za-z0-9+/]{43}=?)\s*$", RegexOptions.Multiline);
     private static readonly Regex AcceptedKey = new(@"^debug1: Server accepts key: [^\r\n]*? (SHA256:[A-Za-z0-9+/]{43})(?:=)?(?:\s|$)", RegexOptions.Multiline);
+    private static readonly Regex AppliedHostBlock = new(@"^debug1: (?<path>.+) line (?<line>[0-9]+): Applying options for [^\r\n]+",
+        RegexOptions.Multiline | RegexOptions.CultureInvariant);
     private static readonly Regex Fingerprint = new(@"\ASHA256:[A-Za-z0-9+/]{43}\z");
     private static readonly Regex Ed25519 = new(@"\Assh-ed25519 [A-Za-z0-9+/]+={0,2}\z");
     private static readonly SemaphoreSlim EditLock = new(1, 1);
 
     private static readonly string[] SafeConnection = [
-        "-T", "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "ClearAllForwardings=yes",
+        "-n", "-T", "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "ClearAllForwardings=yes",
         "-o", "PermitLocalCommand=no", "-o", "RemoteCommand=none", "-o", "ControlMaster=no",
         "-o", "ControlPath=none", "-o", "ControlPersist=no", "-o", "ConnectTimeout=8",
     ];
@@ -69,19 +71,23 @@ internal sealed class SshHostSetupService(SshApi ssh, string sshFolder, string s
         finally { EditLock.Release(); }
     }
 
-    public async Task<SshProvisionedHost> ProvisionAsync(SshHostForm form, string sourceAlias, Action<string> status)
+    public async Task<SshProvisionedHost> ProvisionAsync(SshHostForm form, string sourceAlias, Action<string> status, bool keepSourceAlias = false)
     {
         await EditLock.WaitAsync();
         string? newId = null;
         var installed = false;
+        var backup = "";
         try
         {
-            await ValidateAliasAsync(form);
+            if (keepSourceAlias && !form.Alias.Equals(sourceAlias, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("请先选择要沿用的原 SSH 别名。");
+            await ValidateAliasAsync(form, keepSourceAlias);
             if (_files.Identity(form.Alias) is not null)
                 throw new InvalidOperationException("该别名已经关联密钥。请为另一台服务器或账号创建新别名。");
             if (IsHostedGit(form))
                 throw new InvalidOperationException("GitHub 和 Codeberg 的公钥需要在网页账户设置里添加。请使用「保存别名」关联已有密钥。");
             await ValidateBootstrapAsync(form, sourceAlias);
+            var takeover = keepSourceAlias ? await PlanTakeoverAsync(sourceAlias) : null;
             var agent = await Task.Run(ssh.Status);
             if (!agent.Listening || !SshHostFiles.ValidPipe(agent.Pipe))
                 throw new InvalidOperationException("请先启用 MoonPassword SSH 代理，并确保管道正在监听。");
@@ -106,12 +112,25 @@ internal sealed class SshHostSetupService(SshApi ssh, string sshFolder, string s
             });
             await WaitForKeyAsync(key.Id);
             using var edit = _files.Begin();
-            edit.Set(form, identity, key.PublicKey);
+            if (takeover is not null)
+            {
+                // Verify with the original configuration still in place. Command-line options
+                // take precedence, while the original alias still resolves jump hosts and known_hosts.
+                edit.WritePublicKey(key.Id, key.PublicKey);
+                var pipeOption = "IdentityAgent=" + identity.Pipe.Replace(@"\", @"\\");
+                var proof = new[] { "-i", _files.PublicPath(key.Id), "-o", pipeOption, "-o", "IdentitiesOnly=yes" };
+                if (!await AuthenticateNewKeyAsync(sourceAlias, key.Fingerprint, "true", proof))
+                    throw new IOException("新密钥登录验证未通过，尚未切换原别名。");
+                status("新密钥验证通过，正在备份并切换原别名…");
+                backup = edit.ApplyTakeover(takeover);
+            }
+            edit.Set(form, identity, key.PublicKey, takeOver: takeover is not null);
             await CheckEffectiveAsync(form, identity);
             if (!await AuthenticateNewKeyAsync(form.Alias, key.Fingerprint, "true"))
-                throw new IOException("新密钥登录验证未通过。请检查服务器是否使用此账号的 ~/.ssh/authorized_keys。");
+                throw new IOException((takeover is null ? "新密钥登录验证未通过。" : "切换后的别名未能用新密钥登录。") +
+                    "请检查服务器是否使用此账号的 ~/.ssh/authorized_keys。");
             edit.Commit();
-            return new SshProvisionedHost(form, key.Fingerprint, oldKey);
+            return new SshProvisionedHost(form, key.Fingerprint, oldKey, backup);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or CoreException or Win32Exception)
         {
@@ -122,7 +141,8 @@ internal sealed class SshHostSetupService(SshApi ssh, string sshFolder, string s
             }
             if (installed || newId is not null)
                 throw new IOException(ex.Message +
-                    "\n原登录授权仍可使用。本次生成的密钥保留在密码库中，远端可能已添加对应公钥。", ex);
+                    "\n旧授权未被移除。本次生成的密钥保留在密码库中，远端可能已添加对应公钥。" +
+                    (backup.Length > 0 ? $"\n配置备份：{backup}" : ""), ex);
             throw;
         }
         finally { EditLock.Release(); }
@@ -148,24 +168,39 @@ internal sealed class SshHostSetupService(SshApi ssh, string sshFolder, string s
         finally { EditLock.Release(); }
     }
 
-    private async Task<bool> AuthenticateNewKeyAsync(string alias, string expected, string command)
+    private async Task<bool> AuthenticateNewKeyAsync(string alias, string expected, string command, string[]? proof = null)
     {
-        var args = ClientArgs(SafeConnection.Concat(["-v", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
-            "-o", "PreferredAuthentications=publickey", "--", alias, command]));
+        var args = ClientArgs([..SafeConnection, "-v", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+            "-o", "PubkeyAuthentication=yes", "-o", "PreferredAuthentications=publickey", ..proof ?? [], "--", alias, command]);
         var (code, _, trace) = await SshEnvProbe.RunAsync(sshExe, args);
-        return code == 0 && AcceptedKey.Matches(trace).Any(m => m.Groups[1].Value == expected);
+        // Server accepts key is logged before the client signs. A later old-key login must
+        // never count as evidence that the new identity works.
+        return code == 0 && trace.Contains("using \"publickey\"", StringComparison.Ordinal) &&
+            AcceptedKey.Matches(trace).LastOrDefault()?.Groups[1].Value == expected;
     }
 
     public static bool IsHostedGit(SshHostForm form) => form.Host.TrimEnd('.').ToLowerInvariant() is
         "github.com" or "ssh.github.com" or "codeberg.org" or "ssh.codeberg.org";
 
-    private async Task ValidateAliasAsync(SshHostForm form)
+    private async Task ValidateAliasAsync(SshHostForm form, bool keepSourceAlias = false)
     {
         SshHostForm.Check(form);
         if (!File.Exists(sshExe)) throw new IOException("找不到 Windows OpenSSH 客户端。");
         var hosts = await HostsAsync();
-        if (hosts.Any(h => h.Alias.Equals(form.Alias, StringComparison.OrdinalIgnoreCase) && !h.Managed))
-            throw new InvalidOperationException("同名别名由现有 SSH 配置管理。请改用新别名，原别名可作为登录来源。");
+        var external = hosts.Any(h => h.Alias.Equals(form.Alias, StringComparison.OrdinalIgnoreCase) && !h.Managed);
+        if (keepSourceAlias && !external)
+            throw new InvalidOperationException("原 SSH 别名已变化，请重新选择。");
+        if (external && !keepSourceAlias)
+            throw new InvalidOperationException("同名别名由现有 SSH 配置管理。可在迁移时勾选「迁移后沿用原别名」。");
+    }
+
+    private async Task<SshHostFiles.Takeover> PlanTakeoverAsync(string alias)
+    {
+        var (code, _, trace) = await SshEnvProbe.RunAsync(sshExe, ClientArgs(["-v", "-G", "--", alias]));
+        if (code != 0) throw new IOException("OpenSSH 无法解析原别名的配置。");
+        var applied = AppliedHostBlock.Matches(trace).Select(m => new SshHostFiles.SourceBlock(
+            m.Groups["path"].Value.Replace(@"\\", @"\"), int.Parse(m.Groups["line"].Value, CultureInfo.InvariantCulture)));
+        return _files.PlanTakeover(alias, applied);
     }
 
     private async Task<SshManagedIdentity> IdentityAsync(string id)
@@ -192,6 +227,7 @@ internal sealed class SshHostSetupService(SshApi ssh, string sshFolder, string s
         if (key is null) return;
         var identities = effective.Values("identityfile").ToArray();
         if (effective.First("identitiesonly") != "yes" || !effective.First("identityagent").Equals(key.Pipe, StringComparison.OrdinalIgnoreCase) ||
+            effective.Values("certificatefile").Any(cert => !cert.Equals("none", StringComparison.OrdinalIgnoreCase)) ||
             identities.Length != 1 || !identities[0].Replace('\\', '/').Equals(_files.PublicPath(key.PublicId), StringComparison.OrdinalIgnoreCase))
             throw new IOException("此别名继承了其他 IdentityFile 或 IdentityAgent。请调整现有 SSH 配置后重试。");
     }

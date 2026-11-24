@@ -19,6 +19,7 @@ namespace MoonPassword.Windows.Views;
 /// </summary>
 internal sealed class SettingsPage : UserControl
 {
+    private const string CaptureSetting = "禁止截屏和录屏";
     private readonly ShellController _shell;
     private bool _loading;
 
@@ -29,6 +30,7 @@ internal sealed class SettingsPage : UserControl
     // notifications / start-up
     private readonly ToggleSwitch _notifications = new();
     private readonly ToggleSwitch _autoStart = new();
+    private readonly ToggleSwitch _preventCapture = new();
 
     // updates
     private readonly TextBlock _updateText = Ui.Text("", "body");
@@ -67,6 +69,14 @@ internal sealed class SettingsPage : UserControl
         var general = Section(Strings.SettingsGeneralTitle, null,
             SettingRows.SettingRow(Strings.SettingsNotifications, Strings.SettingsNotificationsHint, _notifications),
             SettingRows.SettingRow(Strings.SettingsAutoStart, Strings.SettingsAutoStartHint, _autoStart));
+
+        Avalonia.Automation.AutomationProperties.SetName(_preventCapture, CaptureSetting);
+        _preventCapture.IsCheckedChanged += (_, _) =>
+        {
+            if (!_loading) _shell.SetPreventCapture(_preventCapture.IsChecked == true);
+        };
+        var privacy = Section("隐私", null,
+            SettingRows.SettingRow(CaptureSetting, "保护密码库页面和相关弹窗。远程桌面中看不到这些窗口时，可在这里关闭。", _preventCapture));
 
         // ---- updates -------------------------------------------------------------------------
         _updateButton.Classes.Add("primary");
@@ -126,7 +136,7 @@ internal sealed class SettingsPage : UserControl
                 Classes = { "page" },
                 MaxWidth = 820,
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Children = { intro, new AccountSettingsCard(shell), new VaultSyncSettingsCard(shell), appearance, general, new SshSettingsCard(shell), browser, updates, about },
+                Children = { intro, privacy, new AccountSettingsCard(shell), new VaultSyncSettingsCard(shell), appearance, general, new SshSettingsCard(shell), browser, updates, about },
             },
         };
 
@@ -184,6 +194,7 @@ internal sealed class SettingsPage : UserControl
         _theme.SelectedIndex = _shell.Prefs.Theme switch { "light" => 1, "dark" => 2, _ => 0 };
         _autoStart.IsChecked = _shell.AutoStartEnabled; // registry read: only when the fields are (re)loaded
         _notifications.IsChecked = _shell.Prefs.Notifications;
+        _preventCapture.IsChecked = _shell.PreventCapture;
         RebuildAccents();
     });
 

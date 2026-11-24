@@ -29,7 +29,7 @@ public sealed record SshHostForm(string Alias, string Host, string User, int Por
 
 public sealed record SshManagedIdentity(string PublicId, string Pipe);
 
-/// <summary>Owns only the files in ~/.ssh/moonpassword. A single Include enables them in the user's config.</summary>
+/// <summary>Stores managed aliases and applies reversible edits when taking over an existing alias.</summary>
 public sealed class SshHostFiles(string sshFolder)
 {
 
@@ -73,6 +73,101 @@ public sealed class SshHostFiles(string sshFolder)
 
     public Change Begin() => new(this);
 
+    public sealed record SourceBlock(string File, int Line);
+    public sealed record FileEdit(string Path, string Before, string After);
+    public sealed record Takeover(IReadOnlyList<FileEdit> Edits);
+
+    private static readonly Regex HostHeader = new(@"^[ \t]*host(?:[ \t]*=[ \t]*|[ \t]+)(?<patterns>[^#\r\n]+)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex SimplePattern = new(@"\A!?[A-Za-z0-9_.*?%-]+\z", RegexOptions.CultureInvariant);
+    private static readonly Regex Section = new(@"^[ \t]*(?:host|match)(?:[ \t=]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex IdentityOption = new(@"^[ \t]*(?:identityfile|certificatefile)(?:[ \t=]|$)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    // Use only the blocks that OpenSSH itself reports as active for this connection.
+    // IdentityFile is additive, so merely prepending a generated Host block cannot replace it.
+    public Takeover PlanTakeover(string alias, IEnumerable<SourceBlock> activeBlocks)
+    {
+        if (!SshHostForm.IsAlias(alias)) throw new ArgumentException("无效的 SSH 别名。");
+        var edits = new List<FileEdit>();
+        var root = Path.GetFullPath(Path.Combine(_folder, "config"));
+        var matched = false;
+        foreach (var group in activeBlocks.Append(new SourceBlock(root, 0))
+            .GroupBy(b => Path.GetFullPath(b.File), StringComparer.OrdinalIgnoreCase))
+        {
+            if (!IsUnderSshFolder(group.Key)) continue;
+            var text = Read(group.Key) ?? throw new IOException("原 SSH 配置文件已不存在。");
+            var lines = text.Split('\n').ToList();
+            foreach (int index in group.Select(b => b.Line - 1).Distinct().OrderDescending())
+            {
+                if (index < 0 || index >= lines.Count) continue;
+                var header = HostHeader.Match(lines[index]);
+                if (!header.Success) continue;
+                var names = header.Groups["patterns"].Value.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries)
+                    .Select(n => n.Trim('"')).ToArray();
+                bool explicitAlias = names.Contains(alias, StringComparer.OrdinalIgnoreCase);
+                matched |= explicitAlias;
+                if (!explicitAlias && !names.Any(n => n.Contains('*') || n.Contains('?'))) continue;
+                int end = index + 1;
+                while (end < lines.Count && !Section.IsMatch(lines[end].TrimEnd('\r'))) end++;
+                var owned = lines.GetRange(index + 1, end - index - 1);
+                var updated = owned.Where(line => !IdentityOption.IsMatch(line.TrimEnd('\r'))).ToList();
+                if (updated.Count == owned.Count) continue;
+                if (names.Any(n => !SimplePattern.IsMatch(n)))
+                    throw new IOException("这个 SSH 别名使用了无法安全编辑的 Host 写法。");
+                if (names.All(n => n.Equals(alias, StringComparison.OrdinalIgnoreCase)))
+                {
+                    lines.RemoveRange(index + 1, owned.Count);
+                    lines.InsertRange(index + 1, updated);
+                    continue;
+                }
+                // Keep the shared section intact for the other names and retain the selected alias's
+                // non-authentication options in their original precedence order.
+                string cr = lines[index].EndsWith('\r') ? "\r" : "";
+                int at = header.Groups["patterns"].Index + header.Groups["patterns"].Value.TrimEnd().Length;
+                lines[index] = lines[index].Insert(at, " !" + alias);
+                lines.InsertRange(index, new[] { "Host " + alias + cr }.Concat(updated));
+            }
+            if (group.Key.Equals(root, StringComparison.OrdinalIgnoreCase))
+            {
+                var firstSection = lines.FindIndex(line => Section.IsMatch(line.TrimStart('\uFEFF').TrimEnd('\r')));
+                if (firstSection < 0) firstSection = lines.Count;
+                for (int i = firstSection - 1; i >= 0; i--)
+                {
+                    var line = lines[i].TrimStart('\uFEFF');
+                    if (!IdentityOption.IsMatch(line.TrimEnd('\r'))) continue;
+                    var cr = line.EndsWith('\r') ? "\r" : "";
+                    var bom = lines[i].StartsWith('\uFEFF') ? "\uFEFF" : "";
+                    lines[i] = line;
+                    lines.Insert(i + 1, "Match all" + cr);
+                    lines.Insert(i, bom + "Match originalhost *,!" + alias + cr);
+                }
+            }
+            var after = string.Join("\n", lines);
+            if (after != text || group.Key.Equals(root, StringComparison.OrdinalIgnoreCase))
+                edits.Add(new FileEdit(group.Key, text, after));
+        }
+        if (!matched)
+            throw new IOException("找不到可安全接管的明确 Host 别名。请检查 ~/.ssh 或使用新别名。");
+        return new Takeover(edits);
+    }
+
+    private bool IsUnderSshFolder(string path)
+    {
+        var folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_folder));
+        if (!path.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return false;
+        var current = path;
+        while (current.Length >= folder.Length)
+        {
+            if ((Directory.Exists(current) || File.Exists(current)) &&
+                (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                throw new IOException("SSH 配置指向符号链接。请在其原始文件中管理该配置。");
+            if (current.Equals(folder, StringComparison.OrdinalIgnoreCase)) break;
+            current = Path.GetDirectoryName(current)!;
+        }
+        return true;
+    }
+
     public static bool ValidPipe(string path) => AgentPipe.IsMatch(path);
     public static bool ValidId(string value) => Id.IsMatch(value);
 
@@ -83,7 +178,7 @@ public sealed class SshHostFiles(string sshFolder)
         if ((file.Attributes & FileAttributes.ReparsePoint) != 0)
             throw new IOException("SSH 配置指向符号链接。请在其原始文件中管理该配置。");
         if (file.Length > MaxConfigBytes) throw new IOException("SSH 配置文件过大。");
-        return File.ReadAllText(path, new System.Text.UTF8Encoding(false, true));
+        return new System.Text.UTF8Encoding(false, true).GetString(File.ReadAllBytes(path));
     }
 
     private static void Replace(string path, string? value)
@@ -123,7 +218,7 @@ public sealed class SshHostFiles(string sshFolder)
         private readonly List<(string Path, string? Before, string After)> _changes = [];
         private bool _committed;
 
-        public void Set(SshHostForm host, SshManagedIdentity? key, string? publicKey = null)
+        public void Set(SshHostForm host, SshManagedIdentity? key, string? publicKey = null, bool takeOver = false)
         {
             SshHostForm.Check(host);
             var file = files.HostFile(host.Alias);
@@ -139,21 +234,52 @@ public sealed class SshHostFiles(string sshFolder)
                 if (!ValidId(key.PublicId) || !ValidPipe(key.Pipe)) throw new ArgumentException("无效的 SSH Agent 配置。");
                 if (publicKey is not null)
                 {
-                    var pub = files.PublicPath(key.PublicId);
-                    var value = publicKey.TrimEnd() + "\n";
-                    var old = Read(pub);
-                    if (old is not null && old != value) throw new IOException("已存在不匹配的 SSH 公钥文件。");
-                    Write(pub, old, value);
+                    WritePublicKey(key.PublicId, publicKey);
                 }
                 lines.Add("  IdentityFile " + Quote(files.PublicPath(key.PublicId)));
                 lines.Add("  IdentitiesOnly yes");
+                if (takeOver || existing?.Contains("  PubkeyAuthentication yes\n  PreferredAuthentications publickey\n", StringComparison.Ordinal) == true)
+                {
+                    lines.Add("  PubkeyAuthentication yes");
+                    lines.Add("  PreferredAuthentications publickey");
+                }
                 lines.Add("  IdentityAgent \"" + key.Pipe.Replace("\\", "\\\\") + "\"");
             }
             Write(file, existing, string.Join("\n", lines) + "\n");
             var config = System.IO.Path.Combine(files._folder, "config");
             var original = Read(config);
             if (original?.Split('\n').Any(line => line.Trim() == files.Include) != true)
-                Write(config, original, files.Include + "\n" + (original ?? ""));
+            {
+                var bom = original?.StartsWith('\uFEFF') == true ? "\uFEFF" : "";
+                Write(config, original, bom + files.Include + "\n" + (original ?? "")[bom.Length..]);
+            }
+        }
+
+        public void WritePublicKey(string id, string publicKey)
+        {
+            if (!ValidId(id)) throw new ArgumentException("无效的 SSH 公钥标识。");
+            var pub = files.PublicPath(id);
+            var value = publicKey.TrimEnd() + "\n";
+            var old = Read(pub);
+            if (old is not null && old != value) throw new IOException("已存在不匹配的 SSH 公钥文件。");
+            Write(pub, old, value);
+        }
+
+        public string ApplyTakeover(Takeover plan)
+        {
+            if (plan.Edits.Any(e => Read(e.Path) != e.Before))
+                throw new IOException("SSH 配置在验证期间已修改，请重新选择原别名。");
+
+            var backup = Path.Combine(files._folder, "moonpassword", "backups",
+                DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N")[..8]);
+            foreach (var e in plan.Edits)
+            {
+                var dest = Path.Combine(backup, Path.GetRelativePath(files._folder, e.Path) + ".bak");
+                if (!files.IsUnderSshFolder(Path.GetFullPath(dest))) throw new IOException("SSH 配置备份路径无效。");
+                Replace(dest, e.Before);
+            }
+            foreach (var e in plan.Edits) Write(e.Path, e.Before, e.After);
+            return backup;
         }
 
         private void Write(string path, string? before, string after)
@@ -173,7 +299,12 @@ public sealed class SshHostFiles(string sshFolder)
             for (int i = _changes.Count - 1; i >= 0; i--)
             {
                 var c = _changes[i];
-                try { if (Read(c.Path) == c.After) Replace(c.Path, c.Before); }
+                try
+                {
+                    var current = Read(c.Path);
+                    if (current == c.After) Replace(c.Path, c.Before);
+                    else if (current != c.Before) throw new IOException("配置已被另一个程序修改。");
+                }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 { error = new IOException("无法回退本机 SSH 配置，请检查 ~/.ssh/config。", ex); }
             }

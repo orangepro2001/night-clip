@@ -26,6 +26,7 @@ internal sealed class TrayService : IDisposable
     private bool _disposed;
 
     public event Action? OpenRequested;
+    public event Action? SettingsRequested;
     public event Action? LockVaultRequested;
     public event Action<bool>? AutoStartToggled;
     public event Action? CheckUpdateRequested;
@@ -37,6 +38,7 @@ internal sealed class TrayService : IDisposable
         foreach (var state in Enum.GetValues<TrayState>()) _icons[state] = Render(size, state);
 
         _menu.Items.Add(Item(Strings.TrayOpen, () => OpenRequested?.Invoke()));
+        _menu.Items.Add(Item(Strings.NavSettings, () => SettingsRequested?.Invoke()));
         _lockVaultItem = Item(Strings.TrayLockVault, () => LockVaultRequested?.Invoke());
         _menu.Items.Add(_lockVaultItem);
         _menu.Items.Add(new WinForms.ToolStripSeparator());

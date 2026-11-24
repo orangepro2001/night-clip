@@ -28,6 +28,7 @@ internal sealed class SshHostSetupWindow
     private readonly TextBox _user = new() { PlaceholderText = "SSH 登录用户名" };
     private readonly TextBox _port = new() { Text = "22" };
     private readonly TextBox _jump = new() { PlaceholderText = "可留空，也可以填写已有跳板机别名" };
+    private readonly CheckBox _keepAlias = new() { Content = "迁移后沿用原别名", IsVisible = false };
     private readonly ComboBox _existing = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly ComboBox _keys = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
     private readonly InfoBar _info = new() { IsOpen = false, IsClosable = false };
@@ -57,6 +58,7 @@ internal sealed class SshHostSetupWindow
             Spacing = 10,
             Children = {
                 Field("已有别名", _existing),
+                _keepAlias,
                 Field("SSH 别名", _alias),
                 Field("服务器地址", _host),
                 Field("SSH 用户", _user),
@@ -87,6 +89,15 @@ internal sealed class SshHostSetupWindow
         _save.Click += async (_, _) => await RunAsync(deploy: false);
         _deploy.Click += async (_, _) => await RunAsync(deploy: true);
         _existing.SelectionChanged += async (_, _) => await ChooseAsync();
+        _keepAlias.IsCheckedChanged += (_, _) =>
+        {
+            if (_existing.SelectedItem is HostChoice { Alias.Length: > 0, Managed: false } choice)
+            {
+                _alias.IsReadOnly = _keepAlias.IsChecked == true;
+                _alias.Text = _alias.IsReadOnly ? choice.Alias : NewName(choice.Alias);
+            }
+            RefreshButtons();
+        };
         _host.TextChanged += (_, _) => RefreshButtons();
     }
 
@@ -119,6 +130,8 @@ internal sealed class SshHostSetupWindow
     private async Task ChooseAsync()
     {
         if (_busy || _existing.SelectedItem is not HostChoice choice) return;
+        _keepAlias.IsChecked = false;
+        _keepAlias.IsVisible = false;
         if (choice.Alias.Length == 0)
         {
             _bootstrap = "";
@@ -133,7 +146,8 @@ internal sealed class SshHostSetupWindow
             _bootstrap = choice.Alias;
             _hostKeyAlias = form.HostKeyAlias;
             _alias.IsReadOnly = choice.Managed;
-            _alias.Text = choice.Managed ? choice.Alias : choice.Alias[..Math.Min(choice.Alias.Length, 60)] + "-mp";
+            _alias.Text = choice.Managed ? choice.Alias : NewName(choice.Alias);
+            _keepAlias.IsVisible = !choice.Managed;
             _host.Text = form.Host;
             _user.Text = form.User;
             _port.Text = form.Port.ToString();
@@ -144,9 +158,13 @@ internal sealed class SshHostSetupWindow
         finally { SetBusy(false); }
     }
 
+    private static string NewName(string alias) => alias[..Math.Min(alias.Length, 60)] + "-mp";
+
     private void FillGit(string domain)
     {
         _existing.SelectedIndex = 0;
+        _keepAlias.IsChecked = false;
+        _keepAlias.IsVisible = false;
         _bootstrap = _hostKeyAlias = "";
         _alias.IsReadOnly = false;
         _alias.Text = domain;
@@ -170,18 +188,21 @@ internal sealed class SshHostSetupWindow
             var form = Form();
             if (deploy)
             {
-                _provisioned = await _setup.ProvisionAsync(form, _bootstrap, text => Say(text, Severity.Info));
+                _provisioned = await _setup.ProvisionAsync(form, _bootstrap, text => Say(text, Severity.Info), _keepAlias.IsChecked == true);
                 _revoke.IsVisible = _provisioned.OldKey.Length > 0;
-                Say($"部署并验证成功。可在终端运行 ssh {form.Alias}。\n新密钥指纹 {_provisioned.NewKey}\n原登录授权已保留。", Severity.Success);
+                var backup = _provisioned.BackupFolder.Length > 0 ? $"\n配置备份：{_provisioned.BackupFolder}" : "";
+                Say($"部署并验证成功。可在终端运行 ssh {form.Alias}。\n新密钥指纹 {_provisioned.NewKey}\n原登录授权已保留。{backup}", Severity.Success);
             }
             else
             {
                 await _setup.SaveAliasAsync(form, (_keys.SelectedItem as KeyChoice)?.Key);
                 Say($"已保存，可在终端运行 ssh {form.Alias}。", Severity.Success);
             }
-            _alias.IsReadOnly = true;
             _bootstrap = form.Alias;
             await LoadChoicesAsync(form.Alias);
+            _keepAlias.IsVisible = false;
+            _keepAlias.IsChecked = false;
+            _alias.IsReadOnly = true;
         }
         catch (Exception ex) when (Expected(ex)) { Say(ex.Message, Severity.Danger); }
         finally { SetBusy(false); }
@@ -212,11 +233,15 @@ internal sealed class SshHostSetupWindow
     {
         _busy = value;
         _inputs.IsEnabled = !value;
-        _close.IsEnabled = _save.IsEnabled = _revoke.IsEnabled = !value;
+        _close.IsEnabled = _revoke.IsEnabled = !value;
         RefreshButtons();
     }
 
-    private void RefreshButtons() => _deploy.IsEnabled = !_busy && !SshHostSetupService.IsHostedGit(Form());
+    private void RefreshButtons()
+    {
+        _save.IsEnabled = !_busy && _keepAlias.IsChecked != true;
+        _deploy.IsEnabled = !_busy && !SshHostSetupService.IsHostedGit(Form());
+    }
 
     private void Say(string text, Severity severity)
     {

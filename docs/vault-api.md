@@ -191,6 +191,8 @@ Windows 设置中的「配置 SSH 主机」可创建和编辑由 MoonPassword �
 
 对使用标准 `~/.ssh/authorized_keys` 的 Unix 服务器，可通过旧钥匙或在 OpenSSH 窗口输入密码引导部署。应用生成 Ed25519 密钥，将私钥放在密码库，以服务器主机钥匙指纹限定 Agent 使用范围，再单独验证新密钥。部署成功且识别出旧公钥时，可确认移除该账号授权文件中的旧公钥。GitHub 和 Codeberg 用对应的账户网页注册公钥，再在应用中关联别名。
 
+勾选「迁移后沿用原别名」时，应用先用新密钥登录确认，再备份并切换原别名。切换后再用原别名复验，失败会回退本机配置。备份位于 `~/.ssh/moonpassword/backups/`，成功提示会显示具体路径。共享 `Host` 段的其他别名继续使用原配置。若身份配置来自应用无法安全改写的 `Match` 或外部文件，会停止切换或回滚。旧服务器授权默认保留。
+
 **主机绑定**（`hosts` 非空的钥匙）：ssh 连上服务器后会把服务器的主机钥匙告诉 Agent（session-bind，OpenSSH 8.9 起）。这样的连接上，Agent 只列出没有绑定的钥匙和绑定到这台服务器的钥匙，所以钥匙多时不会因为依次尝试而撞上服务器的尝试次数上限（默认 6 次）；登录签名请求如果来自别的服务器，拒绝（`ssh.refused`，`reason:"host"`）。主机名的判断靠用户的 `known_hosts`（`~/.ssh/known_hosts`、`known_hosts2` 和系统级的那份），哈希过的条目只能匹配不带通配符的主机名；指纹则不依赖 `known_hosts`。没有 session-bind 的连接（`ssh-add -l`、`ssh-keygen -Y sign` 这类本地用途，以及老版本客户端）照常列出全部钥匙；不是登录的签名（例如 git 提交签名）不受主机绑定限制。
 
 **SSH 错误码**：`SSH_KEY_UNSUPPORTED`（`details.reason`：`dsa`、`sk`、`sshcom`、`putty1`、`pbes1`、`public_only`、`certificate`、`rsa_small`、`curve`、`multi`、`cipher`、`unknown`）、`SSH_KEY_PASSPHRASE`（`details.wrong`）、`SSH_KEY_CORRUPT`、`SSH_KEY_TOO_EXPENSIVE`（密钥派生参数超过核心上限，没有尝试解密）、`SSH_KEY_DUPLICATE`、`SSH_AGENT_UNAVAILABLE`。

@@ -73,6 +73,7 @@ internal sealed partial class ShellController : IDisposable
 
         _tray = new TrayService();
         _tray.OpenRequested += () => ShowMainWindow();
+        _tray.SettingsRequested += () => ShowMainWindow(MainPage.Settings);
         _tray.AutoStartToggled += on => _ = SetAutoStartAsync(on);
         _tray.CheckUpdateRequested += () => _ = CheckUpdateFromTrayAsync();
         _tray.ExitRequested += ExitApp;
@@ -175,9 +176,9 @@ internal sealed partial class ShellController : IDisposable
     {
         if (_disposed) return;
         var w = Main ?? new MainWindow(this);
+        if (page is { } p) w.ShowPage(p);
         if (!w.IsVisible) w.Show();
         if (w.WindowState == WindowState.Minimized) w.WindowState = WindowState.Normal;
-        if (page is { } p) w.ShowPage(p);
         w.Activate();
         // Bring to front even if another window has focus (Topmost toggle keeps it from staying on top).
         w.Topmost = true;
