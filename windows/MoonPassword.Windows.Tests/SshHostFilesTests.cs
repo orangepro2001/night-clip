@@ -115,6 +115,27 @@ public sealed class SshHostFilesTests : IDisposable
         Assert.False(files.IsManaged("work"));
     }
 
+    [Fact]
+    public void ASecondTakeoverAddsAnotherExclusionToTheSharedIdentity()
+    {
+        var config = Path.Combine(_dir, "config");
+        File.WriteAllText(config, "IdentityFile shared\nHost work sibling\n  HostName build.example.test\n");
+        var files = new SshHostFiles(_dir);
+        using (var first = files.Begin())
+        {
+            first.ApplyTakeover(files.PlanTakeover("work", [new(config, 2)]));
+            first.Set(Host, Key, "fixture public key", takeOver: true);
+            first.Commit();
+        }
+        int header = Array.FindIndex(File.ReadAllLines(config), line => line == "Host work sibling") + 1;
+        using (var second = files.Begin())
+        {
+            second.ApplyTakeover(files.PlanTakeover("sibling", [new(config, header)]));
+            second.Commit();
+        }
+        Assert.Contains("Match originalhost *,!work,!sibling\nIdentityFile shared\nMatch all", File.ReadAllText(config));
+    }
+
     [Theory]
     [InlineData("*", "server", "user", "")]
     [InlineData("good", "server\n  ProxyCommand other", "user", "")]

@@ -34,6 +34,10 @@ public sealed class SshHostFiles(string sshFolder)
 {
 
     private const string Marker = "# Managed by MoonPassword";
+    private const string SharedIdentityMarker = "# MoonPassword: keep this identity for other aliases";
+    private const string SharedIdentityMatch = "Match originalhost *";
+    private static readonly Regex SharedIdentityRule = new(@"\AMatch originalhost \*(?:,![A-Za-z0-9_][A-Za-z0-9._-]{0,62})+\z",
+        RegexOptions.CultureInvariant);
     private const int MaxConfigBytes = 2 * 1024 * 1024;
     private static readonly Regex Id = new(@"\A[0-9a-f]{32}\z", RegexOptions.CultureInvariant);
     private static readonly Regex AgentPipe = new(@"\A\\\\\.\\pipe\\[A-Za-z0-9._-]+\z", RegexOptions.CultureInvariant);
@@ -130,6 +134,18 @@ public sealed class SshHostFiles(string sshFolder)
             }
             if (group.Key.Equals(root, StringComparison.OrdinalIgnoreCase))
             {
+                // Extend our existing exclusions when another alias is migrated later.
+                for (int i = 0; i + 3 < lines.Count; i++)
+                {
+                    if (lines[i].TrimStart('\uFEFF').TrimEnd('\r') != SharedIdentityMarker ||
+                        !IdentityOption.IsMatch(lines[i + 2].TrimEnd('\r')) ||
+                        lines[i + 3].TrimEnd('\r') != "Match all") continue;
+                    var rule = lines[i + 1].TrimEnd('\r');
+                    if (SharedIdentityRule.IsMatch(rule) &&
+                        !rule.Split(',').Contains("!" + alias, StringComparer.OrdinalIgnoreCase))
+                        lines[i + 1] = rule + ",!" + alias + lines[i + 1][rule.Length..];
+                }
+
                 var firstSection = lines.FindIndex(line => Section.IsMatch(line.TrimStart('\uFEFF').TrimEnd('\r')));
                 if (firstSection < 0) firstSection = lines.Count;
                 for (int i = firstSection - 1; i >= 0; i--)
@@ -140,7 +156,8 @@ public sealed class SshHostFiles(string sshFolder)
                     var bom = lines[i].StartsWith('\uFEFF') ? "\uFEFF" : "";
                     lines[i] = line;
                     lines.Insert(i + 1, "Match all" + cr);
-                    lines.Insert(i, bom + "Match originalhost *,!" + alias + cr);
+                    lines.Insert(i, SharedIdentityMatch + ",!" + alias + cr);
+                    lines.Insert(i, bom + SharedIdentityMarker + cr);
                 }
             }
             var after = string.Join("\n", lines);
