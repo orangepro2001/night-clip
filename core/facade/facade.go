@@ -56,6 +56,7 @@ type Core struct {
 	ssh     sshState
 	account *accountState
 	cloud   *cloudSync
+	agentMu sync.Mutex
 	started bool
 	closed  bool
 
@@ -237,6 +238,8 @@ func (c *Core) dispatch(method, paramsJSON string) (any, error) {
 		return c.settingsCall(method, paramsJSON)
 	case "update.status", "update.check", "update.download", "update.config":
 		return c.updateCall(method, paramsJSON)
+	case "agent.credentials", "agent.connect", "agent.revoke", "agent.next", "agent.approve", "agent.deny":
+		return c.agentCall(method, paramsJSON)
 	case "account.status", "account.login", "account.cancel", "account.complete", "account.logout":
 		return c.accountCall(method, paramsJSON)
 	case "sync.status", "sync.enable", "sync.now", "sync.disconnect", "sync.recovery_key":

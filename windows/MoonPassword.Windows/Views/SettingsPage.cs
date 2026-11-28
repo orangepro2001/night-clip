@@ -136,7 +136,7 @@ internal sealed class SettingsPage : UserControl
                 Classes = { "page" },
                 MaxWidth = 820,
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Children = { intro, privacy, new AccountSettingsCard(shell), new VaultSyncSettingsCard(shell), appearance, general, new SshSettingsCard(shell), browser, updates, about },
+                Children = { intro, privacy, new AccountSettingsCard(shell), new VaultSyncSettingsCard(shell), appearance, general, new SshSettingsCard(shell), new AgentSettingsCard(shell), browser, updates, about },
             },
         };
 

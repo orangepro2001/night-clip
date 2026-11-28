@@ -108,6 +108,7 @@ internal sealed partial class ShellController : IDisposable
         };
         await Task.Run(() => _core.Start(config)); // opens the database: keep it off the UI thread
         CoreRunning = true;
+        StartAgentPoll();
         RefreshFirefoxBridge();
 
         await ReloadAllAsync();
@@ -127,6 +128,7 @@ internal sealed partial class ShellController : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _agentPoll?.Stop();
         _firefoxBridge?.Dispose();
         _tray.Dispose();      // first, so the icon disappears at once
         DisposeVault();       // session hooks off, our secret off the clipboard (needs the owner window)

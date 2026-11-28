@@ -18,6 +18,7 @@ public sealed class ShellPrefs
 
     /// <summary>Exclude the window from screenshots and recordings while the vault page is shown (default on).</summary>
     public bool PreventCapture { get; set; } = true;
+    public bool AgentRequests { get; set; }
 
     /// <summary>Appearance of the window: "system" (follow Windows, the default), "light" or "dark".</summary>
     public string Theme { get; set; } = "system";
@@ -59,6 +60,7 @@ public sealed class ShellPrefs
             {
                 FirstRunDone = JsonRead.Bool(doc.RootElement, "first_run_done"),
                 PreventCapture = JsonRead.Bool(doc.RootElement, "prevent_capture", true),
+                AgentRequests = JsonRead.Bool(doc.RootElement, "agent_requests"),
                 Notifications = JsonRead.Bool(doc.RootElement, "notifications", true),
                 Theme = NormalizeTheme(JsonRead.Str(doc.RootElement, "theme")),
                 Accent = NormalizeAccent(JsonRead.Str(doc.RootElement, "accent")),
@@ -83,6 +85,7 @@ public sealed class ShellPrefs
                 ["first_run_done"] = FirstRunDone,
                 ["prevent_capture"] = PreventCapture,
                 ["notifications"] = Notifications,
+                ["agent_requests"] = AgentRequests,
                 ["theme"] = NormalizeTheme(Theme),
                 ["accent"] = NormalizeAccent(Accent),
                 ["sidebar_open"] = SidebarOpen,
